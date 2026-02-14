@@ -100,7 +100,12 @@
     }
 
     function loadStylesData(tabName) {
-        const dataEl = qs(`#style_grid_data_${tabName} textarea`);
+        const roots = [getRoot(), document];
+        let dataEl = null;
+        for (const r of roots) {
+            dataEl = qs(`#style_grid_data_${tabName} textarea`, r);
+            if (dataEl) break;
+        }
         if (!dataEl || !dataEl.value) return { sources: [], styles: [], categories: null };
         try {
             const data = JSON.parse(dataEl.value);
@@ -119,7 +124,12 @@
     }
 
     function getCategoryOrder(tabName) {
-        const orderEl = qs(`#style_grid_cat_order_${tabName} textarea`);
+        const roots = [getRoot(), document];
+        let orderEl = null;
+        for (const r of roots) {
+            orderEl = qs(`#style_grid_cat_order_${tabName} textarea`, r);
+            if (orderEl) break;
+        }
         if (!orderEl || !orderEl.value) return DEFAULT_CAT_ORDER;
         try {
             const o = JSON.parse(orderEl.value);
@@ -427,8 +437,13 @@
         const allStyles = [];
         Object.values(categories).forEach((arr) => arr.forEach((s) => allStyles.push(s)));
 
-        const promptEl = qs(`#${tabName}_prompt textarea`);
-        const negEl = qs(`#${tabName}_neg_prompt textarea`);
+        const roots = [getRoot(), document];
+        let promptEl = null, negEl = null;
+        for (const r of roots) {
+            promptEl = qs(`#${tabName}_prompt textarea`, r);
+            negEl = qs(`#${tabName}_neg_prompt textarea`, r);
+            if (promptEl && negEl) break;
+        }
 
         if (!promptEl || !negEl) {
             togglePanel(tabName, false);

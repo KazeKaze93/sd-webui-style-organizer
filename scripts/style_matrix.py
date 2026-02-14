@@ -62,8 +62,18 @@ class StyleScanner:
         self._base = scripts.basedir()
 
     def _root_styles_path(self):
-        """Path to Forge root styles.csv."""
-        root = getattr(shared.cmd_opts, "data_path", None) or os.getcwd()
+        """Path to Forge/WebUI root styles.csv (root = where the app runs)."""
+        root = getattr(shared.cmd_opts, "data_path", None)
+        if not root:
+            root = getattr(shared.cmd_opts, "script_path", None)
+        if not root:
+            # Extension lives in webui/extensions/<ext_name>; webui root = parent of 'extensions'
+            ext_dir = self._base  # extension root
+            extensions_dir = os.path.dirname(ext_dir)
+            if os.path.basename(extensions_dir) == "extensions":
+                root = os.path.dirname(extensions_dir)
+            else:
+                root = os.getcwd()
         return os.path.abspath(os.path.join(root, "styles.csv"))
 
     def _internal_paths(self):

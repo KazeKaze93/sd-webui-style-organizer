@@ -57,6 +57,7 @@ export function cardMatchesSearch(searchData, category, { phraseTokens, wordToke
   return true;
 }
 
+/** Build searchable string from name, display_name, prompt, and negative_prompt. */
 export function buildSearchData(style) {
   return (
     style.name +

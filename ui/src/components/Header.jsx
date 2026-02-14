@@ -1,5 +1,5 @@
 import React from "react";
-import { LayoutGrid, List, Search, X, Check, Trash2 } from "lucide-react";
+import { LayoutGrid, List, Search, X, Check, Trash2, Loader2 } from "lucide-react";
 
 /**
  * Panel header: title, source switcher, search, compact toggle, collapse all, apply mode, clear, apply, close.
@@ -21,8 +21,11 @@ export function Header({
   onClear,
   onApply,
   onClose,
+  applyStatus = "idle",
 }) {
   const showSourceSwitcher = sources.length > 0;
+  const isApplying = applyStatus === "applying";
+  const isSuccess = applyStatus === "success";
 
   return (
     <header className="flex shrink-0 flex-col gap-2 border-b border-border bg-background px-4 py-3">
@@ -127,9 +130,18 @@ export function Header({
         <button
           type="button"
           onClick={onApply}
-          className="flex items-center gap-1 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
+          disabled={isApplying}
+          className={
+            "flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-white disabled:opacity-70 " +
+            (isSuccess ? "bg-green-600" : "bg-accent hover:opacity-90")
+          }
         >
-          <Check className="h-3.5 w-3.5" /> Apply
+          {isApplying ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <Check className="h-3.5 w-3.5" aria-hidden />
+          )}{" "}
+          {isApplying ? "Applying…" : isSuccess ? "Applied!" : "Apply"}
         </button>
         <button
           type="button"

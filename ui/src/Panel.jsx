@@ -4,9 +4,11 @@ import { Sidebar } from "./components/Sidebar";
 import { Accordion } from "./components/Accordion";
 import { StyleCard } from "./components/StyleCard";
 import { Header } from "./components/Header";
-import { CATEGORY_COLORS, getFavorites, setFavorites } from "./constants";
+import { VirtualCardGrid } from "./components/VirtualCardGrid";
+import { CATEGORY_COLORS, getFavorites, setFavorites, getSelectedSource, setSelectedSource as persistSelectedSource } from "./constants";
 import { parseSearchQuery, cardMatchesSearch, buildSearchData } from "./searchFilter";
 import { categorizeStyles, getStylesForSource } from "./styleData";
+import { useDebouncedValue } from "./hooks/useDebouncedValue";
 
 const FAVORITES_CAT = "FAVORITES";
 const ALL_SOURCES_LABEL = "All Sources";
@@ -38,14 +40,23 @@ function Panel({
   onSelectedChange,
 }) {
   const [selected, setSelected] = useState(() => new Set(initialSelected));
-  const [selectedSource, setSelectedSource] = useState(ALL_SOURCES_LABEL);
+  const [selectedSource, setSelectedSourceState] = useState(() => getSelectedSource(tabName) || ALL_SOURCES_LABEL);
+  const setSelectedSource = useCallback(
+    (value) => {
+      setSelectedSourceState(value);
+      persistSelectedSource(tabName, value);
+    },
+    [tabName]
+  );
 
   useEffect(() => {
     if (typeof onSelectedChange === "function") onSelectedChange(selected.size);
   }, [selected.size, onSelectedChange]);
   const [favorites, setFavoritesState] = useState(() => getFavorites(tabName));
   const [searchQuery, setSearchQuery] = useState("");
+  const searchQueryDebounced = useDebouncedValue(searchQuery, 300);
   const [compact, setCompact] = useState(false);
+  const [applyStatus, setApplyStatus] = useState("idle");
   const [collapsed, setCollapsed] = useState(() => ({}));
   const [applyMode, setApplyModeState] = useState(initialApplyMode || "prompt");
 
@@ -54,6 +65,13 @@ function Panel({
     const fromStyles = new Set((stylesProp || []).map((s) => s.source).filter(Boolean));
     return Array.from(fromStyles);
   }, [sourcesProp, stylesProp]);
+
+  useEffect(() => {
+    if (sources.length === 0) return;
+    if (selectedSource !== ALL_SOURCES_LABEL && !sources.includes(selectedSource)) {
+      setSelectedSourceState(ALL_SOURCES_LABEL);
+    }
+  }, [sources, selectedSource]);
 
   const effectiveStyles = useMemo(() => {
     if (!stylesProp || stylesProp.length === 0) return [];
@@ -104,7 +122,7 @@ function Panel({
     return allStyles.filter((s) => favorites.has(s.name));
   }, [allStyles, favorites]);
 
-  const searchParsed = useMemo(() => parseSearchQuery(searchQuery), [searchQuery]);
+  const searchParsed = useMemo(() => parseSearchQuery(searchQueryDebounced), [searchQueryDebounced]);
 
   const displayCategories = useMemo(() => {
     const list = [];
@@ -112,6 +130,23 @@ function Panel({
     list.push(...sortedCats);
     return list;
   }, [favoriteStyles.length, sortedCats]);
+
+  const flatFilteredItems = useMemo(() => {
+    const out = [];
+    displayCategories.forEach((catName) => {
+      const isFav = catName === FAVORITES_CAT;
+      const styles = isFav ? favoriteStyles : categories[catName] || [];
+      const color = CATEGORY_COLORS[catName] || CATEGORY_COLORS.OTHER;
+      styles
+        .filter((s) =>
+          cardMatchesSearch(buildSearchData(s), isFav ? FAVORITES_CAT : catName, searchParsed)
+        )
+        .forEach((s) => out.push({ style: s, color }));
+    });
+    return out;
+  }, [displayCategories, categories, favoriteStyles, searchParsed]);
+
+  const useVirtualList = flatFilteredItems.length > 100;
 
   const allCollapsed = useMemo(() => {
     return displayCategories.every((c) => collapsed[c]);
@@ -137,8 +172,10 @@ function Panel({
   }, []);
 
   const handleApply = useCallback(() => {
+    setApplyStatus("applying");
     onApply(Array.from(selected), applyMode);
-    onClose();
+    setApplyStatus("success");
+    setTimeout(() => onClose(), 1000);
   }, [selected, applyMode, onApply, onClose]);
 
   const scrollToId = useCallback((id) => {
@@ -235,6 +272,7 @@ function Panel({
         onClear={() => setSelected(new Set())}
         onApply={handleApply}
         onClose={onClose}
+        applyStatus={applyStatus}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -246,12 +284,24 @@ function Panel({
         />
         <main
           id="sg-main-content"
-          className="min-h-0 flex-1 overflow-y-auto p-3"
-          style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}
+          className={"min-h-0 flex-1 p-3 " + (useVirtualList ? "overflow-hidden flex flex-col" : "overflow-y-auto")}
         >
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
-            {displayCategories.map(renderCategory)}
-          </div>
+          {useVirtualList ? (
+            <VirtualCardGrid
+              items={flatFilteredItems}
+              selected={selected}
+              favorites={favorites}
+              compact={compact}
+              onToggleStyle={onToggleStyle}
+              onToggleFavorite={onToggleFavorite}
+              containerClassName="min-h-0 flex-1 overflow-y-auto"
+              gridClassName="grid gap-2"
+            />
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
+              {displayCategories.map(renderCategory)}
+            </div>
+          )}
         </main>
       </div>
 

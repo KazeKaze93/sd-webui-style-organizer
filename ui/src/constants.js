@@ -12,6 +12,27 @@ export const CATEGORY_COLORS = {
 };
 
 export const FAVORITES_STORAGE_KEY = "sg_favorites";
+export const SELECTED_SOURCE_STORAGE_KEY = "sg_selected_source";
+
+export function getSelectedSource(tabName) {
+  try {
+    const raw = localStorage.getItem(SELECTED_SOURCE_STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return data[tabName] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function setSelectedSource(tabName, value) {
+  try {
+    const raw = localStorage.getItem(SELECTED_SOURCE_STORAGE_KEY);
+    const data = raw ? JSON.parse(raw) : {};
+    data[tabName] = value;
+    localStorage.setItem(SELECTED_SOURCE_STORAGE_KEY, JSON.stringify(data));
+  } catch (_) {}
+}
 
 export function getFavorites(tabName) {
   try {

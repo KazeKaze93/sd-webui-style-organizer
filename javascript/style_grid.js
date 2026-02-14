@@ -40,6 +40,49 @@
         return document.body;
     }
 
+    /**
+     * Wait for an element to exist and be visible before use.
+     * selector: string or array of strings (tried in order).
+     * Avoids "Attempted to select a non-interactive tab" and DOM timing issues.
+     */
+    function waitForElement(selector, options) {
+        const root = (options && options.root) || document;
+        const timeoutMs = (options && options.timeout) != null ? options.timeout : 30000;
+        const checkVisible = !options || options.checkVisible !== false;
+        const selectors = Array.isArray(selector) ? selector : [selector];
+
+        return new Promise(function (resolve, reject) {
+            const start = Date.now();
+            function run() {
+                let el = null;
+                for (const sel of selectors) {
+                    el = root.querySelector(sel);
+                    if (el) break;
+                }
+                if (!el) {
+                    if (Date.now() - start >= timeoutMs) return reject(new Error("waitForElement timeout: " + selectors.join(" | ")));
+                    setTimeout(run, 250);
+                    return;
+                }
+                if (checkVisible) {
+                    const rect = el.getBoundingClientRect();
+                    const visible = rect.width > 0 && rect.height > 0 && (el.offsetParent != null || el.getRootNode?.()?.host);
+                    if (!visible) {
+                        if (Date.now() - start >= timeoutMs) return reject(new Error("waitForElement visible timeout: " + selectors.join(" | ")));
+                        setTimeout(run, 250);
+                        return;
+                    }
+                }
+                resolve(el);
+            }
+            if (document.readyState === "loading") {
+                document.addEventListener("DOMContentLoaded", run);
+            } else {
+                run();
+            }
+        });
+    }
+
     function qs(sel, root) {
         return (root || document).querySelector(sel);
     }
@@ -547,18 +590,25 @@
     });
 
     function init() {
-        let attempts = 0;
-        const tryInject = () => {
-            attempts++;
-            let a = qs("#sg_trigger_txt2img") !== null;
-            let b = qs("#sg_trigger_img2img") !== null;
-            if (!a) a = injectButton("txt2img");
-            if (!b) b = injectButton("img2img");
-            if ((!a || !b) && attempts < 50) setTimeout(tryInject, 500);
+        const run = () => {
+            waitForElement(
+                ["#txt2img_tools", "#txt2img_styles_row", "#tab_txt2img"],
+                { root: document, timeout: 20000 }
+            )
+                .then(() => injectButton("txt2img"))
+                .catch(() => {});
+            waitForElement(
+                ["#img2img_tools", "#img2img_styles_row", "#tab_img2img"],
+                { root: document, timeout: 20000 }
+            )
+                .then(() => injectButton("img2img"))
+                .catch(() => {});
         };
-        if (document.readyState === "loading")
-            document.addEventListener("DOMContentLoaded", () => setTimeout(tryInject, 1500));
-        else setTimeout(tryInject, 1500);
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", () => setTimeout(run, 800));
+        } else {
+            setTimeout(run, 800);
+        }
     }
     init();
 })();

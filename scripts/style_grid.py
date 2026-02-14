@@ -49,17 +49,19 @@ def get_merged_styles():
 
 
 # ---------------------------------------------------------------------------
-# API
+# API (no arguments; frontend does not call_api these - uses hidden textbox)
 # ---------------------------------------------------------------------------
 
 def register_api(_demo, app):
     @app.get("/style_grid/get_styles")
     async def get_styles():
+        """Returns style data. Accepts no parameters (GET)."""
         sources, styles = get_styles_data()
         return {"sources": sources, "styles": styles}
 
     @app.post("/style_grid/reload")
     async def reload_styles():
+        """Reload and return style data. Accepts no body (POST)."""
         sources, styles = get_styles_data()
         return {"sources": sources, "styles": styles}
 

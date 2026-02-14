@@ -2,12 +2,12 @@
    Style Grid - All styles (no Tailwind). Gradio/Forge CSS variables.
    ========================================================================= */
 
-/* ---- Overlay ---- */
+/* ---- Overlay (match Forge theme, avoid black screen) ---- */
 .sg-overlay {
     position: fixed;
     inset: 0;
     z-index: 10000;
-    background: rgba(0, 0, 0, 0.6);
+    background: color-mix(in srgb, var(--body-background-fill, var(--background-fill-primary, #111827)) 75%, transparent);
     backdrop-filter: blur(4px);
     display: none;
     align-items: center;
@@ -26,7 +26,7 @@
     max-width: 1200px;
     height: 85vh;
     max-height: 85vh;
-    background: var(--background-fill-primary, #111827);
+    background: var(--body-background-fill, var(--background-fill-primary, #111827));
     border: 1px solid var(--border-color-primary, #374151);
     border-radius: 12px;
     display: flex;
@@ -39,7 +39,7 @@
     flex-shrink: 0;
     padding: 12px 16px;
     border-bottom: 1px solid var(--border-color-primary, #374151);
-    background: var(--background-fill-primary, #111827);
+    background: var(--body-background-fill, var(--background-fill-primary, #111827));
     display: flex;
     flex-wrap: wrap;
     align-items: center;

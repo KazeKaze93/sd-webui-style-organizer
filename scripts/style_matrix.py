@@ -1,24 +1,19 @@
 """
-Style Matrix - Multi-source CSV scanner for Style Grid.
-Scans Forge root, extension styles/, and config/sources.json.
+Style Matrix - CSV scanner for Style Grid.
+Reads only from the extension's styles/ folder (user puts CSV files there).
 """
 
 import csv
-import json
 import logging
 import os
 
-from modules import scripts, shared
+from modules import scripts
 
 logger = logging.getLogger(__name__)
 
-SOURCE_PRIORITY_ROOT = 0
-SOURCE_PRIORITY_INTERNAL = 1
-SOURCE_PRIORITY_USER = 2
 
-
-def _parse_csv(filepath, source_label, source_priority):
-    """Parse a single CSV file. Returns list of style dicts with source and source_priority."""
+def _parse_csv(filepath, source_label):
+    """Parse a single CSV file. Returns list of style dicts with source (filename)."""
     styles = []
     if not os.path.isfile(filepath):
         return styles
@@ -43,7 +38,6 @@ def _parse_csv(filepath, source_label, source_priority):
                         "prompt": prompt,
                         "negative_prompt": negative,
                         "source": source_label,
-                        "source_priority": source_priority,
                     })
     except Exception as e:
         logger.warning("Failed to read %s: %s", filepath, e)
@@ -52,113 +46,59 @@ def _parse_csv(filepath, source_label, source_priority):
 
 class StyleScanner:
     """
-    Scans multiple CSV sources:
-    a) Forge root styles.csv
-    b) Extension styles/ folder (all .csv)
-    c) Paths from config/sources.json
+    Scans only the extension's styles/ folder.
+    User places CSV files there; each file becomes a selectable source in the UI.
     """
 
     def __init__(self):
         self._base = scripts.basedir()
+        self._styles_dir = os.path.join(self._base, "styles")
 
-    def _root_styles_path(self):
-        """Path to Forge/WebUI root styles.csv (root = where the app runs)."""
-        root = getattr(shared.cmd_opts, "data_path", None)
-        if not root:
-            root = getattr(shared.cmd_opts, "script_path", None)
-        if not root:
-            # Extension lives in webui/extensions/<ext_name>; webui root = parent of 'extensions'
-            ext_dir = self._base  # extension root
-            extensions_dir = os.path.dirname(ext_dir)
-            if os.path.basename(extensions_dir) == "extensions":
-                root = os.path.dirname(extensions_dir)
-            else:
-                root = os.getcwd()
-        return os.path.abspath(os.path.join(root, "styles.csv"))
+    def _ensure_styles_dir(self):
+        """Create styles/ folder if it does not exist."""
+        if not os.path.isdir(self._styles_dir):
+            try:
+                os.makedirs(self._styles_dir, exist_ok=True)
+                logger.info("[Style Grid] Created folder: %s — put your CSV files here.", self._styles_dir)
+            except Exception as e:
+                logger.warning("[Style Grid] Could not create styles folder %s: %s", self._styles_dir, e)
 
-    def _internal_paths(self):
-        """Paths to all .csv files in extension styles/."""
-        styles_dir = os.path.join(self._base, "styles")
-        if not os.path.isdir(styles_dir):
+    def _csv_paths(self):
+        """All .csv files in extension styles/ folder."""
+        self._ensure_styles_dir()
+        if not os.path.isdir(self._styles_dir):
             return []
         out = []
-        for fname in sorted(os.listdir(styles_dir)):
+        for fname in sorted(os.listdir(self._styles_dir)):
             if fname.lower().endswith(".csv"):
-                out.append(os.path.join(styles_dir, fname))
+                out.append(os.path.join(self._styles_dir, fname))
         return out
-
-    def _config_paths(self):
-        """Paths listed in config/sources.json (user-defined)."""
-        config_path = os.path.join(self._base, "config", "sources.json")
-        if not os.path.isfile(config_path):
-            return []
-        try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-        except Exception as e:
-            logger.warning("Could not load config/sources.json: %s", e)
-            return []
-        raw = data if isinstance(data, list) else data.get("paths") or data.get("sources") or []
-        paths = []
-        for p in raw:
-            if not isinstance(p, str):
-                continue
-            path = os.path.normpath(p)
-            if not os.path.isabs(path):
-                path = os.path.join(self._base, path)
-            if os.path.isfile(path) and path.lower().endswith(".csv"):
-                paths.append(path)
-            elif os.path.isdir(path):
-                for fname in sorted(os.listdir(path)):
-                    if fname.lower().endswith(".csv"):
-                        paths.append(os.path.join(path, fname))
-        return paths
 
     def scan(self):
         """
-        Scan all sources. Returns (sources, styles).
-        - sources: list of source labels (basenames), unique, order preserved.
-        - styles: list of style dicts (name, prompt, negative_prompt, source, source_priority).
+        Scan extension styles/ folder. Returns (sources, styles).
+        - sources: list of CSV filenames (e.g. ["my_styles.csv", "other.csv"]).
+        - styles: list of style dicts (name, prompt, negative_prompt, source).
         """
-        seen_sources = set()
         sources = []
         all_styles = []
-
-        def add_from_path(filepath, priority):
-            label = os.path.basename(filepath)
-            for s in _parse_csv(filepath, label, priority):
+        for path in self._csv_paths():
+            label = os.path.basename(path)
+            for s in _parse_csv(path, label):
                 all_styles.append(s)
-            if label not in seen_sources:
-                seen_sources.add(label)
-                sources.append(label)
-
-        # a) Root styles.csv
-        root_csv = self._root_styles_path()
-        if os.path.isfile(root_csv):
-            add_from_path(root_csv, SOURCE_PRIORITY_ROOT)
-
-        # b) Extension styles/
-        for path in self._internal_paths():
-            add_from_path(path, SOURCE_PRIORITY_INTERNAL)
-
-        # c) User config
-        for path in self._config_paths():
-            add_from_path(path, SOURCE_PRIORITY_USER)
-
+            sources.append(label)
         return sources, all_styles
 
 
 def merge_styles_by_priority(styles):
     """
-    Given a list of styles (each with name, source_priority), return a list with no duplicate names.
-    For duplicates, keep the style with the highest source_priority (User > Internal > Root).
+    Deduplicate by name; when duplicates exist, keep first occurrence (order = file order).
     """
     by_name = {}
     for s in styles:
         name = s.get("name")
         if not name:
             continue
-        existing = by_name.get(name)
-        if existing is None or (s.get("source_priority", 0) > existing.get("source_priority", 0)):
+        if name not in by_name:
             by_name[name] = s
     return list(by_name.values())

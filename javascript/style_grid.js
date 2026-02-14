@@ -21,10 +21,11 @@
         "BASE", "BODY", "GENITALS", "BREASTS", "THEME",
         "RESTRAINTS", "POSE", "SCENE", "STYLE", "OTHER",
     ];
+    const ALL_SOURCES = "All CSV";
 
     const state = {
-        txt2img: { selected: new Set(), categories: {}, panel: null },
-        img2img: { selected: new Set(), categories: {}, panel: null },
+        txt2img: { selected: new Set(), categories: {}, panel: null, rawStyles: [], rawSources: [], selectedSource: ALL_SOURCES },
+        img2img: { selected: new Set(), categories: {}, panel: null, rawStyles: [], rawSources: [], selectedSource: ALL_SOURCES },
     };
 
     function getRoot() {
@@ -144,11 +145,31 @@
         (styles || []).forEach((s) => {
             const n = s.name;
             if (!n) return;
-            const pri = s.source_priority != null ? s.source_priority : 0;
-            if (!byName[n] || pri > (byName[n].source_priority != null ? byName[n].source_priority : 0))
-                byName[n] = s;
+            if (!byName[n]) byName[n] = s;
         });
         return Object.values(byName);
+    }
+
+    function getStylesForSource(styles, source) {
+        if (!source || source === ALL_SOURCES) return mergeByPriority(styles || []);
+        return (styles || []).filter((s) => s.source === source);
+    }
+
+    function getSelectedSource(tabName) {
+        try {
+            const raw = localStorage.getItem("sg_selected_source");
+            if (!raw) return null;
+            const data = JSON.parse(raw);
+            return data[tabName] || null;
+        } catch (_) { return null; }
+    }
+    function setSelectedSourceStorage(tabName, value) {
+        try {
+            const raw = localStorage.getItem("sg_selected_source");
+            const data = raw ? JSON.parse(raw) : {};
+            data[tabName] = value;
+            localStorage.setItem("sg_selected_source", JSON.stringify(data));
+        } catch (_) {}
     }
 
     function categorize(styles) {
@@ -185,71 +206,13 @@
         return tokens.every((t) => text.includes(t));
     }
 
-    function buildPanel(tabName) {
-        const data = loadStylesData(tabName);
-        const rawStyles = data.styles || [];
-        const dataCategories = data.categories;
-        const categories = dataCategories || categorize(mergeByPriority(rawStyles));
-        state[tabName].categories = categories;
-
-        const catOrder = getCategoryOrder(tabName);
-        const catKeys = Object.keys(categories);
-        const sortedCats = [];
-        catOrder.forEach((c) => { if (catKeys.includes(c)) sortedCats.push(c); });
-        catKeys.forEach((c) => { if (!sortedCats.includes(c)) sortedCats.push(c); });
-
-        const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
-        let mouseDownTarget = null;
-        overlay.addEventListener("mousedown", (e) => { mouseDownTarget = e.target; });
-        overlay.addEventListener("click", (e) => {
-            if (e.target === overlay && mouseDownTarget === overlay) togglePanel(tabName, false);
-            mouseDownTarget = null;
-        });
-
-        const panel = el("div", { className: "sg-panel" });
-
-        const header = el("div", { className: "sg-header" });
-        const titleRow = el("div", { className: "sg-title-row" });
-        titleRow.appendChild(el("span", { className: "sg-title", textContent: "🎨 Style Grid" }));
-        titleRow.appendChild(el("span", {
-            className: "sg-selected-count",
-            id: `sg_count_${tabName}`,
-            textContent: "0 selected",
-        }));
-        header.appendChild(titleRow);
-
-        const searchRow = el("div", { className: "sg-search-row" });
-        const searchInput = el("input", {
-            className: "sg-search",
-            type: "text",
-            placeholder: "Search name and prompt…",
-            id: `sg_search_${tabName}`,
-        });
-        searchInput.addEventListener("input", () => filterStyles(tabName));
-        searchRow.appendChild(searchInput);
-        searchRow.appendChild(el("button", {
-            className: "sg-btn sg-btn-secondary",
-            textContent: "Clear",
-            title: "Clear all selections",
-            onClick: () => clearAll(tabName),
-        }));
-        searchRow.appendChild(el("button", {
-            className: "sg-btn sg-btn-primary",
-            textContent: "✔ Apply",
-            title: "Apply selected styles to prompt",
-            onClick: () => applyStyles(tabName),
-        }));
-        searchRow.appendChild(el("button", {
-            className: "sg-btn sg-btn-close",
-            innerHTML: "✕",
-            title: "Close",
-            onClick: () => togglePanel(tabName, false),
-        }));
-        header.appendChild(searchRow);
-        panel.appendChild(header);
-
-        const content = el("div", { className: "sg-content" });
-
+    function fillCategorySections(tabName, contentEl, categories, sortedCats) {
+        contentEl.innerHTML = "";
+        if (sortedCats.length === 0) {
+            const msg = el("p", { className: "sg-empty-msg", textContent: "No styles loaded. Put CSV files in the extension's styles/ folder and refresh the page." });
+            contentEl.appendChild(msg);
+            return;
+        }
         sortedCats.forEach((catName) => {
             const styles = categories[catName];
             if (!styles || styles.length === 0) return;
@@ -312,9 +275,122 @@
             });
 
             section.appendChild(grid);
-            content.appendChild(section);
+            contentEl.appendChild(section);
+        });
+    }
+
+    function refreshContent(tabName) {
+        const panel = state[tabName].panel;
+        if (!panel) return;
+        const contentEl = panel.querySelector(".sg-content");
+        if (!contentEl) return;
+
+        const s = state[tabName];
+        const rawStyles = s.rawStyles || [];
+        const selectedSource = s.selectedSource || ALL_SOURCES;
+        const effectiveStyles = getStylesForSource(rawStyles, selectedSource);
+        const categories = categorize(effectiveStyles);
+        s.categories = categories;
+
+        const catOrder = getCategoryOrder(tabName);
+        const catKeys = Object.keys(categories);
+        const sortedCats = [];
+        catOrder.forEach((c) => { if (catKeys.includes(c)) sortedCats.push(c); });
+        catKeys.forEach((c) => { if (!sortedCats.includes(c)) sortedCats.push(c); });
+
+        fillCategorySections(tabName, contentEl, categories, sortedCats);
+        filterStyles(tabName);
+        updateSelectedUI(tabName);
+    }
+
+    function buildPanel(tabName) {
+        const data = loadStylesData(tabName);
+        const rawStyles = data.styles || [];
+        const rawSources = data.sources || [];
+
+        const s = state[tabName];
+        s.rawStyles = rawStyles;
+        s.rawSources = rawSources;
+        const savedSource = getSelectedSource(tabName);
+        if (savedSource && (rawSources.length === 0 || rawSources.includes(savedSource) || savedSource === ALL_SOURCES))
+            s.selectedSource = savedSource;
+        else
+            s.selectedSource = ALL_SOURCES;
+
+        const effectiveStyles = getStylesForSource(rawStyles, s.selectedSource);
+        const categories = categorize(effectiveStyles);
+        s.categories = categories;
+
+        const catOrder = getCategoryOrder(tabName);
+        const catKeys = Object.keys(categories);
+        const sortedCats = [];
+        catOrder.forEach((c) => { if (catKeys.includes(c)) sortedCats.push(c); });
+        catKeys.forEach((c) => { if (!sortedCats.includes(c)) sortedCats.push(c); });
+
+        const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
+        let mouseDownTarget = null;
+        overlay.addEventListener("mousedown", (e) => { mouseDownTarget = e.target; });
+        overlay.addEventListener("click", (e) => {
+            if (e.target === overlay && mouseDownTarget === overlay) togglePanel(tabName, false);
+            mouseDownTarget = null;
         });
 
+        const panel = el("div", { className: "sg-panel" });
+
+        const header = el("div", { className: "sg-header" });
+        const titleRow = el("div", { className: "sg-title-row" });
+        titleRow.appendChild(el("span", { className: "sg-title", textContent: "🎨 Style Grid" }));
+        titleRow.appendChild(el("span", {
+            className: "sg-selected-count",
+            id: `sg_count_${tabName}`,
+            textContent: "0 selected",
+        }));
+        header.appendChild(titleRow);
+
+        const searchRow = el("div", { className: "sg-search-row" });
+        const sourceSelect = el("select", { className: "sg-btn sg-source-select", id: `sg_source_${tabName}` });
+        sourceSelect.title = "Choose CSV file from extension styles/ folder";
+        sourceSelect.appendChild(el("option", { value: ALL_SOURCES, textContent: ALL_SOURCES }));
+        rawSources.forEach((src) => sourceSelect.appendChild(el("option", { value: src, textContent: src })));
+        if (rawSources.length) sourceSelect.value = s.selectedSource;
+        sourceSelect.addEventListener("change", () => {
+            s.selectedSource = sourceSelect.value;
+            setSelectedSourceStorage(tabName, s.selectedSource);
+            refreshContent(tabName);
+        });
+        searchRow.appendChild(sourceSelect);
+
+        const searchInput = el("input", {
+            className: "sg-search",
+            type: "text",
+            placeholder: "Search name and prompt…",
+            id: `sg_search_${tabName}`,
+        });
+        searchInput.addEventListener("input", () => filterStyles(tabName));
+        searchRow.appendChild(searchInput);
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Clear",
+            title: "Clear all selections",
+            onClick: () => clearAll(tabName),
+        }));
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-primary",
+            textContent: "✔ Apply",
+            title: "Apply selected styles to prompt",
+            onClick: () => applyStyles(tabName),
+        }));
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-close",
+            innerHTML: "✕",
+            title: "Close",
+            onClick: () => togglePanel(tabName, false),
+        }));
+        header.appendChild(searchRow);
+        panel.appendChild(header);
+
+        const content = el("div", { className: "sg-content" });
+        fillCategorySections(tabName, content, categories, sortedCats);
         panel.appendChild(content);
 
         const footer = el("div", { className: "sg-footer", id: `sg_footer_${tabName}` });

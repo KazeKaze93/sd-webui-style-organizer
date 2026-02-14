@@ -126,6 +126,13 @@
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+.sg-source-select {
+    min-width: 120px;
+    max-width: 200px;
+    cursor: pointer;
 }
 
 .sg-search {
@@ -212,6 +219,12 @@
 .sg-content::-webkit-scrollbar-thumb {
     background: #374151;
     border-radius: 3px;
+}
+
+.sg-empty-msg {
+    padding: 24px 18px;
+    color: var(--body-text-color-subdued, #9ca3af);
+    font-size: 14px;
 }
 
 /* ---- Category ---- */

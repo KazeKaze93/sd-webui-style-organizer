@@ -1,17 +1,44 @@
 /**
- * Style Grid - Loader for Forge WebUI
- * Injects trigger button, overlay, and mounts the React UI (style_grid_ui.js).
- * Apply logic and Gradio integration live here; panel UI is in the React bundle.
+ * Style Grid - Vanilla JS loader and modal. No React/Tailwind.
+ * All styles in style.css. Modal built with document.createElement.
  */
 (function () {
     "use strict";
 
+    const ALL_SOURCES = "All Sources";
+    const CATEGORY_COLORS = {
+        FAVORITES: "#eab308",
+        BASE: "#6366f1",
+        STYLE: "#3b82f6",
+        SCENE: "#22c55e",
+        THEME: "#8b5cf6",
+        POSE: "#14b8a6",
+        LIGHTING: "#f59e0b",
+        COLOR: "#ec4899",
+        CAMERA: "#f97316",
+        OTHER: "#6b7280",
+    };
+    const DEFAULT_CAT_ORDER = [
+        "BASE", "STYLE", "SCENE", "THEME", "POSE",
+        "LIGHTING", "COLOR", "CAMERA", "OTHER",
+    ];
+
     const state = {
-        txt2img: { categories: {}, panel: null },
-        img2img: { categories: {}, panel: null },
+        txt2img: { sources: [], styles: [], panel: null, selected: new Set(), selectedSource: ALL_SOURCES },
+        img2img: { sources: [], styles: [], panel: null, selected: new Set(), selectedSource: ALL_SOURCES },
     };
 
     let applyMode = localStorage.getItem("sg_apply_mode") || "prompt";
+
+    function getRoot() {
+        try {
+            if (typeof gradioApp === "function") {
+                const app = gradioApp();
+                if (app && app.shadowRoot) return app.shadowRoot;
+            }
+        } catch (_) {}
+        return document.body;
+    }
 
     function qs(sel, root) {
         return (root || document).querySelector(sel);
@@ -24,62 +51,141 @@
                 else if (k === "textContent") e.textContent = v;
                 else if (k === "innerHTML") e.innerHTML = v;
                 else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
-                else e.setAttribute(k, v);
+                else if (v != null) e.setAttribute(k, v);
             });
-        if (children) {
+        if (children)
             (Array.isArray(children) ? children : [children]).forEach((c) => {
                 if (typeof c === "string") e.appendChild(document.createTextNode(c));
                 else if (c) e.appendChild(c);
             });
-        }
         return e;
     }
 
     function loadStylesData(tabName) {
         const dataEl = qs(`#style_grid_data_${tabName} textarea`);
-        if (!dataEl || !dataEl.value) return { sources: [], styles: [], categories: {} };
+        if (!dataEl || !dataEl.value) return { sources: [], styles: [], categories: null };
         try {
             const data = JSON.parse(dataEl.value);
-            if (data.sources && data.styles) {
-                return { sources: data.sources, styles: data.styles, categories: null };
+            if (data.sources && Array.isArray(data.styles)) {
+                return { sources: data.sources || [], styles: data.styles, categories: null };
             }
-            return { sources: [], styles: [], categories: data.categories || {} };
-        } catch (_) {
-            return { sources: [], styles: [], categories: {} };
-        }
+            if (data.categories && typeof data.categories === "object") {
+                const styles = [];
+                Object.values(data.categories).forEach((arr) => {
+                    if (Array.isArray(arr)) arr.forEach((s) => styles.push(s));
+                });
+                return { sources: [], styles, categories: data.categories };
+            }
+        } catch (_) {}
+        return { sources: [], styles: [], categories: null };
     }
 
     function getCategoryOrder(tabName) {
         const orderEl = qs(`#style_grid_cat_order_${tabName} textarea`);
-        if (!orderEl || !orderEl.value) return [];
+        if (!orderEl || !orderEl.value) return DEFAULT_CAT_ORDER;
         try {
-            return JSON.parse(orderEl.value);
-        } catch {
-            return [];
+            const o = JSON.parse(orderEl.value);
+            return Array.isArray(o) ? o : DEFAULT_CAT_ORDER;
+        } catch (_) {
+            return DEFAULT_CAT_ORDER;
         }
     }
 
-    function injectStyles() {
-        if (qs("#sg-injected-styles")) return;
-        const style = el("style", { id: "sg-injected-styles" });
-        style.textContent = [
-            ".sg-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;opacity:0;transition:opacity .2s}",
-            ".sg-overlay.sg-visible{display:flex;opacity:1}",
-            ".sg-panel-wrapper{width:90vw;max-width:1200px;height:85vh;max-height:85vh;background:var(--background-fill-primary,#111827);border:1px solid var(--border-color-primary,#374151);border-radius:12px;display:flex;flex-direction:column;box-shadow:0 25px 60px rgba(0,0,0,.5)}",
-            ".sg-trigger-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:var(--size-10,2.5rem);height:var(--size-10,2.5rem);min-width:var(--size-10,2.5rem);padding:0;margin:0;border:1px solid var(--border-color-primary,#374151);border-radius:6px;background:var(--button-secondary-background-fill,#1f2937);color:var(--body-text-color,#d1d5db);cursor:pointer;flex-shrink:0;box-sizing:border-box}",
-            ".sg-trigger-btn:hover{background:var(--button-secondary-background-fill-hover,#374151);border-color:var(--color-accent,#6366f1);color:#fff}",
-            ".sg-btn-badge{position:absolute;top:-5px;right:-5px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#6366f1;color:#fff;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;line-height:1}",
-            ".sg-btn-badge:not([data-empty]){display:flex}",
-        ].join("\n");
-        document.head.appendChild(style);
+    function categorize(styles) {
+        const categories = {};
+        (styles || []).forEach((s) => {
+            const name = s.name || "";
+            const idx = name.indexOf("_");
+            let cat, displayName;
+            if (idx > 0 && name.slice(0, idx) === name.slice(0, idx).toUpperCase() && idx >= 2) {
+                cat = name.slice(0, idx);
+                displayName = name.slice(idx + 1).replace(/_/g, " ");
+            } else {
+                cat = "OTHER";
+                displayName = name.replace(/_/g, " ");
+            }
+            const styleWithMeta = Object.assign({}, s, { category: cat, display_name: displayName });
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(styleWithMeta);
+        });
+        return categories;
+    }
+
+    function mergeByPriority(styles) {
+        const byName = {};
+        (styles || []).forEach((s) => {
+            const n = s.name;
+            if (!n) return;
+            const pri = s.source_priority != null ? s.source_priority : 0;
+            if (!byName[n] || pri > (byName[n].source_priority != null ? byName[n].source_priority : 0))
+                byName[n] = s;
+        });
+        return Object.values(byName);
+    }
+
+    function getStylesForSource(styles, selectedSource) {
+        if (!selectedSource || selectedSource === ALL_SOURCES) return mergeByPriority(styles);
+        return styles.filter((s) => s.source === selectedSource);
+    }
+
+    function buildSearchText(style) {
+        return (style.name + " " + (style.display_name || "") + " " + (style.prompt || "") + " " + (style.negative_prompt || ""))
+            .replace(/\s+/g, " ")
+            .trim()
+            .toLowerCase();
+    }
+
+    function cardMatchesSearch(style, query) {
+        if (!query || !query.trim()) return true;
+        const text = buildSearchText(style);
+        const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        return tokens.every((t) => text.includes(t));
+    }
+
+    function getFavorites(tabName) {
+        try {
+            const raw = localStorage.getItem("sg_favorites");
+            if (!raw) return new Set();
+            const data = JSON.parse(raw);
+            const arr = data[tabName];
+            return Array.isArray(arr) ? new Set(arr) : new Set();
+        } catch (_) {
+            return new Set();
+        }
+    }
+    function setFavorites(tabName, set) {
+        try {
+            const raw = localStorage.getItem("sg_favorites");
+            const data = raw ? JSON.parse(raw) : {};
+            data[tabName] = [...set];
+            localStorage.setItem("sg_favorites", JSON.stringify(data));
+        } catch (_) {}
+    }
+    function getSelectedSource(tabName) {
+        try {
+            const raw = localStorage.getItem("sg_selected_source");
+            if (!raw) return null;
+            const data = JSON.parse(raw);
+            return data[tabName] || null;
+        } catch (_) {
+            return null;
+        }
+    }
+    function setSelectedSourceStorage(tabName, value) {
+        try {
+            const raw = localStorage.getItem("sg_selected_source");
+            const data = raw ? JSON.parse(raw) : {};
+            data[tabName] = value;
+            localStorage.setItem("sg_selected_source", JSON.stringify(data));
+        } catch (_) {}
     }
 
     function mergedStyleMap(styles) {
         const byName = {};
-        (styles || []).forEach(function (s) {
-            var n = s.name;
+        (styles || []).forEach((s) => {
+            const n = s.name;
             if (!n) return;
-            var pri = s.source_priority != null ? s.source_priority : 0;
+            const pri = s.source_priority != null ? s.source_priority : 0;
             if (!byName[n] || pri > (byName[n].source_priority != null ? byName[n].source_priority : 0))
                 byName[n] = s;
         });
@@ -88,9 +194,7 @@
 
     function applyStyles(tabName, selectedArray, mode) {
         if (!selectedArray || selectedArray.length === 0) return;
-
-        const useSilent = mode === "silent";
-        if (useSilent) {
+        if (mode === "silent") {
             const dataEl = qs(`#style_grid_selected_${tabName} textarea`);
             if (dataEl) {
                 dataEl.value = JSON.stringify(selectedArray);
@@ -98,20 +202,14 @@
             }
             return;
         }
-
         const styleMap = mergedStyleMap(state[tabName].styles);
-
         const promptEl = qs(`#${tabName}_prompt textarea`);
         const negEl = qs(`#${tabName}_neg_prompt textarea`);
-        if (!promptEl || !negEl) {
-            return;
-        }
-
+        if (!promptEl || !negEl) return;
         let prompt = promptEl.value;
         let neg = negEl.value;
         const posAdd = [];
         const negAdd = [];
-
         selectedArray.forEach((name) => {
             const style = styleMap[name];
             if (!style) return;
@@ -120,35 +218,42 @@
                 else posAdd.push(style.prompt);
             }
             if (style.negative_prompt) {
-                if (style.negative_prompt.includes("{prompt}"))
-                    neg = style.negative_prompt.replace("{prompt}", neg);
+                if (style.negative_prompt.includes("{prompt}")) neg = style.negative_prompt.replace("{prompt}", neg);
                 else negAdd.push(style.negative_prompt);
             }
         });
-
-        if (posAdd.length) {
-            const sep = prompt.trim() ? ", " : "";
-            prompt = prompt.replace(/,\s*$/, "") + sep + posAdd.join(", ");
-        }
-        if (negAdd.length) {
-            const sep = neg.trim() ? ", " : "";
-            neg = neg.replace(/,\s*$/, "") + sep + negAdd.join(", ");
-        }
-
+        if (posAdd.length) prompt = prompt.replace(/,\s*$/, "") + (prompt.trim() ? ", " : "") + posAdd.join(", ");
+        if (negAdd.length) neg = neg.replace(/,\s*$/, "") + (neg.trim() ? ", " : "") + negAdd.join(", ");
         promptEl.value = prompt;
         negEl.value = neg;
         promptEl.dispatchEvent(new Event("input", { bubbles: true }));
         negEl.dispatchEvent(new Event("input", { bubbles: true }));
     }
 
-    function buildPanel(tabName) {
-        injectStyles();
-        const { sources, styles, categories: legacyCategories } = loadStylesData(tabName);
-        const payload = legacyCategories
-            ? { sources: [], styles: Object.values(legacyCategories).flat() }
-            : { sources: sources || [], styles: styles || [] };
-        state[tabName].sources = payload.sources;
-        state[tabName].styles = payload.styles;
+    function updateBadge(tabName) {
+        const badge = qs(`#sg_btn_badge_${tabName}`);
+        if (badge) {
+            const count = state[tabName].selected.size;
+            badge.textContent = count > 0 ? count : "";
+            badge.setAttribute("data-empty", count > 0 ? "0" : "1");
+        }
+    }
+
+    function renderModal(tabName) {
+        const data = loadStylesData(tabName);
+        const rawStyles = data.styles || [];
+        const rawSources = data.sources || [];
+        const hasData = rawStyles.length > 0;
+        const catOrder = getCategoryOrder(tabName);
+
+        const s = state[tabName];
+        if (!s.selectedSource || (rawSources.length && !rawSources.includes(s.selectedSource) && s.selectedSource !== ALL_SOURCES))
+            s.selectedSource = ALL_SOURCES;
+        const effectiveStyles = getStylesForSource(rawStyles, s.selectedSource);
+        const categories = categorize(effectiveStyles);
+        const sortedCats = [];
+        catOrder.forEach((c) => { if (categories[c]) sortedCats.push(c); });
+        Object.keys(categories).forEach((c) => { if (!sortedCats.includes(c)) sortedCats.push(c); });
 
         const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
         let mouseDownTarget = null;
@@ -158,41 +263,222 @@
             mouseDownTarget = null;
         });
 
-        const wrapper = el("div", { className: "sg-panel-wrapper dark" });
-        const reactRoot = el("div", { id: "sg-react-root", className: "flex h-full flex-1 flex-col min-h-0" });
-        wrapper.appendChild(reactRoot);
-        overlay.appendChild(wrapper);
-        document.body.appendChild(overlay);
+        const wrapper = el("div", { className: "sg-panel-wrapper" });
 
-        state[tabName].panel = overlay;
+        const header = el("div", { className: "sg-header" });
+        header.appendChild(el("div", { className: "sg-title-row" }, [
+            el("span", { className: "sg-title", textContent: "Style Grid" }),
+            el("span", { className: "sg-selected-count", id: `sg_count_${tabName}`, textContent: s.selected.size + " selected" }),
+        ]));
 
-        function mount() {
-            if (typeof window.StyleGridMount !== "function") {
-                setTimeout(mount, 50);
-                return;
-            }
-            const catOrder = getCategoryOrder(tabName);
-            window.StyleGridMount(reactRoot, {
-                tabName,
-                sources: payload.sources,
-                styles: payload.styles,
-                categoryOrder: catOrder,
-                initialSelected: [],
-                applyMode: localStorage.getItem("sg_apply_mode") || "prompt",
-                onApply: (selectedArray, mode) => applyStyles(tabName, selectedArray, mode),
-                onClose: () => togglePanel(tabName, false),
-                onSelectedChange: (count) => {
-                    const badge = qs(`#sg_btn_badge_${tabName}`);
-                    if (badge) {
-                        badge.textContent = count > 0 ? count : "";
-                        if (count > 0) badge.removeAttribute("data-empty");
-                        else badge.setAttribute("data-empty", "1");
-                    }
-                },
+        const searchRow = el("div", { className: "sg-search-row" });
+        const searchInput = el("input", {
+            type: "text",
+            className: "sg-search",
+            id: `sg_search_${tabName}`,
+            placeholder: "Search name and prompt…",
+        });
+        const sourceSelect = el("select", { className: "sg-btn", id: `sg_source_${tabName}` });
+        sourceSelect.appendChild(el("option", { value: ALL_SOURCES, textContent: ALL_SOURCES }));
+        rawSources.forEach((src) => sourceSelect.appendChild(el("option", { value: src, textContent: src })));
+        if (rawSources.length) sourceSelect.value = s.selectedSource;
+        sourceSelect.addEventListener("change", () => {
+            s.selectedSource = sourceSelect.value;
+            setSelectedSourceStorage(tabName, s.selectedSource);
+            rebuildModalContent(tabName);
+        });
+        searchInput.addEventListener("input", () => rebuildModalContent(tabName));
+        searchRow.appendChild(searchInput);
+        if (rawSources.length) searchRow.appendChild(sourceSelect);
+        searchRow.appendChild(el("button", { className: "sg-btn", textContent: "Clear", onClick: () => { s.selected.clear(); rebuildModalContent(tabName); updateBadge(tabName); } }));
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-primary", textContent: "Apply", onClick: () => { applyStyles(tabName, [...s.selected], applyMode); togglePanel(tabName, false); } }));
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-close", innerHTML: "&times;", title: "Close", onClick: () => togglePanel(tabName, false) }));
+        header.appendChild(searchRow);
+
+        const modeRow = el("div", { className: "sg-mode-row" });
+        modeRow.appendChild(el("span", { className: "sg-mode-label", textContent: "Apply:" }));
+        const modeToggle = el("div", { className: "sg-mode-toggle" });
+        const optPrompt = el("button", { className: "sg-mode-opt" + (applyMode === "prompt" ? " sg-mode-active" : ""), textContent: "Insert into prompt", "data-mode": "prompt" });
+        const optSilent = el("button", { className: "sg-mode-opt" + (applyMode === "silent" ? " sg-mode-active" : ""), textContent: "At generation", "data-mode": "silent" });
+        [optPrompt, optSilent].forEach((opt) => {
+            opt.addEventListener("click", () => {
+                applyMode = opt.getAttribute("data-mode");
+                localStorage.setItem("sg_apply_mode", applyMode);
+                modeToggle.querySelectorAll(".sg-mode-opt").forEach((o) => o.classList.remove("sg-mode-active"));
+                modeToggle.querySelector(`[data-mode="${applyMode}"]`).classList.add("sg-mode-active");
+            });
+        });
+        modeToggle.appendChild(optPrompt);
+        modeToggle.appendChild(optSilent);
+        modeRow.appendChild(modeToggle);
+        header.appendChild(modeRow);
+
+        wrapper.appendChild(header);
+
+        const body = el("div", { className: "sg-body" });
+        const sidebar = el("div", { className: "sg-sidebar" });
+        sidebar.appendChild(el("div", { className: "sg-sidebar-label", textContent: "Categories" }));
+        const main = el("div", { className: "sg-main", id: "sg-main-content" });
+
+        function addCategorySection(catName, stylesInCat, color) {
+            const section = el("div", { className: "sg-category", "data-category": catName });
+            section.style.setProperty("--sg-cat-color", color || CATEGORY_COLORS.OTHER);
+            const headerDiv = el("div", { className: "sg-cat-header" });
+            headerDiv.style.borderLeftColor = color || CATEGORY_COLORS.OTHER;
+            const badge = el("span", { className: "sg-cat-badge" });
+            badge.style.backgroundColor = color || CATEGORY_COLORS.OTHER;
+            badge.textContent = catName;
+            headerDiv.appendChild(el("span", { className: "sg-cat-title" }, [badge, document.createTextNode(" (" + stylesInCat.length + ")")]));
+            headerDiv.appendChild(el("span", { className: "sg-cat-arrow", textContent: "\u25BE" }));
+            headerDiv.addEventListener("click", () => section.classList.toggle("sg-collapsed"));
+            section.appendChild(headerDiv);
+            const grid = el("div", { className: "sg-grid" });
+            stylesInCat.forEach((style) => {
+                const card = el("div", { className: "sg-card" + (s.selected.has(style.name) ? " sg-selected" : ""), "data-style-name": style.name });
+                card.style.borderLeftColor = color || CATEGORY_COLORS.OTHER;
+                card.title = (style.prompt || "") + (style.negative_prompt ? "\n---\n" + style.negative_prompt : "");
+                card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
+                card.addEventListener("click", () => {
+                    if (s.selected.has(style.name)) s.selected.delete(style.name);
+                    else s.selected.add(style.name);
+                    card.classList.toggle("sg-selected", s.selected.has(style.name));
+                    qs(`#sg_count_${tabName}`).textContent = s.selected.size + " selected";
+                    updateBadge(tabName);
+                    const footerEl = wrapper.querySelector(".sg-footer");
+                    if (footerEl) updateFooterTags(tabName, footerEl, effectiveStyles);
+                });
+                grid.appendChild(card);
+            });
+            section.appendChild(grid);
+            main.appendChild(section);
+        }
+
+        if (hasData) {
+            sortedCats.forEach((catName) => {
+                const list = categories[catName] || [];
+                const query = (searchInput.value || "").trim();
+                const filtered = query ? list.filter((style) => cardMatchesSearch(style, query)) : list;
+                if (filtered.length === 0) return;
+                const color = CATEGORY_COLORS[catName] || CATEGORY_COLORS.OTHER;
+                sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: catName, onClick: () => { const el = main.querySelector(`[data-category="${catName}"]`); if (el) el.scrollIntoView({ behavior: "smooth" }); } }));
+                addCategorySection(catName, filtered, color);
+            });
+            sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "Back to top", onClick: () => main.scrollTo({ top: 0, behavior: "smooth" }) }));
+        } else {
+            main.appendChild(el("p", { className: "sg-card-name", textContent: "No style data loaded. Check that styles exist and the extension is enabled." }));
+        }
+
+        body.appendChild(sidebar);
+        body.appendChild(main);
+        wrapper.appendChild(body);
+
+        function updateFooterTags(tabName, footerEl, stylesList) {
+            const tagsContainer = footerEl.querySelector(".sg-footer-tags");
+            if (!tagsContainer) return;
+            tagsContainer.innerHTML = "";
+            const list = stylesList || effectiveStyles;
+            s.selected.forEach((name) => {
+                const style = list.find((st) => st.name === name);
+                const label = style ? (style.display_name || name) : name;
+                const tag = el("span", { className: "sg-tag" }, [document.createTextNode(label), el("span", { className: "sg-tag-remove", textContent: "\u00D7", onClick: (e) => { e.stopPropagation(); s.selected.delete(name); rebuildModalContent(tabName); updateBadge(tabName); } })]);
+                tagsContainer.appendChild(tag);
             });
         }
-        mount();
+
+        const footer = el("div", { className: "sg-footer", id: `sg_footer_${tabName}` });
+        footer.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
+        footer.appendChild(el("div", { className: "sg-footer-tags" }));
+        wrapper.appendChild(footer);
+        updateFooterTags(tabName, footer, effectiveStyles);
+
+        overlay.appendChild(wrapper);
+        getRoot().appendChild(overlay);
+
+        function rebuildModalContent(tabName) {
+            const panel = state[tabName].panel;
+            if (!panel) return;
+            const wrapperInner = panel.querySelector(".sg-panel-wrapper");
+            if (!wrapperInner) return;
+            const oldBody = wrapperInner.querySelector(".sg-body");
+            const oldFooter = wrapperInner.querySelector(".sg-footer");
+            if (oldBody) oldBody.remove();
+            if (oldFooter) oldFooter.remove();
+            const data2 = loadStylesData(tabName);
+            const rawStyles2 = data2.styles || [];
+            const effectiveStyles2 = getStylesForSource(rawStyles2, state[tabName].selectedSource);
+            const categories2 = categorize(effectiveStyles2);
+            const sortedCats2 = [];
+            getCategoryOrder(tabName).forEach((c) => { if (categories2[c]) sortedCats2.push(c); });
+            Object.keys(categories2).forEach((c) => { if (!sortedCats2.includes(c)) sortedCats2.push(c); });
+            const searchInput2 = wrapperInner.querySelector(".sg-search");
+            const query = searchInput2 ? searchInput2.value.trim() : "";
+            const body2 = el("div", { className: "sg-body" });
+            const sidebar2 = el("div", { className: "sg-sidebar" });
+            sidebar2.appendChild(el("div", { className: "sg-sidebar-label", textContent: "Categories" }));
+            const main2 = el("div", { className: "sg-main", id: "sg-main-content" });
+            sortedCats2.forEach((catName) => {
+                const list = categories2[catName] || [];
+                const filtered = query ? list.filter((style) => cardMatchesSearch(style, query)) : list;
+                if (filtered.length === 0) return;
+                const color = CATEGORY_COLORS[catName] || CATEGORY_COLORS.OTHER;
+                sidebar2.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: catName, onClick: () => { const el = main2.querySelector(`[data-category="${catName}"]`); if (el) el.scrollIntoView({ behavior: "smooth" }); } }));
+                const section = el("div", { className: "sg-category", "data-category": catName });
+                section.style.setProperty("--sg-cat-color", color);
+                const headerDiv = el("div", { className: "sg-cat-header" });
+                headerDiv.style.borderLeftColor = color;
+                const badge = el("span", { className: "sg-cat-badge" });
+                badge.style.backgroundColor = color;
+                badge.textContent = catName;
+                headerDiv.appendChild(el("span", { className: "sg-cat-title" }, [badge, document.createTextNode(" (" + filtered.length + ")")]));
+                headerDiv.appendChild(el("span", { className: "sg-cat-arrow", textContent: "\u25BE" }));
+                headerDiv.addEventListener("click", () => section.classList.toggle("sg-collapsed"));
+                section.appendChild(headerDiv);
+                const grid = el("div", { className: "sg-grid" });
+                const s2 = state[tabName];
+                filtered.forEach((style) => {
+                    const card = el("div", { className: "sg-card" + (s2.selected.has(style.name) ? " sg-selected" : ""), "data-style-name": style.name });
+                    card.style.borderLeftColor = color;
+                    card.title = (style.prompt || "") + (style.negative_prompt ? "\n---\n" + style.negative_prompt : "");
+                    card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
+                    card.addEventListener("click", () => {
+                        if (s2.selected.has(style.name)) s2.selected.delete(style.name);
+                        else s2.selected.add(style.name);
+                        card.classList.toggle("sg-selected", s2.selected.has(style.name));
+                        qs(`#sg_count_${tabName}`).textContent = s2.selected.size + " selected";
+                        updateBadge(tabName);
+                        const footerEl = wrapperInner.querySelector(".sg-footer");
+                        if (footerEl) updateFooterTags(tabName, footerEl, effectiveStyles2);
+                    });
+                    grid.appendChild(card);
+                });
+                section.appendChild(grid);
+                main2.appendChild(section);
+            });
+            sidebar2.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "Back to top", onClick: () => main2.scrollTo({ top: 0, behavior: "smooth" }) }));
+            body2.appendChild(sidebar2);
+            body2.appendChild(main2);
+            wrapperInner.insertBefore(body2, null);
+            const countEl = qs(`#sg_count_${tabName}`);
+            if (countEl) countEl.textContent = state[tabName].selected.size + " selected";
+            const footer2 = el("div", { className: "sg-footer", id: `sg_footer_${tabName}` });
+            footer2.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
+            footer2.appendChild(el("div", { className: "sg-footer-tags" }));
+            wrapperInner.appendChild(footer2);
+            updateFooterTags(tabName, footer2, effectiveStyles2);
+        };
+
         return overlay;
+    }
+
+    function buildPanel(tabName) {
+        state[tabName].sources = (loadStylesData(tabName).sources || []);
+        state[tabName].styles = (loadStylesData(tabName).styles || []);
+        const savedSource = getSelectedSource(tabName);
+        if (savedSource && (state[tabName].sources.length === 0 || state[tabName].sources.includes(savedSource)))
+            state[tabName].selectedSource = savedSource;
+        const panel = renderModal(tabName);
+        state[tabName].panel = panel;
+        return panel;
     }
 
     function togglePanel(tabName, show) {
@@ -205,7 +491,7 @@
 
     function createTriggerButton(tabName) {
         const btn = el("button", {
-            className: "sg-trigger-btn",
+            className: "sg-trigger-btn lg secondary gradio-button",
             id: `sg_trigger_${tabName}`,
             title: "Open Style Grid",
             innerHTML: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/></svg>",

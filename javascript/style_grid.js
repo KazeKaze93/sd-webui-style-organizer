@@ -523,7 +523,8 @@
         return btn;
     }
 
-    function injectButton(tabName) {
+    function injectButton(tabName, root) {
+        const roots = root ? [root, document] : [document];
         const selectors = [
             `#${tabName}_tools`,
             `#${tabName}_styles_row`,
@@ -531,19 +532,25 @@
             `#${tabName}_actions_column`,
         ];
         let target = null;
-        for (const sel of selectors) {
-            target = qs(sel);
+        let searchRoot = null;
+        for (const r of roots) {
+            for (const sel of selectors) {
+                target = qs(sel, r);
+                if (target) { searchRoot = r; break; }
+            }
             if (target) break;
-        }
-        if (!target) {
-            const styleDropdown = qs(`#${tabName}_styles_row`) || qs(`#${tabName}_styles`);
-            if (styleDropdown) target = styleDropdown.parentElement;
-        }
-        if (!target && qs(`#tab_${tabName}`)) {
-            const toolBtns = qs(`#tab_${tabName}`).querySelectorAll(".tool");
-            if (toolBtns.length) target = toolBtns[toolBtns.length - 1].parentElement;
+            const styleDropdown = qs(`#${tabName}_styles_row`, r) || qs(`#${tabName}_styles`, r);
+            if (styleDropdown) { target = styleDropdown.parentElement; searchRoot = r; break; }
+            const tabEl = qs(`#tab_${tabName}`, r);
+            if (tabEl) {
+                const toolBtns = tabEl.querySelectorAll(".tool");
+                if (toolBtns.length) { target = toolBtns[toolBtns.length - 1].parentElement; searchRoot = r; break; }
+            }
         }
         if (!target) return false;
+
+        const rootNode = target.getRootNode();
+        if (rootNode.querySelector && rootNode.querySelector(`#sg_trigger_${tabName}`)) return true;
 
         const btn = createTriggerButton(tabName);
         if (target.id && target.id.includes("tools")) target.appendChild(btn);
@@ -565,17 +572,18 @@
 
     function init() {
         const run = () => {
+            const root = getRoot();
             waitForElement(
                 ["#txt2img_tools", "#txt2img_styles_row", "#tab_txt2img"],
-                { root: document, timeout: 20000 }
+                { root: root, timeout: 20000 }
             )
-                .then(() => injectButton("txt2img"))
+                .then(() => injectButton("txt2img", root))
                 .catch(() => {});
             waitForElement(
                 ["#img2img_tools", "#img2img_styles_row", "#tab_img2img"],
-                { root: document, timeout: 20000 }
+                { root: root, timeout: 20000 }
             )
-                .then(() => injectButton("img2img"))
+                .then(() => injectButton("img2img", root))
                 .catch(() => {});
         };
         if (document.readyState === "loading") {

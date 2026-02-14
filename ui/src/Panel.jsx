@@ -6,8 +6,10 @@ import { StyleCard } from "./components/StyleCard";
 import { Header } from "./components/Header";
 import { CATEGORY_COLORS, getFavorites, setFavorites } from "./constants";
 import { parseSearchQuery, cardMatchesSearch, buildSearchData } from "./searchFilter";
+import { categorizeStyles, getStylesForSource } from "./styleData";
 
 const FAVORITES_CAT = "FAVORITES";
+const ALL_SOURCES_LABEL = "All Sources";
 
 function useSortedCategories(categories, categoryOrder) {
   return useMemo(() => {
@@ -25,7 +27,9 @@ function useSortedCategories(categories, categoryOrder) {
 
 function Panel({
   tabName,
-  categories: categoriesProp,
+  sources: sourcesProp = [],
+  styles: stylesProp = [],
+  categories: categoriesLegacy,
   categoryOrder,
   initialSelected = [],
   applyMode: initialApplyMode,
@@ -34,6 +38,7 @@ function Panel({
   onSelectedChange,
 }) {
   const [selected, setSelected] = useState(() => new Set(initialSelected));
+  const [selectedSource, setSelectedSource] = useState(ALL_SOURCES_LABEL);
 
   useEffect(() => {
     if (typeof onSelectedChange === "function") onSelectedChange(selected.size);
@@ -44,7 +49,22 @@ function Panel({
   const [collapsed, setCollapsed] = useState(() => ({}));
   const [applyMode, setApplyModeState] = useState(initialApplyMode || "prompt");
 
-  const categories = categoriesProp || {};
+  const sources = useMemo(() => {
+    if (Array.isArray(sourcesProp) && sourcesProp.length > 0) return sourcesProp;
+    const fromStyles = new Set((stylesProp || []).map((s) => s.source).filter(Boolean));
+    return Array.from(fromStyles);
+  }, [sourcesProp, stylesProp]);
+
+  const effectiveStyles = useMemo(() => {
+    if (!stylesProp || stylesProp.length === 0) return [];
+    return getStylesForSource(stylesProp, selectedSource, ALL_SOURCES_LABEL);
+  }, [stylesProp, selectedSource]);
+
+  const categories = useMemo(() => {
+    if (categoriesLegacy && Object.keys(categoriesLegacy).length > 0) return categoriesLegacy;
+    return categorizeStyles(effectiveStyles);
+  }, [categoriesLegacy, effectiveStyles]);
+
   const sortedCats = useSortedCategories(categories, categoryOrder);
 
   const persistFavorites = useCallback(
@@ -202,6 +222,10 @@ function Panel({
         selectedCount={selected.size}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
+        sources={sources}
+        selectedSource={selectedSource}
+        onSourceChange={setSelectedSource}
+        allSourcesLabel={ALL_SOURCES_LABEL}
         compact={compact}
         onCompactChange={() => setCompact((c) => !c)}
         allCollapsed={allCollapsed}

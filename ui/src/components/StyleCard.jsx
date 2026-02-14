@@ -1,5 +1,5 @@
 import React from "react";
-import { Star } from "lucide-react";
+import { Star, FileText } from "lucide-react";
 
 /**
  * Single style card: name, optional star (favorite), selected state.
@@ -27,7 +27,15 @@ export function StyleCard({
           onToggle(style.name);
         }
       }}
-      title={style.prompt ? (style.prompt.length > 120 ? style.prompt.slice(0, 120) + "…" : style.prompt) : undefined}
+      title={
+        style.source
+          ? `Source: ${style.source}${style.prompt ? "\n\n" + (style.prompt.length > 100 ? style.prompt.slice(0, 100) + "…" : style.prompt) : ""}`
+          : style.prompt
+            ? style.prompt.length > 120
+              ? style.prompt.slice(0, 120) + "…"
+              : style.prompt
+            : undefined
+      }
       className={
         "relative flex cursor-pointer items-center gap-2 rounded-md border border-border border-l-4 transition-all " +
         (compact ? "px-2 py-1.5" : "px-2.5 py-2") +
@@ -63,6 +71,15 @@ export function StyleCard({
       >
         {style.display_name}
       </span>
+      {!compact && style.source && (
+        <span
+          className="shrink-0 text-muted"
+          title={`Source: ${style.source}`}
+          aria-label={`Source file: ${style.source}`}
+        >
+          <FileText className="h-3.5 w-3.5" />
+        </span>
+      )}
       {isSelected && (
         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-accent">✓</span>
       )}

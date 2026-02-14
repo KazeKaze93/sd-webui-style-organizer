@@ -2,12 +2,16 @@ import React from "react";
 import { LayoutGrid, List, Search, X, Check, Trash2 } from "lucide-react";
 
 /**
- * Panel header: title, search, compact toggle, collapse all, apply mode, clear, apply, close.
+ * Panel header: title, source switcher, search, compact toggle, collapse all, apply mode, clear, apply, close.
  */
 export function Header({
   selectedCount,
   searchQuery,
   onSearchChange,
+  sources = [],
+  selectedSource,
+  onSourceChange,
+  allSourcesLabel = "All Sources",
   compact,
   onCompactChange,
   allCollapsed,
@@ -18,6 +22,8 @@ export function Header({
   onApply,
   onClose,
 }) {
+  const showSourceSwitcher = sources.length > 0;
+
   return (
     <header className="flex shrink-0 flex-col gap-2 border-b border-border bg-background px-4 py-3">
       <div className="flex items-center justify-between gap-2">
@@ -31,6 +37,22 @@ export function Header({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {showSourceSwitcher && (
+          <select
+            value={selectedSource}
+            onChange={(e) => onSourceChange(e.target.value)}
+            aria-label="Style source"
+            title="Filter by CSV source"
+            className="rounded-md border border-border bg-background-secondary px-2.5 py-2 text-sm text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            <option value={allSourcesLabel}>{allSourcesLabel}</option>
+            {sources.map((src) => (
+              <option key={src} value={src}>
+                {src}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
           <input

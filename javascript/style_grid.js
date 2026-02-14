@@ -35,15 +35,17 @@
         return e;
     }
 
-    function loadStyles(tabName) {
+    function loadStylesData(tabName) {
         const dataEl = qs(`#style_grid_data_${tabName} textarea`);
-        if (!dataEl || !dataEl.value) return {};
+        if (!dataEl || !dataEl.value) return { sources: [], styles: [], categories: {} };
         try {
             const data = JSON.parse(dataEl.value);
-            return data.categories || {};
-        } catch (e) {
-            console.error("[Style Grid] Failed to parse styles data:", e);
-            return {};
+            if (data.sources && data.styles) {
+                return { sources: data.sources, styles: data.styles, categories: null };
+            }
+            return { sources: [], styles: [], categories: data.categories || {} };
+        } catch (_) {
+            return { sources: [], styles: [], categories: {} };
         }
     }
 
@@ -72,6 +74,18 @@
         document.head.appendChild(style);
     }
 
+    function mergedStyleMap(styles) {
+        const byName = {};
+        (styles || []).forEach(function (s) {
+            var n = s.name;
+            if (!n) return;
+            var pri = s.source_priority != null ? s.source_priority : 0;
+            if (!byName[n] || pri > (byName[n].source_priority != null ? byName[n].source_priority : 0))
+                byName[n] = s;
+        });
+        return byName;
+    }
+
     function applyStyles(tabName, selectedArray, mode) {
         if (!selectedArray || selectedArray.length === 0) return;
 
@@ -82,18 +96,14 @@
                 dataEl.value = JSON.stringify(selectedArray);
                 dataEl.dispatchEvent(new Event("input", { bubbles: true }));
             }
-            console.log("[Style Grid] Silent mode: %d styles stored for generation", selectedArray.length);
             return;
         }
 
-        const categories = state[tabName].categories;
-        const allStyles = [];
-        Object.values(categories).forEach((arr) => arr.forEach((s) => allStyles.push(s)));
+        const styleMap = mergedStyleMap(state[tabName].styles);
 
         const promptEl = qs(`#${tabName}_prompt textarea`);
         const negEl = qs(`#${tabName}_neg_prompt textarea`);
         if (!promptEl || !negEl) {
-            console.error("[Style Grid] Could not find prompt textareas for", tabName);
             return;
         }
 
@@ -103,7 +113,7 @@
         const negAdd = [];
 
         selectedArray.forEach((name) => {
-            const style = allStyles.find((s) => s.name === name);
+            const style = styleMap[name];
             if (!style) return;
             if (style.prompt) {
                 if (style.prompt.includes("{prompt}")) prompt = style.prompt.replace("{prompt}", prompt);
@@ -133,8 +143,12 @@
 
     function buildPanel(tabName) {
         injectStyles();
-        const categories = loadStyles(tabName);
-        state[tabName].categories = categories;
+        const { sources, styles, categories: legacyCategories } = loadStylesData(tabName);
+        const payload = legacyCategories
+            ? { sources: [], styles: Object.values(legacyCategories).flat() }
+            : { sources: sources || [], styles: styles || [] };
+        state[tabName].sources = payload.sources;
+        state[tabName].styles = payload.styles;
 
         const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
         let mouseDownTarget = null;
@@ -160,7 +174,8 @@
             const catOrder = getCategoryOrder(tabName);
             window.StyleGridMount(reactRoot, {
                 tabName,
-                categories,
+                sources: payload.sources,
+                styles: payload.styles,
                 categoryOrder: catOrder,
                 initialSelected: [],
                 applyMode: localStorage.getItem("sg_apply_mode") || "prompt",

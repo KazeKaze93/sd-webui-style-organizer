@@ -4,17 +4,16 @@
    ========================================================================= */
 
 /* ---- Trigger Button (next to Generate tools) ---- */
-/* Matches the size/style of Forge's native tool buttons (paste, undo, etc.) */
+/* Same size as Forge tool icons (paste, undo, etc.) — square */
 .sg-trigger-btn {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    /* Match Forge tool button dimensions exactly */
-    min-width: var(--size-10, 2.5rem);
+    width: var(--size-10, 2.5rem);
     height: var(--size-10, 2.5rem);
-    width: auto;
-    padding: 6px;
+    min-width: var(--size-10, 2.5rem);
+    padding: 0;
     margin: 0;
     border: 1px solid var(--border-color-primary, #374151);
     border-radius: var(--radius-sm, 6px);

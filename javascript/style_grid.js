@@ -35,6 +35,9 @@
     // -----------------------------------------------------------------------
     function qs(sel, root) { return (root || document).querySelector(sel); }
     function qsa(sel, root) { return (root || document).querySelectorAll(sel); }
+    function escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
     function el(tag, attrs, children) {
         const e = document.createElement(tag);
         if (attrs) Object.entries(attrs).forEach(([k, v]) => {
@@ -130,8 +133,8 @@
             id: `sg_search_${tabName}`,
         });
         searchInput.addEventListener("input", () => filterStyles(tabName));
-        // Prevent overlay close when interacting with search input
-        searchInput.addEventListener("mousedown", (e) => e.stopPropagation());
+        // Do not stopPropagation: overlay needs mousedown to set mouseDownTarget so that
+        // drag-from-search then release on backdrop does not close the panel (text selection).
         searchRow.appendChild(searchInput);
 
         // Action buttons in header
@@ -252,7 +255,7 @@
                 const card = el("div", {
                     className: "sg-card",
                     "data-style-name": style.name,
-                    "data-search": (style.name + " " + style.display_name + " " + (style.prompt || "") + " " + (style.negative_prompt || "")).toLowerCase(),
+                    "data-search": (style.name + " " + style.display_name + " " + (style.prompt || "") + " " + (style.negative_prompt || "")).replace(/\s+/g, " ").trim().toLowerCase(),
                 });
                 card.style.setProperty("--cat-color", color);
 
@@ -337,40 +340,43 @@
 
     /**
      * Advanced search/filter with support for:
-     * - Multi-word queries (AND logic): "water soft" matches cards containing both words
+     * - Multi-word queries (AND logic): "water soft" matches cards containing both words (as whole words or word prefixes)
      * - Quoted phrases for exact match: "soft edges" matches that exact phrase
-     * - Prefix matching: "cyber" matches "cyberpunk"
+     * - Word-boundary matching: "water" matches "water" / "waterfall" but not "groundwater"; avoids "ass" matching "classic"
      * - Category filter with @: "@STYLE water" filters category STYLE + word "water"
-     * - Negative filter with -: "water -ocean" matches water but NOT ocean
+     * - Negative filter with -: "water -ocean" matches water but NOT ocean (whole-word exclusion)
      * - Search across name, display_name, prompt and negative_prompt
      */
     function filterStyles(tabName) {
-        const raw = qs(`#sg_search_${tabName}`).value.trim();
-        const cards = qsa(".sg-card", state[tabName].panel);
-        const sections = qsa(".sg-category", state[tabName].panel);
+        const panel = state[tabName].panel;
+        if (!panel) return;
+
+        const searchEl = qs(`#sg_search_${tabName}`, panel);
+        const raw = (searchEl && searchEl.value) ? searchEl.value.trim() : "";
+        const cards = qsa(".sg-card", panel);
+        const sections = qsa(".sg-category", panel);
 
         if (!raw) {
-            cards.forEach(card => { card.style.display = ""; });
+            cards.forEach(card => {
+                card.style.display = "";
+                card.classList.remove("sg-search-hidden");
+            });
             sections.forEach(sec => { sec.style.display = ""; });
             return;
         }
 
-        // Parse query into tokens
-        const catFilter = [];    // @CATEGORY tokens
-        const negTokens = [];    // -word exclusion tokens
-        const phraseTokens = []; // "exact phrase" tokens
-        const wordTokens = [];   // plain word tokens
+        // Parse query: quoted phrases first (single pass to avoid regex lastIndex bugs)
+        const catFilter = [];
+        const negTokens = [];
+        const phraseTokens = [];
+        const wordTokens = [];
 
-        // Extract quoted phrases first
-        let remaining = raw;
-        const phraseRegex = /"([^"]+)"/g;
-        let phraseMatch;
-        while ((phraseMatch = phraseRegex.exec(raw)) !== null) {
-            phraseTokens.push(phraseMatch[1].toLowerCase());
-        }
-        remaining = remaining.replace(phraseRegex, "").trim();
+        const remaining = raw.replace(/"([^"]*)"/g, (_, p1) => {
+            const phrase = p1.trim().toLowerCase();
+            if (phrase) phraseTokens.push(phrase);
+            return " ";
+        }).trim();
 
-        // Parse remaining tokens
         remaining.split(/\s+/).forEach(token => {
             if (!token) return;
             if (token.startsWith("@")) {
@@ -384,51 +390,69 @@
         });
 
         cards.forEach(card => {
-            const searchData = card.getAttribute("data-search"); // already lowercase
-            const styleName = card.getAttribute("data-style-name");
+            const searchData = (card.getAttribute("data-search") || "").toLowerCase();
             const category = card.closest(".sg-category")?.getAttribute("data-category") || "";
 
-            // Category filter: if any @CAT specified, card must be in one of those categories
             if (catFilter.length > 0 && !catFilter.includes(category)) {
                 card.style.display = "none";
+                card.classList.add("sg-search-hidden");
                 return;
             }
 
-            // Negative filter: if any -word matches, exclude the card
             for (const neg of negTokens) {
-                if (searchData.includes(neg)) {
-                    card.style.display = "none";
-                    return;
+                try {
+                    if (new RegExp("\\b" + escapeRegex(neg), "i").test(searchData)) {
+                        card.style.display = "none";
+                        card.classList.add("sg-search-hidden");
+                        return;
+                    }
+                } catch (_) {
+                    if (searchData.includes(neg)) {
+                        card.style.display = "none";
+                        card.classList.add("sg-search-hidden");
+                        return;
+                    }
                 }
             }
 
-            // Phrase filter: all quoted phrases must appear as exact substrings
             for (const phrase of phraseTokens) {
                 if (!searchData.includes(phrase)) {
                     card.style.display = "none";
+                    card.classList.add("sg-search-hidden");
                     return;
                 }
             }
 
-            // Word filter (AND logic): every word must appear somewhere in the search data
             let allMatch = true;
             for (const word of wordTokens) {
-                if (!searchData.includes(word)) {
-                    allMatch = false;
-                    break;
+                try {
+                    if (!new RegExp("\\b" + escapeRegex(word), "i").test(searchData)) {
+                        allMatch = false;
+                        break;
+                    }
+                } catch (_) {
+                    if (!searchData.includes(word)) {
+                        allMatch = false;
+                        break;
+                    }
                 }
             }
 
-            card.style.display = allMatch ? "" : "none";
+            if (allMatch) {
+                card.style.display = "";
+                card.classList.remove("sg-search-hidden");
+            } else {
+                card.style.display = "none";
+                card.classList.add("sg-search-hidden");
+            }
         });
 
-        // Hide empty categories
         sections.forEach(sec => {
-            const visibleCards = sec.querySelectorAll(".sg-card:not([style*='display: none'])");
-            sec.style.display = visibleCards.length > 0 ? "" : "none";
+            const visibleCards = sec.querySelectorAll(".sg-card:not(.sg-search-hidden)");
+            const visibleCount = visibleCards.length;
+            sec.style.display = visibleCount > 0 ? "" : "none";
 
-            // Auto-expand categories that have matches when searching
-            if (visibleCards.length > 0 && raw && sec.classList.contains("sg-collapsed")) {
+            if (visibleCount > 0 && sec.classList.contains("sg-collapsed")) {
                 sec.classList.remove("sg-collapsed");
                 const arrow = sec.querySelector(".sg-cat-arrow");
                 if (arrow) arrow.textContent = "▾";

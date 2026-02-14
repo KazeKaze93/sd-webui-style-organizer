@@ -50,8 +50,8 @@ Standard A1111/Forge format:
 ```csv
 name,prompt,negative_prompt
 BASE_Illustrious_Quality,"masterpiece, best quality, highres","lowres, bad anatomy, worst quality"
-BODY_Thicc_Voluptuous,"thick thighs, wide hips, curvy body",""
-THEME_QoS_Tattoo,"tattoo, body art, ink",""
+STYLE_Watercolor,"watercolor painting, soft edges, blending",""
+SCENE_Cyberpunk_City,"neon lights, futuristic city, rain, reflections",""
 ```
 
 ### Category Prefixes
@@ -61,14 +61,13 @@ Styles are auto-grouped by the **UPPERCASE prefix** before the first underscore:
 | Prefix | Color | Description |
 |--------|-------|-------------|
 | `BASE` | Indigo | Quality & model presets |
-| `BODY` | Pink | Body types |
-| `GENITALS` | Rose | Anatomical details |
-| `BREASTS` | Orange | Chest features |
-| `THEME` | Violet | Scene themes |
-| `RESTRAINTS` | Red | Bondage/restraint |
-| `POSE` | Teal | Poses |
-| `SCENE` | Green | Environments |
 | `STYLE` | Blue | Art styles |
+| `SCENE` | Green | Environments & backgrounds |
+| `THEME` | Violet | Scene themes & moods |
+| `POSE` | Teal | Character poses |
+| `LIGHTING` | Amber | Lighting setups |
+| `COLOR` | Pink | Color palettes & schemes |
+| `CAMERA` | Orange | Camera angles & lenses |
 | `OTHER` | Gray | Uncategorized |
 
 You can add your own categories — just use `YOURCATEGORY_StyleName` format.
@@ -100,4 +99,4 @@ You can add your own categories — just use `YOURCATEGORY_StyleName` format.
 
 ## License
 
-MIT
+[AGPL-3.0](LICENSE) (GNU Affero General Public License v3.0)

@@ -73,6 +73,34 @@
         } catch { return []; }
     }
 
+    /** Normalize string for search: collapse spaces, trim, lowerCase. */
+    function normalizeSearchText(s) {
+        if (s == null || typeof s !== "string") return "";
+        return s.replace(/\s+/g, " ").trim().toLowerCase();
+    }
+
+    /** Build full searchable text for a style (name, display_name, prompt, negative_prompt). */
+    function buildSearchText(style) {
+        const parts = [
+            style.name,
+            style.display_name,
+            style.prompt,
+            style.negative_prompt,
+        ].filter(Boolean);
+        return normalizeSearchText(parts.join(" "));
+    }
+
+    /** Token-based match: every token must appear in text (order doesn't matter). */
+    function textMatchesTokens(text, query) {
+        const normalized = normalizeSearchText(query);
+        if (!normalized) return true;
+        const tokens = normalized.split(/\s+/).filter(Boolean);
+        const searchText = normalizeSearchText(text);
+        return tokens.every(function (token) {
+            return searchText.includes(token);
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Build the Grid Panel (modal overlay)
     // -----------------------------------------------------------------------
@@ -89,8 +117,13 @@
 
         // --- Overlay backdrop ---
         const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
+        let overlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", (e) => {
+            overlayMouseDownTarget = e.target;
+        }, true);
         overlay.addEventListener("click", (e) => {
-            if (e.target === overlay) togglePanel(tabName, false);
+            if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false);
+            overlayMouseDownTarget = null;
         });
 
         // --- Panel container ---
@@ -118,7 +151,17 @@
             placeholder: "Search styles...",
             id: `sg_search_${tabName}`,
         });
-        searchInput.addEventListener("input", () => filterStyles(tabName));
+        (function () {
+            var debounceTimer = null;
+            var debounceMs = 200;
+            searchInput.addEventListener("input", function () {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(function () {
+                    debounceTimer = null;
+                    filterStyles(tabName);
+                }, debounceMs);
+            });
+        })();
         searchRow.appendChild(searchInput);
 
         // Action buttons in header
@@ -201,7 +244,7 @@
                 const card = el("div", {
                     className: "sg-card",
                     "data-style-name": style.name,
-                    "data-search": (style.name + " " + style.display_name + " " + style.prompt).toLowerCase(),
+                    "data-search": buildSearchText(style),
                 });
                 card.style.setProperty("--cat-color", color);
 
@@ -285,18 +328,21 @@
     }
 
     function filterStyles(tabName) {
-        const query = qs(`#sg_search_${tabName}`).value.toLowerCase().trim();
-        const cards = qsa(".sg-card", state[tabName].panel);
-        const sections = qsa(".sg-category", state[tabName].panel);
+        const panel = state[tabName].panel;
+        if (!panel) return;
+        const searchEl = qs(`#sg_search_${tabName}`, panel);
+        const query = searchEl ? normalizeSearchText(searchEl.value) : "";
+        const cards = qsa(".sg-card", panel);
+        const sections = qsa(".sg-category", panel);
 
-        cards.forEach(card => {
-            const match = !query || card.getAttribute("data-search").includes(query);
-            card.style.display = match ? "" : "none";
+        cards.forEach(function (card) {
+            const searchText = card.getAttribute("data-search") || "";
+            const match = textMatchesTokens(searchText, query);
+            card.classList.toggle("sg-card-hidden", !match);
         });
 
-        // Hide empty categories
-        sections.forEach(sec => {
-            const visibleCards = sec.querySelectorAll(".sg-card:not([style*='display: none'])");
+        sections.forEach(function (sec) {
+            const visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
             sec.style.display = visibleCards.length > 0 ? "" : "none";
         });
     }
@@ -424,9 +470,9 @@
 
         if (show) {
             panel.classList.add("sg-visible");
-            // Focus search
-            setTimeout(() => {
-                const search = qs(`#sg_search_${tabName}`);
+            filterStyles(tabName);
+            setTimeout(function () {
+                const search = qs(`#sg_search_${tabName}`, panel);
                 if (search) search.focus();
             }, 100);
         } else {

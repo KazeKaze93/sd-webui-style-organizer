@@ -3,23 +3,26 @@
    Dark theme matching Forge WebUI
    ========================================================================= */
 
-/* ---- Trigger Button (next to Generate tools) ---- */
+/* ---- Trigger Button (same size as 3 icons left of it under Generate) ---- */
 .sg-trigger-btn {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 4px;
-    margin: 2px;
+    width: var(--size-10, 2.5rem);
+    height: var(--size-10, 2.5rem);
+    min-width: var(--size-10, 2.5rem);
+    min-height: var(--size-10, 2.5rem);
+    padding: 0;
+    margin: 0;
     border: 1px solid var(--border-color-primary, #374151);
     border-radius: 6px;
     background: var(--button-secondary-background-fill, #1f2937);
     color: var(--body-text-color, #d1d5db);
     cursor: pointer;
     transition: all 0.15s ease;
-    vertical-align: middle;
+    flex-shrink: 0;
+    box-sizing: border-box;
 }
 
 .sg-trigger-btn:hover {
@@ -29,8 +32,8 @@
 }
 
 .sg-trigger-btn svg {
-    width: 16px;
-    height: 16px;
+    width: 1rem;
+    height: 1rem;
 }
 
 .sg-btn-badge {
@@ -286,6 +289,10 @@
 }
 
 /* ---- Style Card ---- */
+.sg-card.sg-card-hidden {
+    display: none !important;
+}
+
 .sg-card {
     position: relative;
     padding: 8px 10px;

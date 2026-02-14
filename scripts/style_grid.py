@@ -151,8 +151,8 @@ class StyleGridScript(scripts.Script):
         
         # Define preferred category ordering
         category_order = [
-            "BASE", "BODY", "GENITALS", "BREASTS", "THEME", 
-            "RESTRAINTS", "POSE", "SCENE", "STYLE", "OTHER"
+            "BASE", "STYLE", "SCENE", "THEME", "POSE",
+            "LIGHTING", "COLOR", "CAMERA", "OTHER"
         ]
 
         with gr.Group(elem_id=f"style_grid_wrapper_{tab_prefix}", visible=False):
@@ -231,9 +231,58 @@ class StyleGridScript(scripts.Script):
 
         # We'll use JavaScript to handle the apply logic since we need
         # to access components by elem_id across the UI
-        
-        return [styles_data, selected_styles]
 
-    def process(self, p, *args):
-        # No processing needed - styles are applied via prompt injection
-        pass
+        return [selected_styles]
+
+    def process(self, p, selected_json_str=None):
+        """
+        In 'silent' apply mode, styles are applied here during generation.
+        The JS frontend stores selected style names in the hidden Gradio component
+        (selected_styles), and this method reads them and merges into the prompt
+        at generation time. The user's prompt fields stay clean.
+        """
+        if not selected_json_str:
+            return
+
+        try:
+            selected_names = json.loads(selected_json_str)
+        except Exception:
+            return
+
+        if not selected_names or not isinstance(selected_names, list):
+            return
+
+        style_map = {s["name"]: s for s in load_all_styles()}
+        applied = 0
+
+        def apply_to_text(text, style_text):
+            """Merge a style's prompt into existing text."""
+            if not style_text:
+                return text
+            if "{prompt}" in style_text:
+                return style_text.replace("{prompt}", text)
+            sep = ", " if text.strip() else ""
+            return text.rstrip(", ") + sep + style_text
+
+        for name in selected_names:
+            if name not in style_map:
+                continue
+            s = style_map[name]
+            applied += 1
+
+            p.prompt = apply_to_text(p.prompt, s["prompt"])
+            p.negative_prompt = apply_to_text(p.negative_prompt, s["negative_prompt"])
+
+        # Also handle all_prompts / all_negative_prompts for batch processing
+        if applied > 0:
+            for attr, key in [("all_prompts", "prompt"), ("all_negative_prompts", "negative_prompt")]:
+                prompts = getattr(p, attr, None)
+                if not prompts:
+                    continue
+                for i in range(len(prompts)):
+                    for name in selected_names:
+                        if name not in style_map:
+                            continue
+                        prompts[i] = apply_to_text(prompts[i], style_map[name][key])
+
+            print(f"[Style Grid] Silent mode: applied {applied} styles")

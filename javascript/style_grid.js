@@ -14,16 +14,19 @@
         img2img: { selected: new Set(), categories: {}, panel: null },
     };
 
+    // Apply mode: "prompt" = inject text into prompt fields (visible),
+    //             "silent" = store internally, apply at generation time (like Forge native styles)
+    let applyMode = localStorage.getItem("sg_apply_mode") || "prompt";
+
     const CATEGORY_COLORS = {
         BASE: "#6366f1",     // indigo
-        BODY: "#ec4899",     // pink
-        GENITALS: "#f43f5e", // rose
-        BREASTS: "#f97316",  // orange
-        THEME: "#8b5cf6",    // violet
-        RESTRAINTS: "#ef4444",// red
-        POSE: "#14b8a6",     // teal
-        SCENE: "#22c55e",    // green
         STYLE: "#3b82f6",    // blue
+        SCENE: "#22c55e",    // green
+        THEME: "#8b5cf6",    // violet
+        POSE: "#14b8a6",     // teal
+        LIGHTING: "#f59e0b", // amber
+        COLOR: "#ec4899",    // pink
+        CAMERA: "#f97316",   // orange
         OTHER: "#6b7280",    // gray
     };
 
@@ -89,8 +92,16 @@
 
         // --- Overlay backdrop ---
         const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
+        // Track where mousedown started to prevent closing when user drags
+        // from inside the panel (e.g. selecting text in search) to the overlay
+        let mouseDownTarget = null;
+        overlay.addEventListener("mousedown", (e) => { mouseDownTarget = e.target; });
         overlay.addEventListener("click", (e) => {
-            if (e.target === overlay) togglePanel(tabName, false);
+            // Only close if BOTH mousedown and click happened on the overlay itself
+            if (e.target === overlay && mouseDownTarget === overlay) {
+                togglePanel(tabName, false);
+            }
+            mouseDownTarget = null;
         });
 
         // --- Panel container ---
@@ -115,10 +126,12 @@
         const searchInput = el("input", {
             className: "sg-search",
             type: "text",
-            placeholder: "Search styles...",
+            placeholder: "Search styles... (supports multiple words, e.g. 'water soft')",
             id: `sg_search_${tabName}`,
         });
         searchInput.addEventListener("input", () => filterStyles(tabName));
+        // Prevent overlay close when interacting with search input
+        searchInput.addEventListener("mousedown", (e) => e.stopPropagation());
         searchRow.appendChild(searchInput);
 
         // Action buttons in header
@@ -144,6 +157,44 @@
         searchRow.appendChild(btnApply);
         searchRow.appendChild(btnClose);
         header.appendChild(searchRow);
+
+        // Apply mode toggle row
+        const modeRow = el("div", { className: "sg-mode-row" });
+        const modeLabel = el("span", {
+            className: "sg-mode-label",
+            textContent: "Apply mode:",
+        });
+        const modeToggle = el("div", {
+            className: "sg-mode-toggle",
+            id: `sg_mode_toggle_${tabName}`,
+        });
+        const modeOptPrompt = el("button", {
+            className: "sg-mode-opt" + (applyMode === "prompt" ? " sg-mode-active" : ""),
+            textContent: "Insert into prompt",
+            title: "Style text will be inserted directly into prompt fields (visible)",
+            "data-mode": "prompt",
+        });
+        const modeOptSilent = el("button", {
+            className: "sg-mode-opt" + (applyMode === "silent" ? " sg-mode-active" : ""),
+            textContent: "Apply at generation",
+            title: "Styles are applied under the hood during generation (like Forge built-in styles)",
+            "data-mode": "silent",
+        });
+        [modeOptPrompt, modeOptSilent].forEach(opt => {
+            opt.addEventListener("click", (e) => {
+                e.stopPropagation();
+                applyMode = opt.getAttribute("data-mode");
+                localStorage.setItem("sg_apply_mode", applyMode);
+                // Update all toggle UIs
+                qsa(".sg-mode-opt").forEach(o => o.classList.remove("sg-mode-active"));
+                qsa(`.sg-mode-opt[data-mode="${applyMode}"]`).forEach(o => o.classList.add("sg-mode-active"));
+            });
+        });
+        modeToggle.appendChild(modeOptPrompt);
+        modeToggle.appendChild(modeOptSilent);
+        modeRow.appendChild(modeLabel);
+        modeRow.appendChild(modeToggle);
+        header.appendChild(modeRow);
 
         panel.appendChild(header);
 
@@ -201,7 +252,7 @@
                 const card = el("div", {
                     className: "sg-card",
                     "data-style-name": style.name,
-                    "data-search": (style.name + " " + style.display_name + " " + style.prompt).toLowerCase(),
+                    "data-search": (style.name + " " + style.display_name + " " + (style.prompt || "") + " " + (style.negative_prompt || "")).toLowerCase(),
                 });
                 card.style.setProperty("--cat-color", color);
 
@@ -284,20 +335,104 @@
         updateSelectedUI(tabName);
     }
 
+    /**
+     * Advanced search/filter with support for:
+     * - Multi-word queries (AND logic): "water soft" matches cards containing both words
+     * - Quoted phrases for exact match: "soft edges" matches that exact phrase
+     * - Prefix matching: "cyber" matches "cyberpunk"
+     * - Category filter with @: "@STYLE water" filters category STYLE + word "water"
+     * - Negative filter with -: "water -ocean" matches water but NOT ocean
+     * - Search across name, display_name, prompt and negative_prompt
+     */
     function filterStyles(tabName) {
-        const query = qs(`#sg_search_${tabName}`).value.toLowerCase().trim();
+        const raw = qs(`#sg_search_${tabName}`).value.trim();
         const cards = qsa(".sg-card", state[tabName].panel);
         const sections = qsa(".sg-category", state[tabName].panel);
 
+        if (!raw) {
+            cards.forEach(card => { card.style.display = ""; });
+            sections.forEach(sec => { sec.style.display = ""; });
+            return;
+        }
+
+        // Parse query into tokens
+        const catFilter = [];    // @CATEGORY tokens
+        const negTokens = [];    // -word exclusion tokens
+        const phraseTokens = []; // "exact phrase" tokens
+        const wordTokens = [];   // plain word tokens
+
+        // Extract quoted phrases first
+        let remaining = raw;
+        const phraseRegex = /"([^"]+)"/g;
+        let phraseMatch;
+        while ((phraseMatch = phraseRegex.exec(raw)) !== null) {
+            phraseTokens.push(phraseMatch[1].toLowerCase());
+        }
+        remaining = remaining.replace(phraseRegex, "").trim();
+
+        // Parse remaining tokens
+        remaining.split(/\s+/).forEach(token => {
+            if (!token) return;
+            if (token.startsWith("@")) {
+                const cat = token.slice(1).toUpperCase();
+                if (cat) catFilter.push(cat);
+            } else if (token.startsWith("-") && token.length > 1) {
+                negTokens.push(token.slice(1).toLowerCase());
+            } else {
+                wordTokens.push(token.toLowerCase());
+            }
+        });
+
         cards.forEach(card => {
-            const match = !query || card.getAttribute("data-search").includes(query);
-            card.style.display = match ? "" : "none";
+            const searchData = card.getAttribute("data-search"); // already lowercase
+            const styleName = card.getAttribute("data-style-name");
+            const category = card.closest(".sg-category")?.getAttribute("data-category") || "";
+
+            // Category filter: if any @CAT specified, card must be in one of those categories
+            if (catFilter.length > 0 && !catFilter.includes(category)) {
+                card.style.display = "none";
+                return;
+            }
+
+            // Negative filter: if any -word matches, exclude the card
+            for (const neg of negTokens) {
+                if (searchData.includes(neg)) {
+                    card.style.display = "none";
+                    return;
+                }
+            }
+
+            // Phrase filter: all quoted phrases must appear as exact substrings
+            for (const phrase of phraseTokens) {
+                if (!searchData.includes(phrase)) {
+                    card.style.display = "none";
+                    return;
+                }
+            }
+
+            // Word filter (AND logic): every word must appear somewhere in the search data
+            let allMatch = true;
+            for (const word of wordTokens) {
+                if (!searchData.includes(word)) {
+                    allMatch = false;
+                    break;
+                }
+            }
+
+            card.style.display = allMatch ? "" : "none";
         });
 
         // Hide empty categories
         sections.forEach(sec => {
             const visibleCards = sec.querySelectorAll(".sg-card:not([style*='display: none'])");
             sec.style.display = visibleCards.length > 0 ? "" : "none";
+
+            // Auto-expand categories that have matches when searching
+            if (visibleCards.length > 0 && raw && sec.classList.contains("sg-collapsed")) {
+                sec.classList.remove("sg-collapsed");
+                const arrow = sec.querySelector(".sg-cat-arrow");
+                if (arrow) arrow.textContent = "▾";
+            }
         });
     }
 
@@ -353,6 +488,20 @@
             return;
         }
 
+        if (applyMode === "silent") {
+            // Silent mode: store selected styles in hidden Gradio component
+            // and let the Python backend apply them during generation
+            const dataEl = qs(`#style_grid_selected_${tabName} textarea`);
+            if (dataEl) {
+                dataEl.value = JSON.stringify(selected);
+                dataEl.dispatchEvent(new Event("input", { bubbles: true }));
+            }
+            console.log("[Style Grid] Silent mode: %d styles stored for generation", selected.length);
+            togglePanel(tabName, false);
+            return;
+        }
+
+        // Prompt mode: inject text directly into prompt fields (visible)
         const categories = state[tabName].categories;
         const allStyles = [];
         Object.values(categories).forEach(arr => arr.forEach(s => allStyles.push(s)));

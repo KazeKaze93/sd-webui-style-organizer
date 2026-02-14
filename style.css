@@ -4,22 +4,27 @@
    ========================================================================= */
 
 /* ---- Trigger Button (next to Generate tools) ---- */
+/* Matches the size/style of Forge's native tool buttons (paste, undo, etc.) */
 .sg-trigger-btn {
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
-    padding: 4px;
-    margin: 2px;
+    /* Match Forge tool button dimensions exactly */
+    min-width: var(--size-10, 2.5rem);
+    height: var(--size-10, 2.5rem);
+    width: auto;
+    padding: 6px;
+    margin: 0;
     border: 1px solid var(--border-color-primary, #374151);
-    border-radius: 6px;
+    border-radius: var(--radius-sm, 6px);
     background: var(--button-secondary-background-fill, #1f2937);
     color: var(--body-text-color, #d1d5db);
     cursor: pointer;
     transition: all 0.15s ease;
     vertical-align: middle;
+    box-sizing: border-box;
+    flex-shrink: 0;
 }
 
 .sg-trigger-btn:hover {
@@ -31,6 +36,7 @@
 .sg-trigger-btn svg {
     width: 16px;
     height: 16px;
+    flex-shrink: 0;
 }
 
 .sg-btn-badge {
@@ -186,6 +192,54 @@
 
 .sg-btn-close:hover {
     color: #f87171;
+}
+
+/* ---- Apply Mode Toggle ---- */
+.sg-mode-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.sg-mode-label {
+    font-size: 11px;
+    color: var(--body-text-color-subdued, #9ca3af);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.sg-mode-toggle {
+    display: flex;
+    border: 1px solid var(--border-color-primary, #374151);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.sg-mode-opt {
+    padding: 3px 12px;
+    border: none;
+    background: var(--background-fill-secondary, #1f2937);
+    color: var(--body-text-color-subdued, #9ca3af);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+
+.sg-mode-opt:not(:last-child) {
+    border-right: 1px solid var(--border-color-primary, #374151);
+}
+
+.sg-mode-opt:hover {
+    background: var(--button-secondary-background-fill-hover, #374151);
+    color: var(--body-text-color, #d1d5db);
+}
+
+.sg-mode-opt.sg-mode-active {
+    background: #6366f1;
+    color: #fff;
+    font-weight: 600;
 }
 
 /* ---- Content area (scrollable) ---- */
@@ -464,5 +518,27 @@
 
 .gradio-container.light .sg-card-name,
 .light .sg-card-name {
+    color: #374151;
+}
+
+.gradio-container.light .sg-mode-toggle,
+.light .sg-mode-toggle {
+    border-color: #d1d5db;
+}
+
+.gradio-container.light .sg-mode-opt,
+.light .sg-mode-opt {
+    background: #f9fafb;
+    color: #6b7280;
+}
+
+.gradio-container.light .sg-mode-opt:not(:last-child),
+.light .sg-mode-opt:not(:last-child) {
+    border-right-color: #d1d5db;
+}
+
+.gradio-container.light .sg-mode-opt:hover,
+.light .sg-mode-opt:hover {
+    background: #f3f4f6;
     color: #374151;
 }

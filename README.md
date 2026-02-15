@@ -39,8 +39,9 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 - **Source** — Use the dropdown to the left of the search bar: **All Sources** or a specific CSV file. Only styles from that source are shown.
 - **Search** — Type in the search box to filter by style name. Search applies on top of the current source and category view.
 
-> **INSERT: Screenshot — Main grid with sidebar and source dropdown**  
-> *Suggested file: `docs/screenshots/02-main-grid.png`*
+<img width="1113" height="790" alt="{9F10AF51-46C8-441E-9830-0C838140C05A}" src="https://github.com/user-attachments/assets/2346aa16-113a-4ef2-8196-260ff87a8c46" />
+
+
 
 ### Selecting styles
 
@@ -48,8 +49,10 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 - **Select All** on a category header to select or clear all styles in that category.
 - **Star (★)** on a card to add or remove it from **★ Favorites**; the Favorites block updates at once.
 
-> **INSERT: Screenshot — Selected cards and Favorites**  
-> *Suggested file: `docs/screenshots/03-selection-favorites.png`*
+<img width="1110" height="776" alt="{7E6AFE9D-ED25-4B17-8AA1-13CC2CEF3528}" src="https://github.com/user-attachments/assets/f0a8a0d8-564b-4a38-b97a-651d0c2a42c8" />
+<img width="921" height="743" alt="{6512EE52-164C-410A-9A19-99EFC3556F05}" src="https://github.com/user-attachments/assets/fb075df3-d3cd-4a10-b36f-f2e2d61da162" />
+
+
 
 ### Applying to prompt
 
@@ -57,8 +60,10 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 2. Click **✔ Apply** — their prompts are appended to your current prompt and negative prompt (placeholders like `{prompt}` are replaced as in Forge).
 3. The modal can stay open for more selections, or close it with **Escape** or by clicking the dark backdrop.
 
-> **INSERT: Screenshot — Apply button and footer with selected tags**  
-> *Suggested file: `docs/screenshots/04-apply-footer.png`*
+<img width="1082" height="760" alt="{610B4A33-E625-4EF2-A5B9-1F52872855E5}" src="https://github.com/user-attachments/assets/4e020754-0cb4-4140-beb9-a54e8366be0d" />
+<img width="1888" height="249" alt="{D3D3176B-838E-4F55-8ED9-381884BD63F5}" src="https://github.com/user-attachments/assets/9c1bbc39-fb7a-45f5-bb99-4b106e3f4904" />
+
+
 
 ### Other controls
 
@@ -137,19 +142,6 @@ Then restart the UI.
 | Trigger button not visible | Enable the extension in the Extensions tab; do a full UI restart; check console for `[Style Grid]` messages. |
 | Styles not loading | Ensure CSVs are in Forge root or the extension’s `styles/` folder; check `name,prompt,negative_prompt` header and encoding (UTF-8). |
 | Dropdown or list hard to read | Use the latest version (custom dropdown with theme-aware colors). Clear cache or hard-refresh the page. |
-
----
-
-## Screenshots (placeholders)
-
-Add your images under `docs/screenshots/` and reference them here, for example:
-
-| # | Description | File |
-|---|-------------|------|
-| 1 | Trigger button next to tools | `docs/screenshots/01-trigger-button.png` |
-| 2 | Main grid, sidebar, source dropdown, search | `docs/screenshots/02-main-grid.png` |
-| 3 | Selected cards and Favorites section | `docs/screenshots/03-selection-favorites.png` |
-| 4 | Apply button and footer with selected tags | `docs/screenshots/04-apply-footer.png` |
 
 ---
 

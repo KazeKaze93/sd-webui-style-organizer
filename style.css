@@ -128,6 +128,19 @@
     align-items: center;
 }
 
+.sg-source-select {
+    flex-shrink: 0;
+    min-width: 10rem;
+    max-width: 14rem;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color-primary, #374151);
+    border-radius: 6px;
+    background: var(--button-secondary-background-fill, #374151);
+    color: var(--body-text-color, #f3f4f6);
+    font-size: 0.8125rem;
+    cursor: pointer;
+}
+
 .sg-search {
     flex: 1;
     padding: 7px 12px;

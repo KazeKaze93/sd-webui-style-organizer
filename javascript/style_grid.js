@@ -10,9 +10,27 @@
     // State
     // -----------------------------------------------------------------------
     const state = {
-        txt2img: { selected: new Set(), categories: {}, panel: null },
-        img2img: { selected: new Set(), categories: {}, panel: null },
+        txt2img: { selected: new Set(), categories: {}, panel: null, selectedSource: "All" },
+        img2img: { selected: new Set(), categories: {}, panel: null, selectedSource: "All" },
     };
+
+    const SOURCE_STORAGE_KEY = "sg_source";
+    function getStoredSource(tabName) {
+        try {
+            var raw = localStorage.getItem(SOURCE_STORAGE_KEY);
+            if (!raw) return "All";
+            var data = JSON.parse(raw);
+            return (data && data[tabName]) ? data[tabName] : "All";
+        } catch (_) { return "All"; }
+    }
+    function setStoredSource(tabName, value) {
+        try {
+            var raw = localStorage.getItem(SOURCE_STORAGE_KEY);
+            var data = raw ? JSON.parse(raw) : {};
+            data[tabName] = value;
+            localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(data));
+        } catch (_) {}
+    }
 
     /** Simple string hash for deterministic color generation. */
     function hashString(str) {
@@ -109,6 +127,18 @@
         return out;
     }
 
+    /** Get unique source filenames from current styles data (sorted). */
+    function getUniqueSources(tabName) {
+        const categories = state[tabName].categories || {};
+        const set = new Set();
+        Object.keys(categories).forEach(function (catName) {
+            (categories[catName] || []).forEach(function (style) {
+                if (style.source) set.add(style.source);
+            });
+        });
+        return Array.from(set).sort();
+    }
+
     /** Find category that matches query (category.toLowerCase().startsWith(query)). */
     function findCategoryMatch(query, tabName) {
         if (!query) return null;
@@ -190,6 +220,26 @@
 
         // Search bar
         const searchRow = el("div", { className: "sg-search-row" });
+        state[tabName].selectedSource = getStoredSource(tabName);
+        var sources = getUniqueSources(tabName);
+        var sourceSelect = el("select", {
+            className: "sg-source-select lg secondary gradio-button",
+            id: "sg_source_" + tabName,
+            title: "Filter by style file source",
+        });
+        var optAll = el("option", { value: "All", textContent: "All Sources" });
+        sourceSelect.appendChild(optAll);
+        sources.forEach(function (src) {
+            sourceSelect.appendChild(el("option", { value: src, textContent: src }));
+        });
+        sourceSelect.value = state[tabName].selectedSource;
+        if (sources.indexOf(state[tabName].selectedSource) === -1) sourceSelect.value = "All";
+        sourceSelect.addEventListener("change", function () {
+            state[tabName].selectedSource = sourceSelect.value;
+            setStoredSource(tabName, sourceSelect.value);
+            filterStyles(tabName);
+        });
+        searchRow.appendChild(sourceSelect);
         const searchInput = el("input", {
             className: "sg-search",
             type: "text",
@@ -381,6 +431,7 @@
                     "data-style-name": style.name,
                     "data-category": "FAVORITES",
                     "data-search-name": buildSearchTextNameOnly(style),
+                    "data-source": style.source || "",
                 });
                 card.style.setProperty("--cat-color", color);
                 if (state[tabName].selected.has(style.name)) card.classList.add("sg-selected");
@@ -449,6 +500,7 @@
                     "data-style-name": style.name,
                     "data-category": isFav ? (style.category || FAV_CAT) : catName,
                     "data-search-name": buildSearchTextNameOnly(style),
+                    "data-source": style.source || "",
                 });
                 card.style.setProperty("--cat-color", color);
                 if (state[tabName].selected.has(style.name)) card.classList.add("sg-selected");
@@ -510,6 +562,7 @@
         document.body.appendChild(overlay);
 
         state[tabName].panel = overlay;
+        filterStyles(tabName);
         return overlay;
     }
 
@@ -557,36 +610,55 @@
         if (!panel) return;
         const searchEl = qs(`#sg_search_${tabName}`, panel);
         const query = searchEl ? normalizeSearchText(searchEl.value) : "";
+        const selectedSource = state[tabName].selectedSource || "All";
         const cards = qsa(".sg-card", panel);
         const sections = qsa(".sg-category", panel);
+
+        function sourceMatch(card) {
+            return selectedSource === "All" || (card.getAttribute("data-source") || "") === selectedSource;
+        }
 
         var matchedCategory = findCategoryMatch(query, tabName);
 
         if (matchedCategory !== null) {
-            // Requirement 1: Query matches a category (startsWith) → show only that category
+            // Query matches a category → show only that category (and apply source filter)
             sections.forEach(function (sec) {
                 var cat = sec.getAttribute("data-category");
                 sec.style.display = (cat === matchedCategory) ? "" : "none";
             });
             cards.forEach(function (card) {
                 var cardCat = card.getAttribute("data-category");
-                card.classList.toggle("sg-card-hidden", cardCat !== matchedCategory);
+                var searchMatch = cardCat === matchedCategory;
+                var visible = searchMatch && sourceMatch(card);
+                card.classList.toggle("sg-card-hidden", !visible);
             });
         } else {
-            // Requirement 2: Strict name matching — search only in style name (and display_name)
+            // Strict name matching within selected source
             sections.forEach(function (sec) {
                 sec.style.display = "";
             });
             cards.forEach(function (card) {
                 var nameOnlyText = card.getAttribute("data-search-name") || "";
-                var match = !query || nameMatchesQuery(nameOnlyText, query);
-                card.classList.toggle("sg-card-hidden", !match);
+                var searchMatch = !query || nameMatchesQuery(nameOnlyText, query);
+                var visible = searchMatch && sourceMatch(card);
+                card.classList.toggle("sg-card-hidden", !visible);
             });
             sections.forEach(function (sec) {
                 var visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
                 sec.style.display = visibleCards.length > 0 ? "" : "none";
             });
         }
+
+        // Update category header counts from visible cards and hide empty sections
+        sections.forEach(function (sec) {
+            var visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
+            var n = visibleCards.length;
+            var catTitle = sec.querySelector(".sg-cat-title");
+            if (catTitle && catTitle.childNodes.length >= 2) {
+                catTitle.childNodes[1].textContent = " (" + n + ")";
+            }
+            if (n === 0) sec.style.display = "none";
+        });
     }
 
     function updateSelectedUI(tabName) {

@@ -79,26 +79,36 @@
         return s.replace(/\s+/g, " ").trim().toLowerCase();
     }
 
-    /** Build full searchable text for a style (name, display_name, prompt, negative_prompt). */
-    function buildSearchText(style) {
-        const parts = [
-            style.name,
-            style.display_name,
-            style.prompt,
-            style.negative_prompt,
-        ].filter(Boolean);
+    /** Build searchable text from style NAME only (strict name matching; no prompt/negative). */
+    function buildSearchTextNameOnly(style) {
+        const parts = [style.name, style.display_name].filter(Boolean);
         return normalizeSearchText(parts.join(" "));
     }
 
-    /** Token-based match: every token must appear in text (order doesn't matter). */
-    function textMatchesTokens(text, query) {
+    /** Token-based match in name-only text: every token must appear (order doesn't matter). */
+    function nameMatchesQuery(nameOnlyText, query) {
         const normalized = normalizeSearchText(query);
         if (!normalized) return true;
         const tokens = normalized.split(/\s+/).filter(Boolean);
-        const searchText = normalizeSearchText(text);
         return tokens.every(function (token) {
-            return searchText.includes(token);
+            return nameOnlyText.includes(token);
         });
+    }
+
+    /** Get all known category names (from constants + current data). */
+    function getCategoryNames(tabName) {
+        const fromData = Object.keys(state[tabName].categories || {});
+        const fromColors = Object.keys(CATEGORY_COLORS);
+        return [...new Set([...fromColors, ...fromData])];
+    }
+
+    /** Find category that matches query (category.toLowerCase().startsWith(query)). */
+    function findCategoryMatch(query, tabName) {
+        if (!query) return null;
+        const categoryNames = getCategoryNames(tabName);
+        return categoryNames.find(function (cat) {
+            return cat.toLowerCase().startsWith(query);
+        }) || null;
     }
 
     // -----------------------------------------------------------------------
@@ -244,7 +254,8 @@
                 const card = el("div", {
                     className: "sg-card",
                     "data-style-name": style.name,
-                    "data-search": buildSearchText(style),
+                    "data-category": catName,
+                    "data-search-name": buildSearchTextNameOnly(style),
                 });
                 card.style.setProperty("--cat-color", color);
 
@@ -335,16 +346,33 @@
         const cards = qsa(".sg-card", panel);
         const sections = qsa(".sg-category", panel);
 
-        cards.forEach(function (card) {
-            const searchText = card.getAttribute("data-search") || "";
-            const match = textMatchesTokens(searchText, query);
-            card.classList.toggle("sg-card-hidden", !match);
-        });
+        var matchedCategory = findCategoryMatch(query, tabName);
 
-        sections.forEach(function (sec) {
-            const visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
-            sec.style.display = visibleCards.length > 0 ? "" : "none";
-        });
+        if (matchedCategory !== null) {
+            // Requirement 1: Query matches a category (startsWith) → show only that category
+            sections.forEach(function (sec) {
+                var cat = sec.getAttribute("data-category");
+                sec.style.display = (cat === matchedCategory) ? "" : "none";
+            });
+            cards.forEach(function (card) {
+                var cardCat = card.getAttribute("data-category");
+                card.classList.toggle("sg-card-hidden", cardCat !== matchedCategory);
+            });
+        } else {
+            // Requirement 2: Strict name matching — search only in style name (and display_name)
+            sections.forEach(function (sec) {
+                sec.style.display = "";
+            });
+            cards.forEach(function (card) {
+                var nameOnlyText = card.getAttribute("data-search-name") || "";
+                var match = !query || nameMatchesQuery(nameOnlyText, query);
+                card.classList.toggle("sg-card-hidden", !match);
+            });
+            sections.forEach(function (sec) {
+                var visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
+                sec.style.display = visibleCards.length > 0 ? "" : "none";
+            });
+        }
     }
 
     function updateSelectedUI(tabName) {

@@ -61,7 +61,7 @@
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
     z-index: 10000;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.8);
     backdrop-filter: blur(4px);
     display: none;
     align-items: center;
@@ -80,13 +80,14 @@
     width: 90vw;
     max-width: 1100px;
     max-height: 85vh;
-    background: var(--background-fill-primary, #111827);
+    background: var(--body-background-fill, #0b0f19) !important;
     border: 1px solid var(--border-color-primary, #374151);
     border-radius: 12px;
     display: flex;
     flex-direction: column;
     box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5);
     animation: sg-slide-up 0.2s ease-out;
+    color: var(--body-text-color, #ffffff) !important;
 }
 
 @keyframes sg-slide-up {
@@ -144,10 +145,10 @@
 .sg-search {
     flex: 1;
     padding: 7px 12px;
-    border: 1px solid var(--border-color-primary, #374151);
+    border: 1px solid var(--border-color-primary, #374151) !important;
     border-radius: 6px;
-    background: var(--input-background-fill, #1f2937);
-    color: var(--body-text-color, #f3f4f6);
+    background: var(--input-background-fill, #111827) !important;
+    color: var(--body-text-color, #ffffff) !important;
     font-size: 13px;
     outline: none;
     transition: border-color 0.15s;
@@ -422,9 +423,10 @@
     position: relative;
     padding: 8px 10px;
     padding-right: 28px;
-    border: 1px solid var(--border-color-primary, #2d3548);
+    border: 1px solid var(--border-color-primary, #374151) !important;
     border-radius: 6px;
-    background: var(--background-fill-secondary, #1a1f2e);
+    background-color: var(--button-secondary-background-fill, #1f2937) !important;
+    color: var(--body-text-color, #ffffff) !important;
     cursor: pointer;
     transition: all 0.12s ease;
     user-select: none;
@@ -462,7 +464,7 @@
 
 .sg-card:hover {
     border-color: var(--cat-color, #6366f1);
-    background: #1f2640;
+    background-color: var(--button-secondary-background-fill-hover, #374151) !important;
     transform: translateY(-1px);
 }
 
@@ -472,7 +474,7 @@
 
 /* Selected state */
 .sg-card.sg-selected {
-    border-color: var(--cat-color, #6366f1);
+    border: 2px solid var(--cat-color) !important;
     background: color-mix(in srgb, var(--cat-color, #6366f1) 15%, #111827);
     box-shadow: 0 0 0 1px var(--cat-color, #6366f1), inset 0 0 12px rgba(99, 102, 241, 0.08);
 }
@@ -494,7 +496,7 @@
 .sg-card-name {
     font-size: 12px;
     font-weight: 500;
-    color: var(--body-text-color, #d1d5db);
+    color: var(--body-text-color, #ffffff) !important;
     line-height: 1.3;
     word-break: break-word;
     padding-right: 14px;

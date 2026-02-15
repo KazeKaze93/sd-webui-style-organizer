@@ -14,18 +14,24 @@
         img2img: { selected: new Set(), categories: {}, panel: null },
     };
 
-    const CATEGORY_COLORS = {
-        BASE: "#6366f1",     // indigo
-        BODY: "#ec4899",     // pink
-        GENITALS: "#f43f5e", // rose
-        BREASTS: "#f97316",  // orange
-        THEME: "#8b5cf6",    // violet
-        RESTRAINTS: "#ef4444",// red
-        POSE: "#14b8a6",     // teal
-        SCENE: "#22c55e",    // green
-        STYLE: "#3b82f6",    // blue
-        OTHER: "#6b7280",    // gray
-    };
+    /** Simple string hash for deterministic color generation. */
+    function hashString(str) {
+        if (str == null) str = "";
+        var h = 0;
+        for (var i = 0; i < str.length; i++) {
+            h = ((h << 5) - h) + str.charCodeAt(i);
+            h = h & h;
+        }
+        return Math.abs(h);
+    }
+
+    /** Generate a unique HSL color from category name (stable per name). */
+    function getCategoryColor(categoryName) {
+        var h = hashString(categoryName) % 360;
+        var s = 55 + (hashString(categoryName + "s") % 25);
+        var l = 48 + (hashString(categoryName + "l") % 12);
+        return "hsl(" + h + ", " + s + "%, " + l + "%)";
+    }
 
     // -----------------------------------------------------------------------
     // Utility
@@ -95,11 +101,12 @@
         });
     }
 
-    /** Get all known category names (from constants + current data). */
+    /** Get all known category names (from current data + Favorites). */
     function getCategoryNames(tabName) {
         const fromData = Object.keys(state[tabName].categories || {});
-        const fromColors = Object.keys(CATEGORY_COLORS);
-        return [...new Set([...fromColors, ...fromData])];
+        var out = [...fromData];
+        if (getFavorites(tabName).size > 0) out.push("FAVORITES");
+        return out;
     }
 
     /** Find category that matches query (category.toLowerCase().startsWith(query)). */
@@ -109,6 +116,34 @@
         return categoryNames.find(function (cat) {
             return cat.toLowerCase().startsWith(query);
         }) || null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Favorites (localStorage, per-tab)
+    // -----------------------------------------------------------------------
+    const FAV_CAT = "FAVORITES";
+    function getFavorites(tabName) {
+        try {
+            var raw = localStorage.getItem("sg_favorites");
+            if (!raw) return new Set();
+            var data = JSON.parse(raw);
+            var arr = data[tabName];
+            return Array.isArray(arr) ? new Set(arr) : new Set();
+        } catch (_) { return new Set(); }
+    }
+    function setFavorites(tabName, set) {
+        try {
+            var raw = localStorage.getItem("sg_favorites");
+            var data = raw ? JSON.parse(raw) : {};
+            data[tabName] = [...set];
+            localStorage.setItem("sg_favorites", JSON.stringify(data));
+        } catch (_) {}
+    }
+    function toggleFavorite(tabName, styleName) {
+        var fav = getFavorites(tabName);
+        if (fav.has(styleName)) fav.delete(styleName);
+        else fav.add(styleName);
+        setFavorites(tabName, fav);
     }
 
     // -----------------------------------------------------------------------
@@ -193,6 +228,47 @@
             title: "Close",
             onClick: () => togglePanel(tabName, false),
         });
+        var btnCollapseAll = el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Collapse all",
+            title: "Collapse all category blocks",
+            onClick: function () {
+                qsa(".sg-category", panel).forEach(function (sec) {
+                    sec.classList.add("sg-collapsed");
+                    var arrow = sec.querySelector(".sg-cat-arrow");
+                    if (arrow) arrow.textContent = "▸";
+                });
+            },
+        });
+        var btnExpandAll = el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Expand all",
+            title: "Expand all category blocks",
+            onClick: function () {
+                qsa(".sg-category", panel).forEach(function (sec) {
+                    sec.classList.remove("sg-collapsed");
+                    var arrow = sec.querySelector(".sg-cat-arrow");
+                    if (arrow) arrow.textContent = "▾";
+                });
+            },
+        });
+        var compactMode = localStorage.getItem("sg_compact") === "1";
+        var btnCompact = el("button", {
+            className: "sg-btn sg-btn-secondary" + (compactMode ? " sg-active" : ""),
+            textContent: "Compact",
+            title: "Dense list / smaller cards",
+            onClick: function () {
+                compactMode = !compactMode;
+                localStorage.setItem("sg_compact", compactMode ? "1" : "0");
+                panel.classList.toggle("sg-compact", compactMode);
+                btnCompact.classList.toggle("sg-active", compactMode);
+            },
+        });
+        if (compactMode) panel.classList.add("sg-compact");
+
+        searchRow.appendChild(btnCollapseAll);
+        searchRow.appendChild(btnExpandAll);
+        searchRow.appendChild(btnCompact);
         searchRow.appendChild(btnClearAll);
         searchRow.appendChild(btnApply);
         searchRow.appendChild(btnClose);
@@ -200,89 +276,227 @@
 
         panel.appendChild(header);
 
-        // --- Categories & Grid ---
-        const content = el("div", { className: "sg-content" });
+        // --- Body: sidebar (anchor nav) + main content ---
+        var body = el("div", { className: "sg-body" });
+        var main = el("div", { className: "sg-main", id: "sg_main_" + tabName });
+        var showSidebar = sortedCats.length > 5;
+        var favSet = getFavorites(tabName);
 
-        sortedCats.forEach(catName => {
-            const styles = categories[catName];
-            if (!styles || styles.length === 0) return;
-
-            const color = CATEGORY_COLORS[catName] || CATEGORY_COLORS.OTHER;
-
-            const section = el("div", {
-                className: "sg-category",
-                "data-category": catName,
+        /** Show only one category section (or all if catId is null). */
+        function showOnlyCategory(catId) {
+            var sections = main.querySelectorAll(".sg-category");
+            sections.forEach(function (sec) {
+                if (catId === null) {
+                    sec.style.display = "";
+                } else {
+                    var want = (sec.id === "sg-cat-FAVORITES" && catId === "FAVORITES") || (sec.id === "sg-cat-" + catId.replace(/\s/g, "_"));
+                    sec.style.display = want ? "" : "none";
+                }
             });
+        }
 
-            // Category header (collapsible)
-            const catHeader = el("div", { className: "sg-cat-header" });
+        if (showSidebar) {
+            var sidebar = el("div", { className: "sg-sidebar" });
+            sidebar.appendChild(el("div", { className: "sg-sidebar-label", textContent: "Categories" }));
+            var btnAll = el("button", {
+                type: "button",
+                className: "sg-sidebar-btn sg-sidebar-btn-all",
+                textContent: "All",
+                onClick: function () {
+                    showOnlyCategory(null);
+                    qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
+                    btnAll.classList.add("sg-active");
+                },
+            });
+            btnAll.classList.add("sg-active");
+            sidebar.appendChild(btnAll);
+            var btnFav = el("button", {
+                type: "button",
+                className: "sg-sidebar-btn",
+                textContent: "★ Favorites",
+                onClick: function () {
+                    showOnlyCategory("FAVORITES");
+                    qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
+                    btnFav.classList.add("sg-active");
+                },
+            });
+            sidebar.appendChild(btnFav);
+            sortedCats.forEach(function (catName) {
+                var btn = el("button", {
+                    type: "button",
+                    className: "sg-sidebar-btn",
+                    textContent: catName,
+                    onClick: function () {
+                        showOnlyCategory(catName);
+                        qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
+                        btn.classList.add("sg-active");
+                    },
+                });
+                sidebar.appendChild(btn);
+            });
+            body.appendChild(sidebar);
+        }
+
+        /** Compact All / Favorites toggle above the grid (when sidebar is hidden). */
+        if (!showSidebar) {
+            var filterBar = el("div", { className: "sg-filter-bar" });
+            var compactAll = el("button", {
+                type: "button",
+                className: "sg-filter-btn sg-active",
+                textContent: "All",
+                onClick: function () {
+                    showOnlyCategory(null);
+                    compactAll.classList.add("sg-active");
+                    compactFav.classList.remove("sg-active");
+                },
+            });
+            var compactFav = el("button", {
+                type: "button",
+                className: "sg-filter-btn",
+                textContent: "★ Favorites",
+                onClick: function () {
+                    showOnlyCategory("FAVORITES");
+                    compactFav.classList.add("sg-active");
+                    compactAll.classList.remove("sg-active");
+                },
+            });
+            filterBar.appendChild(compactAll);
+            filterBar.appendChild(compactFav);
+            body.appendChild(filterBar);
+        }
+
+        /** Update Favorites section when star is toggled: add or remove card, update count. */
+        function updateFavoritesSection(tabName, styleName, style, added) {
+            var panel = state[tabName].panel;
+            if (!panel) return;
+            var favSection = panel.querySelector("#sg-cat-FAVORITES");
+            if (!favSection) return;
+            var grid = favSection.querySelector(".sg-grid");
+            if (!grid) return;
+            if (added) {
+                if (grid.querySelector(".sg-card[data-style-name=\"" + CSS.escape(styleName) + "\"]")) return;
+                var color = "#eab308";
+                var card = el("div", {
+                    className: "sg-card",
+                    "data-style-name": style.name,
+                    "data-category": "FAVORITES",
+                    "data-search-name": buildSearchTextNameOnly(style),
+                });
+                card.style.setProperty("--cat-color", color);
+                if (state[tabName].selected.has(style.name)) card.classList.add("sg-selected");
+                var star = el("span", {
+                    className: "sg-card-star sg-fav",
+                    title: "Toggle favorite",
+                    innerHTML: "★",
+                    onClick: function (e) {
+                        e.stopPropagation();
+                        toggleFavorite(tabName, style.name);
+                        updateFavoritesSection(tabName, style.name, style, false);
+                    },
+                });
+                card.appendChild(star);
+                card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
+                if (style.prompt) card.title = style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt;
+                card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
+                grid.appendChild(card);
+            } else {
+                var cardToRemove = grid.querySelector(".sg-card[data-style-name=\"" + CSS.escape(styleName) + "\"]");
+                if (cardToRemove) cardToRemove.remove();
+            }
+            var count = grid.children.length;
+            var catTitle = favSection.querySelector(".sg-cat-title");
+            if (catTitle && catTitle.childNodes.length >= 2) catTitle.childNodes[1].textContent = " (" + count + ")";
+        }
+
+        /** Build one category section (collapsible header + grid of cards with star). */
+        function appendCategorySection(container, catName, styles, color, isFav) {
+            var section = el("div", {
+                className: "sg-category",
+                "data-category": isFav ? "FAVORITES" : catName,
+            });
+            section.id = isFav ? "sg-cat-FAVORITES" : ("sg-cat-" + (catName + "").replace(/\s/g, "_"));
+
+            var catHeader = el("div", { className: "sg-cat-header" });
             catHeader.style.borderLeftColor = color;
-
-            const catTitle = el("span", { className: "sg-cat-title" });
-            const catBadge = el("span", { className: "sg-cat-badge" });
+            var catTitle = el("span", { className: "sg-cat-title" });
+            var catBadge = el("span", { className: "sg-cat-badge" });
             catBadge.style.backgroundColor = color;
             catBadge.textContent = catName;
             catTitle.appendChild(catBadge);
-            catTitle.appendChild(document.createTextNode(` (${styles.length})`));
-
-            const catArrow = el("span", { className: "sg-cat-arrow", textContent: "▾" });
-            
-            // Select all button for category
-            const catSelectAll = el("button", {
+            catTitle.appendChild(document.createTextNode(" (" + styles.length + ")"));
+            var catArrow = el("span", { className: "sg-cat-arrow", textContent: "▾" });
+            var catSelectAll = el("button", {
                 className: "sg-cat-select-all",
                 textContent: "Select All",
-                onClick: (e) => {
+                onClick: function (e) {
                     e.stopPropagation();
                     toggleCategoryAll(tabName, catName);
                 },
             });
-
             catHeader.appendChild(catTitle);
             catHeader.appendChild(catSelectAll);
             catHeader.appendChild(catArrow);
-
-            catHeader.addEventListener("click", () => {
+            catHeader.addEventListener("click", function () {
                 section.classList.toggle("sg-collapsed");
                 catArrow.textContent = section.classList.contains("sg-collapsed") ? "▸" : "▾";
             });
-
             section.appendChild(catHeader);
 
-            // Grid of style cards
-            const grid = el("div", { className: "sg-grid" });
-            styles.forEach(style => {
-                const card = el("div", {
+            var grid = el("div", { className: "sg-grid" });
+            styles.forEach(function (style) {
+                var card = el("div", {
                     className: "sg-card",
                     "data-style-name": style.name,
-                    "data-category": catName,
+                    "data-category": isFav ? (style.category || FAV_CAT) : catName,
                     "data-search-name": buildSearchTextNameOnly(style),
                 });
                 card.style.setProperty("--cat-color", color);
+                if (state[tabName].selected.has(style.name)) card.classList.add("sg-selected");
 
-                if (state[tabName].selected.has(style.name)) {
-                    card.classList.add("sg-selected");
-                }
-
-                const cardName = el("div", { className: "sg-card-name", textContent: style.display_name });
+                var star = el("span", {
+                    className: "sg-card-star" + (getFavorites(tabName).has(style.name) ? " sg-fav" : ""),
+                    title: "Toggle favorite",
+                    innerHTML: "★",
+                    onClick: function (e) {
+                        e.stopPropagation();
+                        var added = !getFavorites(tabName).has(style.name);
+                        toggleFavorite(tabName, style.name);
+                        star.classList.toggle("sg-fav", getFavorites(tabName).has(style.name));
+                        updateFavoritesSection(tabName, style.name, style, added);
+                    },
+                });
+                card.appendChild(star);
+                var cardName = el("div", { className: "sg-card-name", textContent: style.display_name });
                 card.appendChild(cardName);
-
-                // Tooltip on hover showing the prompt snippet
                 if (style.prompt) {
-                    const snippet = style.prompt.length > 120
-                        ? style.prompt.substring(0, 120) + "…"
-                        : style.prompt;
-                    card.title = snippet;
+                    card.title = style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt;
                 }
-
-                card.addEventListener("click", () => toggleStyle(tabName, style.name, card));
+                card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
                 grid.appendChild(card);
             });
-
             section.appendChild(grid);
-            content.appendChild(section);
+            container.appendChild(section);
+        }
+
+        // --- Favorites section (always present; empty when no favorites) ---
+        var favStyles = [];
+        sortedCats.forEach(function (catName) {
+            (categories[catName] || []).forEach(function (s) {
+                if (favSet.has(s.name)) favStyles.push(s);
+            });
+        });
+        appendCategorySection(main, "★ " + FAV_CAT, favStyles, "#eab308", true);
+
+        // --- Category sections ---
+        sortedCats.forEach(function (catName) {
+            var styles = categories[catName];
+            if (!styles || styles.length === 0) return;
+            var color = getCategoryColor(catName);
+            appendCategorySection(main, catName, styles, color, false);
         });
 
-        panel.appendChild(content);
+        body.appendChild(main);
+        panel.appendChild(body);
 
         // --- Footer with selected tags ---
         const footer = el("div", { className: "sg-footer", id: `sg_footer_${tabName}` });

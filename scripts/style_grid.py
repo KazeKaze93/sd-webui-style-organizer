@@ -14,11 +14,15 @@ from modules import scripts, shared, script_callbacks
 # ---------------------------------------------------------------------------
 
 def get_styles_dirs():
-    """Return list of directories that may contain style CSV files."""
+    """Return list of directories that may contain style CSV files.
+    Internal (auto-discovery): extensions/sd-webui-style-organizer/styles/*.csv
+    """
     base = scripts.basedir()
-    ext_styles_dir = os.path.join(base, "styles")
-    root_dir = os.path.abspath(os.path.join(shared.cmd_opts.data_path if hasattr(shared.cmd_opts, 'data_path') else os.getcwd()))
-    return [root_dir, ext_styles_dir]
+    ext_styles_dir = os.path.join(base, "styles")  # Internal: your custom sets
+    root_dir = os.path.abspath(os.path.join(
+        getattr(shared.cmd_opts, "data_path", None) or os.getcwd()
+    ))
+    return [ext_styles_dir, root_dir]  # Internal first, then root
 
 
 def parse_styles_csv(filepath):
@@ -82,30 +86,54 @@ def load_all_styles():
     return all_styles
 
 
+def _category_from_filename(source):
+    """CSV filename capitalized, without extension. Empty if no valid source."""
+    if not source or not isinstance(source, str):
+        return ""
+    base = os.path.splitext(source.strip())[0].strip()
+    if not base:
+        return ""
+    return base[0].upper() + base[1:]
+
+
 def categorize_styles(styles):
     """
-    Group styles by category prefix. 
-    E.g. 'BASE_Illustrious_Quality' -> category='BASE', display='Illustrious Quality'
-    Styles without underscore prefix go to 'OTHER'.
+    Group styles by category using priority:
+    - RULE 1: If 'name' contains '_', category = uppercase string BEFORE first underscore.
+    - RULE 2: Else if 'name' contains '-', category = string before first dash.
+    - RULE 3: Else category = CSV filename (capitalized, without extension).
+    - OTHER only when all of the above fail (no underscore, no dash, no source).
+    Styles are sorted alphabetically by display_name within each category.
     """
     categories = {}
     for s in styles:
         name = s["name"]
-        parts = name.split("_", 1)
-        if len(parts) == 2 and parts[0].isupper() and len(parts[0]) >= 2:
-            cat = parts[0]
-            display = parts[1].replace("_", " ")
+        source = s.get("source") or ""
+
+        if "_" in name:
+            before, rest = name.split("_", 1)
+            cat = before.upper()
+            display = rest.replace("_", " ")
+        elif "-" in name:
+            before, rest = name.split("-", 1)
+            cat = before
+            display = rest.replace("-", " ")
         else:
-            cat = "OTHER"
+            cat = _category_from_filename(source)
+            if not cat:
+                cat = "OTHER"
             display = name.replace("_", " ")
-        
+
         s["category"] = cat
         s["display_name"] = display
-        
+
         if cat not in categories:
             categories[cat] = []
         categories[cat].append(s)
-    
+
+    for cat in categories:
+        categories[cat].sort(key=lambda x: (x.get("display_name") or x["name"] or "").lower())
+
     return categories
 
 

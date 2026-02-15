@@ -3,27 +3,25 @@
    Dark theme matching Forge WebUI
    ========================================================================= */
 
-/* ---- Trigger Button: square, same height as Gradio .tool (e.g. 35×38) ---- */
+/* ---- Trigger Button: match adjacent .tool buttons (box model + alignment) ---- */
 .sg-trigger-btn {
+    flex: 0 0 auto !important;
+    min-width: 42px !important;
+    width: 42px !important;
+    height: 36px !important;
+    padding: 8px 16px !important;
+    margin: 0 !important;
+    align-self: end !important;
     position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 38px;
-    height: 38px;
-    min-width: 38px;
-    min-height: 38px;
-    max-width: 38px;
-    max-height: 38px;
-    padding: 0;
-    margin: 0;
     border: 1px solid var(--border-color-primary, #374151);
     border-radius: 6px;
     background: var(--button-secondary-background-fill, #1f2937);
     color: var(--body-text-color, #d1d5db);
     cursor: pointer;
     transition: all 0.15s ease;
-    flex-shrink: 0;
     box-sizing: border-box;
 }
 

@@ -35,5 +35,6 @@ Thumbs.db
 *.local
 config.local.*
 
-# Extension: user style CSVs (optional local overrides)
-styles/
+# Extension: contents of styles/ (CSVs stay local); folder kept via styles/.gitkeep
+styles/*
+!styles/.gitkeep

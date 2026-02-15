@@ -358,10 +358,15 @@
         var showSidebar = sortedCats.length > 5;
         var favSet = getFavorites(tabName);
 
-        /** Show only one category section (or all if catId is null). */
+        /** Show only one category section (or all if catId is null). Never show sections with 0 visible cards (respects source/search filter). */
         function showOnlyCategory(catId) {
             var sections = main.querySelectorAll(".sg-category");
             sections.forEach(function (sec) {
+                var visibleCount = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+                if (visibleCount === 0) {
+                    sec.style.display = "none";
+                    return;
+                }
                 if (catId === null) {
                     sec.style.display = "";
                 } else {
@@ -402,6 +407,7 @@
                     type: "button",
                     className: "sg-sidebar-btn",
                     textContent: catName,
+                    "data-category": catName,
                     onClick: function () {
                         showOnlyCategory(catName);
                         qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
@@ -685,6 +691,18 @@
             }
             if (n === 0) sec.style.display = "none";
         });
+
+        // Hide sidebar category buttons that have 0 visible cards (source filter)
+        var sidebar = panel.querySelector(".sg-sidebar");
+        if (sidebar) {
+            qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (btn) {
+                var catName = btn.getAttribute("data-category");
+                var sec = panel.querySelector("#sg-cat-" + (catName + "").replace(/\s/g, "_"));
+                if (!sec) { btn.style.display = ""; return; }
+                var n = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+                btn.style.display = n > 0 ? "" : "none";
+            });
+        }
     }
 
     function updateSelectedUI(tabName) {

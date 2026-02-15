@@ -34,3 +34,6 @@ Thumbs.db
 .env.local
 *.local
 config.local.*
+
+# Extension: user style CSVs (optional local overrides)
+styles/

@@ -222,24 +222,50 @@
         const searchRow = el("div", { className: "sg-search-row" });
         state[tabName].selectedSource = getStoredSource(tabName);
         var sources = getUniqueSources(tabName);
-        var sourceSelect = el("select", {
+        var currentSource = state[tabName].selectedSource;
+        if (sources.indexOf(currentSource) === -1) currentSource = "All";
+        state[tabName].selectedSource = currentSource;
+
+        var sourceDropdownWrap = el("div", { className: "sg-source-dropdown-wrap" });
+        var sourceDropdownBtn = el("button", {
+            type: "button",
             className: "sg-source-select lg secondary gradio-button",
             id: "sg_source_" + tabName,
             title: "Filter by style file source",
+            textContent: currentSource === "All" ? "All Sources" : currentSource,
         });
-        var optAll = el("option", { value: "All", textContent: "All Sources" });
-        sourceSelect.appendChild(optAll);
-        sources.forEach(function (src) {
-            sourceSelect.appendChild(el("option", { value: src, textContent: src }));
+        var sourceDropdownList = el("div", { className: "sg-source-dropdown-list" });
+        var opts = [{ value: "All", label: "All Sources" }];
+        sources.forEach(function (src) { opts.push({ value: src, label: src }); });
+        opts.forEach(function (opt) {
+            var item = el("div", { className: "sg-source-dropdown-item", "data-value": opt.value, textContent: opt.label });
+            if (opt.value === currentSource) item.classList.add("sg-active");
+            item.addEventListener("click", function (e) {
+                e.stopPropagation();
+                state[tabName].selectedSource = opt.value;
+                setStoredSource(tabName, opt.value);
+                sourceDropdownBtn.textContent = opt.label;
+                sourceDropdownList.classList.remove("sg-open");
+                qsa(".sg-source-dropdown-item", sourceDropdownList).forEach(function (i) { i.classList.toggle("sg-active", i.getAttribute("data-value") === opt.value); });
+                filterStyles(tabName);
+            });
+            sourceDropdownList.appendChild(item);
         });
-        sourceSelect.value = state[tabName].selectedSource;
-        if (sources.indexOf(state[tabName].selectedSource) === -1) sourceSelect.value = "All";
-        sourceSelect.addEventListener("change", function () {
-            state[tabName].selectedSource = sourceSelect.value;
-            setStoredSource(tabName, sourceSelect.value);
-            filterStyles(tabName);
+        sourceDropdownBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            sourceDropdownList.classList.toggle("sg-open");
+            if (sourceDropdownList.classList.contains("sg-open")) {
+                var close = function (e2) {
+                    if (sourceDropdownWrap.contains(e2.target)) return;
+                    sourceDropdownList.classList.remove("sg-open");
+                    document.removeEventListener("click", close);
+                };
+                setTimeout(function () { document.addEventListener("click", close); }, 0);
+            }
         });
-        searchRow.appendChild(sourceSelect);
+        sourceDropdownWrap.appendChild(sourceDropdownBtn);
+        sourceDropdownWrap.appendChild(sourceDropdownList);
+        searchRow.appendChild(sourceDropdownWrap);
         const searchInput = el("input", {
             className: "sg-search",
             type: "text",

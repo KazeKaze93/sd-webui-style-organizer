@@ -30,8 +30,8 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 1. Find the **grid icon button** (⊞) next to the other tools under the Generate button (txt2img or img2img).
 2. Click it to open the **Style Grid** modal over the page.
 
-> **INSERT: Screenshot — Trigger button location**  
-> *Suggested file: `docs/screenshots/01-trigger-button.png`*
+<img width="342" height="214" alt="{2B661361-44A2-41D4-A150-C50683B35F1F}" src="https://github.com/user-attachments/assets/fccfbb2b-913d-4c5f-9f2f-b7e3bf952d8a" />
+
 
 ### Browsing and filtering
 

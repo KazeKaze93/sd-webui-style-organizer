@@ -1,6 +1,7 @@
 /**
  * Style Grid - Visual grid/gallery style selector for Forge WebUI
- * Replaces the dropdown style selector with a categorized, multi-select grid.
+ * v2.0 — Full-featured: silent mode, dynamic apply, presets,
+ * conflict detection, context menu, inline editor, etc.
  */
 
 (function () {
@@ -10,592 +11,884 @@
     // State
     // -----------------------------------------------------------------------
     const state = {
-        txt2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All" },
-        img2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All" },
+        txt2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false },
+        img2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false },
     };
 
+    // -----------------------------------------------------------------------
+    // Storage helpers
+    // -----------------------------------------------------------------------
     const SOURCE_STORAGE_KEY = "sg_source";
-    function getStoredSource(tabName) {
-        try {
-            var raw = localStorage.getItem(SOURCE_STORAGE_KEY);
-            if (!raw) return "All";
-            var data = JSON.parse(raw);
-            return (data && data[tabName]) ? data[tabName] : "All";
-        } catch (_) { return "All"; }
-    }
-    function setStoredSource(tabName, value) {
-        try {
-            var raw = localStorage.getItem(SOURCE_STORAGE_KEY);
-            var data = raw ? JSON.parse(raw) : {};
-            data[tabName] = value;
-            localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(data));
-        } catch (_) {}
-    }
+    function getStoredSource(t) { try { var d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}"); return d[t] || "All"; } catch (_) { return "All"; } }
+    function setStoredSource(t, v) { try { var d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}"); d[t] = v; localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d)); } catch (_) {} }
+    function getSilentMode(t) { try { var d = JSON.parse(localStorage.getItem("sg_silent") || "{}"); return !!d[t]; } catch (_) { return false; } }
+    function setSilentMode(t, v) { try { var d = JSON.parse(localStorage.getItem("sg_silent") || "{}"); d[t] = v; localStorage.setItem("sg_silent", JSON.stringify(d)); } catch (_) {} }
 
-    /** Simple string hash for deterministic color generation. */
-    function hashString(str) {
-        if (str == null) str = "";
-        var h = 0;
-        for (var i = 0; i < str.length; i++) {
-            h = ((h << 5) - h) + str.charCodeAt(i);
-            h = h & h;
-        }
-        return Math.abs(h);
-    }
+    // Favorites
+    const FAV_CAT = "FAVORITES";
+    function getFavorites(t) { try { var d = JSON.parse(localStorage.getItem("sg_favorites") || "{}"); return new Set(d[t] || []); } catch (_) { return new Set(); } }
+    function setFavorites(t, s) { try { var d = JSON.parse(localStorage.getItem("sg_favorites") || "{}"); d[t] = [...s]; localStorage.setItem("sg_favorites", JSON.stringify(d)); } catch (_) {} }
+    function toggleFavorite(t, n) { var f = getFavorites(t); if (f.has(n)) f.delete(n); else f.add(n); setFavorites(t, f); }
 
-    /** Generate a unique HSL color from category name (stable per name). */
-    function getCategoryColor(categoryName) {
-        var h = hashString(categoryName) % 360;
-        var s = 55 + (hashString(categoryName + "s") % 25);
-        var l = 48 + (hashString(categoryName + "l") % 12);
-        return "hsl(" + h + ", " + s + "%, " + l + "%)";
+    // Recent history
+    function getRecentHistory(t) { try { return JSON.parse(localStorage.getItem("sg_recent_" + t) || "[]"); } catch (_) { return []; } }
+    function addToRecentHistory(t, names) {
+        var h = getRecentHistory(t);
+        names.forEach(function (n) { h = h.filter(function (x) { return x !== n; }); h.unshift(n); });
+        if (h.length > 10) h = h.slice(0, 10);
+        localStorage.setItem("sg_recent_" + t, JSON.stringify(h));
     }
 
     // -----------------------------------------------------------------------
     // Utility
     // -----------------------------------------------------------------------
+    function hashString(s) { if (!s) s = ""; var h = 0; for (var i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h = h & h; } return Math.abs(h); }
+    function getCategoryColor(c) { var h = hashString(c) % 360, s = 55 + (hashString(c + "s") % 25), l = 48 + (hashString(c + "l") % 12); return "hsl(" + h + "," + s + "%," + l + "%)"; }
     function qs(sel, root) { return (root || document).querySelector(sel); }
     function qsa(sel, root) { return (root || document).querySelectorAll(sel); }
     function el(tag, attrs, children) {
-        const e = document.createElement(tag);
-        if (attrs) Object.entries(attrs).forEach(([k, v]) => {
+        var e = document.createElement(tag);
+        if (attrs) Object.entries(attrs).forEach(function (kv) {
+            var k = kv[0], v = kv[1];
             if (k === "className") e.className = v;
             else if (k === "textContent") e.textContent = v;
             else if (k === "innerHTML") e.innerHTML = v;
             else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
             else e.setAttribute(k, v);
         });
-        if (children) {
-            (Array.isArray(children) ? children : [children]).forEach(c => {
-                if (typeof c === "string") e.appendChild(document.createTextNode(c));
-                else if (c) e.appendChild(c);
-            });
-        }
+        if (children) (Array.isArray(children) ? children : [children]).forEach(function (c) {
+            if (typeof c === "string") e.appendChild(document.createTextNode(c));
+            else if (c) e.appendChild(c);
+        });
         return e;
     }
 
+    function normalizeSearchText(s) { return (s || "").replace(/\s+/g, " ").trim().toLowerCase(); }
+    function buildSearchText(style) { return normalizeSearchText([style.name, style.display_name].filter(Boolean).join(" ")); }
+    function nameMatchesQuery(text, query) {
+        var n = normalizeSearchText(query); if (!n) return true;
+        return n.split(/\s+/).filter(Boolean).every(function (t) { return text.includes(t); });
+    }
+    function getUniqueSources(t) {
+        var cats = state[t].categories || {}, s = new Set();
+        Object.values(cats).forEach(function (arr) { arr.forEach(function (st) { if (st.source) s.add(st.source); }); });
+        return Array.from(s).sort();
+    }
+    function findCategoryMatch(q, t) {
+        if (!q) return null;
+        var names = Object.keys(state[t].categories || {});
+        if (getFavorites(t).size > 0) names.push("FAVORITES");
+        return names.find(function (c) { return c.toLowerCase().startsWith(q); }) || null;
+    }
+    function findStyleByName(t, n) {
+        for (var styles of Object.values(state[t].categories)) {
+            var f = styles.find(function (s) { return s.name === n; });
+            if (f) return f;
+        }
+        return null;
+    }
+
     // -----------------------------------------------------------------------
-    // Load styles from hidden Gradio component
+    // Prompt manipulation
+    // -----------------------------------------------------------------------
+    function removeSubstringFromPrompt(val, sub) {
+        if (!sub || !val) return val;
+        var idx = val.indexOf(sub);
+        if (idx === -1) return val;
+        var before = val.substring(0, idx).replace(/,\s*$/, "");
+        var after = val.substring(idx + sub.length).replace(/^,\s*/, "");
+        if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
+        return (before + after).trim();
+    }
+    function setPromptValue(el, value) {
+        if (!el) return;
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    function setSilentGradio(tabName) {
+        // Update the hidden Gradio textbox with silent mode style names
+        var silentEl = qs("#style_grid_silent_" + tabName + " textarea");
+        if (!silentEl) return;
+        var names = state[tabName].silentMode ? [...state[tabName].selected] : [];
+        setPromptValue(silentEl, JSON.stringify(names));
+    }
+
+    // -----------------------------------------------------------------------
+    // Load data from Gradio hidden component
     // -----------------------------------------------------------------------
     function loadStyles(tabName) {
-        const dataEl = qs(`#style_grid_data_${tabName} textarea`);
+        var dataEl = qs("#style_grid_data_" + tabName + " textarea");
         if (!dataEl || !dataEl.value) return {};
         try {
-            const data = JSON.parse(dataEl.value);
+            var data = JSON.parse(dataEl.value);
+            state[tabName].usage = data.usage || {};
+            state[tabName].presets = data.presets || {};
             return data.categories || {};
-        } catch (e) {
-            console.error("[Style Grid] Failed to parse styles data:", e);
-            return {};
-        }
+        } catch (e) { console.error("[Style Grid] Parse error:", e); return {}; }
     }
-
     function getCategoryOrder(tabName) {
-        const orderEl = qs(`#style_grid_cat_order_${tabName} textarea`);
-        if (!orderEl || !orderEl.value) return [];
-        try {
-            return JSON.parse(orderEl.value);
-        } catch { return []; }
+        var el = qs("#style_grid_cat_order_" + tabName + " textarea");
+        if (!el || !el.value) return [];
+        try { return JSON.parse(el.value); } catch (_) { return []; }
     }
 
-    /** Normalize string for search: collapse spaces, trim, lowerCase. */
-    function normalizeSearchText(s) {
-        if (s == null || typeof s !== "string") return "";
-        return s.replace(/\s+/g, " ").trim().toLowerCase();
+    // -----------------------------------------------------------------------
+    // API helpers
+    // -----------------------------------------------------------------------
+    function apiPost(endpoint, data) {
+        return fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data || {}) }).then(function (r) { return r.json(); });
+    }
+    function apiGet(endpoint) {
+        return fetch(endpoint).then(function (r) { return r.json(); });
     }
 
-    /** Build searchable text from style NAME only (strict name matching; no prompt/negative). */
-    function buildSearchTextNameOnly(style) {
-        const parts = [style.name, style.display_name].filter(Boolean);
-        return normalizeSearchText(parts.join(" "));
+    // -----------------------------------------------------------------------
+    // Conflict detection (client-side quick check)
+    // -----------------------------------------------------------------------
+    function checkConflictsLocal(tabName) {
+        var selected = [...state[tabName].selected];
+        if (selected.length < 2) return [];
+        var conflicts = [];
+        var tokenMap = {};
+        selected.forEach(function (name) {
+            var s = findStyleByName(tabName, name);
+            if (!s) return;
+            tokenMap[name] = { pos: new Set(), neg: new Set() };
+            (s.prompt || "").split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t && t !== "{prompt}") tokenMap[name].pos.add(t); });
+            (s.negative_prompt || "").split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t && t !== "{prompt}") tokenMap[name].neg.add(t); });
+        });
+        var names = Object.keys(tokenMap);
+        for (var i = 0; i < names.length; i++) {
+            for (var j = i + 1; j < names.length; j++) {
+                var a = names[i], b = names[j];
+                tokenMap[a].pos.forEach(function (t) {
+                    if (tokenMap[b].neg.has(t)) conflicts.push("'" + a + "' adds '" + t + "' but '" + b + "' negates it");
+                });
+                tokenMap[b].pos.forEach(function (t) {
+                    if (tokenMap[a].neg.has(t)) conflicts.push("'" + b + "' adds '" + t + "' but '" + a + "' negates it");
+                });
+            }
+        }
+        return conflicts;
     }
 
-    /** Token-based match in name-only text: every token must appear (order doesn't matter). */
-    function nameMatchesQuery(nameOnlyText, query) {
-        const normalized = normalizeSearchText(query);
-        if (!normalized) return true;
-        const tokens = normalized.split(/\s+/).filter(Boolean);
-        return tokens.every(function (token) {
-            return nameOnlyText.includes(token);
+    // -----------------------------------------------------------------------
+    // Dynamic apply / unapply a single style
+    // -----------------------------------------------------------------------
+    function applyStyleImmediate(tabName, styleName) {
+        if (state[tabName].applied.has(styleName)) return;
+        var style = findStyleByName(tabName, styleName);
+        if (!style) return;
+
+        if (state[tabName].silentMode) {
+            // Silent: just track, don't touch prompt fields
+            state[tabName].applied.set(styleName, { prompt: style.prompt || null, negative: style.negative_prompt || null, silent: true });
+            setSilentGradio(tabName);
+            return;
+        }
+
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        if (!promptEl || !negEl) return;
+
+        var prompt = promptEl.value;
+        var neg = negEl.value;
+        var addedPrompt = "";
+        var addedNeg = "";
+
+        if (style.prompt) {
+            if (style.prompt.includes("{prompt}")) {
+                prompt = style.prompt.replace("{prompt}", prompt);
+                addedPrompt = null;
+            } else {
+                addedPrompt = style.prompt;
+                var sep = prompt.trim() ? ", " : "";
+                prompt = prompt.replace(/,\s*$/, "") + sep + addedPrompt;
+            }
+        }
+        if (style.negative_prompt) {
+            if (style.negative_prompt.includes("{prompt}")) {
+                neg = style.negative_prompt.replace("{prompt}", neg);
+                addedNeg = null;
+            } else {
+                addedNeg = style.negative_prompt;
+                var sepN = neg.trim() ? ", " : "";
+                neg = neg.replace(/,\s*$/, "") + sepN + addedNeg;
+            }
+        }
+
+        state[tabName].applied.set(styleName, { prompt: addedPrompt, negative: addedNeg });
+        setPromptValue(promptEl, prompt);
+        setPromptValue(negEl, neg);
+
+        // Mark cards
+        qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
+            c.classList.add("sg-applied");
         });
     }
 
-    /** Get all known category names (from current data + Favorites). */
-    function getCategoryNames(tabName) {
-        const fromData = Object.keys(state[tabName].categories || {});
-        var out = [...fromData];
-        if (getFavorites(tabName).size > 0) out.push("FAVORITES");
-        return out;
+    function unapplyStyle(tabName, styleName) {
+        var record = state[tabName].applied.get(styleName);
+        if (!record) return;
+
+        if (record.silent || state[tabName].silentMode) {
+            state[tabName].applied.delete(styleName);
+            setSilentGradio(tabName);
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+            return;
+        }
+
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        if (!promptEl || !negEl) return;
+
+        if (record.prompt) setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
+        if (record.negative) setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
+
+        state[tabName].applied.delete(styleName);
+        qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
     }
 
-    /** Get unique source filenames from current styles data (sorted). */
-    function getUniqueSources(tabName) {
-        const categories = state[tabName].categories || {};
-        const set = new Set();
-        Object.keys(categories).forEach(function (catName) {
-            (categories[catName] || []).forEach(function (style) {
-                if (style.source) set.add(style.source);
+    // -----------------------------------------------------------------------
+    // Context menu
+    // -----------------------------------------------------------------------
+    function showContextMenu(e, tabName, styleName, style) {
+        e.preventDefault();
+        // Remove existing
+        var old = qs(".sg-context-menu");
+        if (old) old.remove();
+
+        var menu = el("div", { className: "sg-context-menu" });
+        menu.style.left = e.clientX + "px";
+        menu.style.top = e.clientY + "px";
+
+        var items = [
+            { label: "✏️ Edit style", action: function () { openStyleEditor(tabName, style); } },
+            { label: "📋 Duplicate", action: function () { duplicateStyle(tabName, style); } },
+            { label: "🗑️ Delete", action: function () { deleteStyle(tabName, styleName, style.source); } },
+            { label: "📂 Move to category...", action: function () { moveToCategory(tabName, style); } },
+            { label: "📎 Copy prompt", action: function () { navigator.clipboard.writeText(style.prompt || ""); } },
+        ];
+        items.forEach(function (item) {
+            var btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
+            menu.appendChild(btn);
+        });
+
+        document.body.appendChild(menu);
+        // Auto-close
+        setTimeout(function () {
+            var close = function () { menu.remove(); document.removeEventListener("click", close); };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Style editor modal
+    // -----------------------------------------------------------------------
+    function openStyleEditor(tabName, existingStyle) {
+        var isNew = !existingStyle;
+        var overlay = el("div", { className: "sg-editor-overlay" });
+        var modal = el("div", { className: "sg-editor-modal" });
+
+        var title = el("h3", { textContent: isNew ? "Create New Style" : "Edit Style: " + (existingStyle ? existingStyle.name : ""), className: "sg-editor-title" });
+        modal.appendChild(title);
+
+        var nameInput = el("input", { className: "sg-editor-input", type: "text", placeholder: "Style name (e.g. BODY_Thicc)", value: existingStyle ? existingStyle.name : "" });
+        var promptInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Prompt (use {prompt} as placeholder)", rows: "4" });
+        promptInput.value = existingStyle ? (existingStyle.prompt || "") : "";
+        var negInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Negative prompt", rows: "3" });
+        negInput.value = existingStyle ? (existingStyle.negative_prompt || "") : "";
+
+        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Name" }));
+        modal.appendChild(nameInput);
+        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Prompt" }));
+        modal.appendChild(promptInput);
+        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Negative Prompt" }));
+        modal.appendChild(negInput);
+
+        var btnRow = el("div", { className: "sg-editor-btns" });
+        btnRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-primary", textContent: "💾 Save",
+            onClick: function () {
+                var name = nameInput.value.trim();
+                if (!name) { nameInput.style.borderColor = "#f87171"; return; }
+                apiPost("/style_grid/style/save", {
+                    name: name, prompt: promptInput.value, negative_prompt: negInput.value,
+                    source: existingStyle ? existingStyle.source : null,
+                }).then(function () { overlay.remove(); refreshPanel(tabName); });
+            }
+        }));
+        btnRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "Cancel",
+            onClick: function () { overlay.remove(); }
+        }));
+        modal.appendChild(btnRow);
+        overlay.appendChild(modal);
+        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+        nameInput.focus();
+    }
+
+    function duplicateStyle(tabName, style) {
+        var newName = style.name + "_copy";
+        apiPost("/style_grid/style/save", {
+            name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
+        }).then(function () { refreshPanel(tabName); });
+    }
+
+    function deleteStyle(tabName, styleName, source) {
+        if (!confirm("Delete style '" + styleName + "'?")) return;
+        apiPost("/style_grid/style/delete", { name: styleName, source: source }).then(function () { refreshPanel(tabName); });
+    }
+
+    function moveToCategory(tabName, style) {
+        var newCat = prompt("New category name (prefix before _):", style.category || "");
+        if (!newCat) return;
+        var oldName = style.name;
+        var rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
+        var newName = newCat.toUpperCase() + "_" + rest;
+        // Delete old, save new
+        apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(function () {
+            return apiPost("/style_grid/style/save", { name: newName, prompt: style.prompt, negative_prompt: style.negative_prompt, source: style.source });
+        }).then(function () { refreshPanel(tabName); });
+    }
+
+    // -----------------------------------------------------------------------
+    // Presets UI
+    // -----------------------------------------------------------------------
+    function showPresetsMenu(tabName) {
+        var old = qs(".sg-presets-overlay");
+        if (old) old.remove();
+
+        var overlay = el("div", { className: "sg-editor-overlay sg-presets-overlay" });
+        var modal = el("div", { className: "sg-editor-modal" });
+        modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📦 Style Presets" }));
+
+        // Save current as preset
+        var saveRow = el("div", { className: "sg-presets-save-row" });
+        var nameIn = el("input", { className: "sg-editor-input", type: "text", placeholder: "Preset name..." });
+        var saveBtn = el("button", {
+            className: "sg-btn sg-btn-primary", textContent: "💾 Save current",
+            onClick: function () {
+                var name = nameIn.value.trim();
+                if (!name) return;
+                apiPost("/style_grid/presets/save", { name: name, styles: [...state[tabName].selected] }).then(function (r) {
+                    state[tabName].presets = r.presets || {};
+                    renderPresetsList();
+                    nameIn.value = "";
+                });
+            }
+        });
+        saveRow.appendChild(nameIn);
+        saveRow.appendChild(saveBtn);
+        modal.appendChild(saveRow);
+
+        var list = el("div", { className: "sg-presets-list" });
+        modal.appendChild(list);
+
+        function renderPresetsList() {
+            list.innerHTML = "";
+            var presets = state[tabName].presets || {};
+            Object.keys(presets).forEach(function (name) {
+                var p = presets[name];
+                var row = el("div", { className: "sg-preset-row" });
+                row.appendChild(el("span", { className: "sg-preset-name", textContent: name + " (" + (p.styles || []).length + " styles)" }));
+                row.appendChild(el("button", {
+                    className: "sg-btn sg-btn-secondary", textContent: "Load",
+                    onClick: function () {
+                        // Clear current and load preset
+                        clearAll(tabName);
+                        (p.styles || []).forEach(function (sn) {
+                            state[tabName].selected.add(sn);
+                            applyStyleImmediate(tabName, sn);
+                            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
+                        });
+                        updateSelectedUI(tabName);
+                        overlay.remove();
+                    }
+                }));
+                row.appendChild(el("button", {
+                    className: "sg-btn sg-btn-secondary", textContent: "🗑️",
+                    onClick: function () {
+                        apiPost("/style_grid/presets/delete", { name: name }).then(function (r) {
+                            state[tabName].presets = r.presets || {};
+                            renderPresetsList();
+                        });
+                    }
+                }));
+                list.appendChild(row);
             });
+            if (Object.keys(presets).length === 0) {
+                list.appendChild(el("div", { className: "sg-preset-empty", textContent: "No presets saved yet" }));
+            }
+        }
+        renderPresetsList();
+
+        var closeBtn = el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } });
+        modal.appendChild(closeBtn);
+        overlay.appendChild(modal);
+        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+
+    // -----------------------------------------------------------------------
+    // Import/Export
+    // -----------------------------------------------------------------------
+    function showExportImport(tabName) {
+        var overlay = el("div", { className: "sg-editor-overlay" });
+        var modal = el("div", { className: "sg-editor-modal" });
+        modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📥 Import / Export" }));
+
+        var btnExport = el("button", {
+            className: "sg-btn sg-btn-primary", textContent: "⬇️ Export all (JSON)",
+            onClick: function () {
+                apiGet("/style_grid/export").then(function (data) {
+                    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                    var a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = "style_grid_export_" + new Date().toISOString().slice(0, 10) + ".json";
+                    a.click();
+                });
+            }
         });
-        return Array.from(set).sort();
-    }
+        modal.appendChild(btnExport);
 
-    /** Find category that matches query (category.toLowerCase().startsWith(query)). */
-    function findCategoryMatch(query, tabName) {
-        if (!query) return null;
-        const categoryNames = getCategoryNames(tabName);
-        return categoryNames.find(function (cat) {
-            return cat.toLowerCase().startsWith(query);
-        }) || null;
-    }
+        var importLabel = el("label", { className: "sg-editor-label", textContent: "Import JSON file:" });
+        var importInput = el("input", { type: "file", accept: ".json" });
+        importInput.addEventListener("change", function () {
+            var file = importInput.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function () {
+                try {
+                    var data = JSON.parse(reader.result);
+                    apiPost("/style_grid/import", data).then(function () {
+                        overlay.remove();
+                        refreshPanel(tabName);
+                    });
+                } catch (e) { alert("Invalid JSON file"); }
+            };
+            reader.readAsText(file);
+        });
+        modal.appendChild(importLabel);
+        modal.appendChild(importInput);
 
-    // -----------------------------------------------------------------------
-    // Favorites (localStorage, per-tab)
-    // -----------------------------------------------------------------------
-    const FAV_CAT = "FAVORITES";
-    function getFavorites(tabName) {
-        try {
-            var raw = localStorage.getItem("sg_favorites");
-            if (!raw) return new Set();
-            var data = JSON.parse(raw);
-            var arr = data[tabName];
-            return Array.isArray(arr) ? new Set(arr) : new Set();
-        } catch (_) { return new Set(); }
-    }
-    function setFavorites(tabName, set) {
-        try {
-            var raw = localStorage.getItem("sg_favorites");
-            var data = raw ? JSON.parse(raw) : {};
-            data[tabName] = [...set];
-            localStorage.setItem("sg_favorites", JSON.stringify(data));
-        } catch (_) {}
-    }
-    function toggleFavorite(tabName, styleName) {
-        var fav = getFavorites(tabName);
-        if (fav.has(styleName)) fav.delete(styleName);
-        else fav.add(styleName);
-        setFavorites(tabName, fav);
+        modal.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } }));
+        overlay.appendChild(modal);
+        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
     }
 
     // -----------------------------------------------------------------------
-    // Build the Grid Panel (modal overlay)
+    // Refresh panel (rebuild from API data)
+    // -----------------------------------------------------------------------
+    function refreshPanel(tabName) {
+        apiGet("/style_grid/styles").then(function (data) {
+            var dataEl = qs("#style_grid_data_" + tabName + " textarea");
+            if (dataEl) {
+                var full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
+                setPromptValue(dataEl, JSON.stringify(full));
+            }
+            // Save state before rebuild
+            var savedSelection = new Set(state[tabName].selected);
+            var wasVisible = state[tabName].panel && state[tabName].panel.classList.contains("sg-visible");
+            if (state[tabName].panel) {
+                state[tabName].panel.remove();
+                state[tabName].panel = null;
+            }
+            state[tabName].categories = data.categories || {};
+            state[tabName].usage = data.usage || {};
+            buildPanel(tabName);
+            // Restore selection
+            savedSelection.forEach(function (n) {
+                state[tabName].selected.add(n);
+                qsa('.sg-card[data-style-name="' + CSS.escape(n) + '"]', state[tabName].panel).forEach(function (c) {
+                    c.classList.add("sg-selected");
+                    c.classList.add("sg-applied");
+                });
+            });
+            updateSelectedUI(tabName);
+            // Restore visibility — keep panel open if it was open
+            if (wasVisible) {
+                state[tabName].panel.classList.add("sg-visible");
+            }
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Dynamic polling for file changes
+    // -----------------------------------------------------------------------
+    var _pollInterval = null;
+    function startPolling() {
+        if (_pollInterval) return;
+        _pollInterval = setInterval(function () {
+            apiGet("/style_grid/check_update").then(function (r) {
+                if (r && r.changed) {
+                    console.log("[Style Grid] CSV files changed, refreshing...");
+                    ["txt2img", "img2img"].forEach(function (t) {
+                        if (state[t].panel) refreshPanel(t);
+                    });
+                }
+            }).catch(function () {});
+        }, 5000);
+    }
+
+    // -----------------------------------------------------------------------
+    // Build the Grid Panel
     // -----------------------------------------------------------------------
     function buildPanel(tabName) {
-        const categories = loadStyles(tabName);
+        var categories = loadStyles(tabName);
         state[tabName].categories = categories;
-        const catOrder = getCategoryOrder(tabName);
+        state[tabName].silentMode = getSilentMode(tabName);
+        var catOrder = getCategoryOrder(tabName);
 
-        // Sort categories: ordered ones first, then rest alphabetically
-        const catKeys = Object.keys(categories);
-        const sortedCats = [];
-        catOrder.forEach(c => { if (catKeys.includes(c)) sortedCats.push(c); });
-        catKeys.forEach(c => { if (!sortedCats.includes(c)) sortedCats.push(c); });
+        var catKeys = Object.keys(categories);
+        var sortedCats = [];
+        catOrder.forEach(function (c) { if (catKeys.includes(c)) sortedCats.push(c); });
+        catKeys.forEach(function (c) { if (!sortedCats.includes(c)) sortedCats.push(c); });
 
-        // --- Overlay backdrop ---
-        const overlay = el("div", { className: "sg-overlay", id: `sg_overlay_${tabName}` });
-        let overlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", (e) => {
-            overlayMouseDownTarget = e.target;
-        }, true);
-        overlay.addEventListener("click", (e) => {
-            if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false);
-            overlayMouseDownTarget = null;
-        });
+        // Overlay
+        var overlay = el("div", { className: "sg-overlay", id: "sg_overlay_" + tabName });
+        var overlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) { overlayMouseDownTarget = e.target; }, true);
+        overlay.addEventListener("click", function (e) { if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false); overlayMouseDownTarget = null; });
 
-        // --- Panel container ---
-        const panel = el("div", { className: "sg-panel" });
+        var panel = el("div", { className: "sg-panel" });
 
-        // --- Header ---
-        const header = el("div", { className: "sg-header" });
-
-        const titleRow = el("div", { className: "sg-title-row" });
+        // ---- Header ----
+        var header = el("div", { className: "sg-header" });
+        var titleRow = el("div", { className: "sg-title-row" });
         titleRow.appendChild(el("span", { className: "sg-title", textContent: "🎨 Style Grid" }));
 
-        const selectedCount = el("span", {
-            className: "sg-selected-count",
-            id: `sg_count_${tabName}`,
-            textContent: "0 selected",
-        });
+        // Conflict warning area
+        var conflictBadge = el("span", { className: "sg-conflict-badge", id: "sg_conflict_" + tabName });
+        conflictBadge.style.display = "none";
+        titleRow.appendChild(conflictBadge);
+
+        var selectedCount = el("span", { className: "sg-selected-count", id: "sg_count_" + tabName, textContent: "0 selected" });
         titleRow.appendChild(selectedCount);
         header.appendChild(titleRow);
 
-        // Search bar
-        const searchRow = el("div", { className: "sg-search-row" });
+        // Search row
+        var searchRow = el("div", { className: "sg-search-row" });
+
+        // Source dropdown
         state[tabName].selectedSource = getStoredSource(tabName);
         var sources = getUniqueSources(tabName);
         var currentSource = state[tabName].selectedSource;
         if (sources.indexOf(currentSource) === -1) currentSource = "All";
         state[tabName].selectedSource = currentSource;
 
-        var sourceDropdownWrap = el("div", { className: "sg-source-dropdown-wrap" });
-        var sourceDropdownBtn = el("button", {
-            type: "button",
-            className: "sg-source-select lg secondary gradio-button",
-            id: "sg_source_" + tabName,
-            title: "Filter by style file source",
-            textContent: currentSource === "All" ? "All Sources" : currentSource,
-        });
-        var sourceDropdownList = el("div", { className: "sg-source-dropdown-list" });
-        var opts = [{ value: "All", label: "All Sources" }];
-        sources.forEach(function (src) { opts.push({ value: src, label: src }); });
-        opts.forEach(function (opt) {
-            var item = el("div", { className: "sg-source-dropdown-item", "data-value": opt.value, textContent: opt.label });
-            if (opt.value === currentSource) item.classList.add("sg-active");
+        var srcWrap = el("div", { className: "sg-source-dropdown-wrap" });
+        var srcBtn = el("button", { type: "button", className: "sg-source-select lg secondary gradio-button", id: "sg_source_" + tabName, title: "Filter by source", textContent: currentSource === "All" ? "All Sources" : currentSource });
+        var srcList = el("div", { className: "sg-source-dropdown-list" });
+        [{ value: "All", label: "All Sources" }].concat(sources.map(function (s) { return { value: s, label: s }; })).forEach(function (opt) {
+            var item = el("div", { className: "sg-source-dropdown-item" + (opt.value === currentSource ? " sg-active" : ""), "data-value": opt.value, textContent: opt.label });
             item.addEventListener("click", function (e) {
                 e.stopPropagation();
                 state[tabName].selectedSource = opt.value;
                 setStoredSource(tabName, opt.value);
-                sourceDropdownBtn.textContent = opt.label;
-                sourceDropdownList.classList.remove("sg-open");
-                qsa(".sg-source-dropdown-item", sourceDropdownList).forEach(function (i) { i.classList.toggle("sg-active", i.getAttribute("data-value") === opt.value); });
+                srcBtn.textContent = opt.label;
+                srcList.classList.remove("sg-open");
+                qsa(".sg-source-dropdown-item", srcList).forEach(function (i) { i.classList.toggle("sg-active", i.getAttribute("data-value") === opt.value); });
                 filterStyles(tabName);
             });
-            sourceDropdownList.appendChild(item);
+            srcList.appendChild(item);
         });
-        sourceDropdownBtn.addEventListener("click", function (e) {
+        srcBtn.addEventListener("click", function (e) {
             e.stopPropagation();
-            sourceDropdownList.classList.toggle("sg-open");
-            if (sourceDropdownList.classList.contains("sg-open")) {
-                var close = function (e2) {
-                    if (sourceDropdownWrap.contains(e2.target)) return;
-                    sourceDropdownList.classList.remove("sg-open");
-                    document.removeEventListener("click", close);
-                };
+            srcList.classList.toggle("sg-open");
+            if (srcList.classList.contains("sg-open")) {
+                var close = function (e2) { if (!srcWrap.contains(e2.target)) { srcList.classList.remove("sg-open"); document.removeEventListener("click", close); } };
                 setTimeout(function () { document.addEventListener("click", close); }, 0);
             }
         });
-        sourceDropdownWrap.appendChild(sourceDropdownBtn);
-        sourceDropdownWrap.appendChild(sourceDropdownList);
-        searchRow.appendChild(sourceDropdownWrap);
-        const searchInput = el("input", {
-            className: "sg-search",
-            type: "text",
-            placeholder: "Search styles...",
-            id: `sg_search_${tabName}`,
-        });
+        srcWrap.appendChild(srcBtn);
+        srcWrap.appendChild(srcList);
+        searchRow.appendChild(srcWrap);
+
+        // Search
+        var searchInput = el("input", { className: "sg-search", type: "text", placeholder: "Search styles...", id: "sg_search_" + tabName });
         (function () {
-            var debounceTimer = null;
-            var debounceMs = 200;
-            searchInput.addEventListener("input", function () {
-                if (debounceTimer) clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(function () {
-                    debounceTimer = null;
-                    filterStyles(tabName);
-                }, debounceMs);
-            });
+            var timer = null;
+            searchInput.addEventListener("input", function () { if (timer) clearTimeout(timer); timer = setTimeout(function () { filterStyles(tabName); }, 200); });
         })();
         searchRow.appendChild(searchInput);
 
-        // Action buttons in header
-        const btnClearAll = el("button", {
-            className: "sg-btn sg-btn-secondary",
-            textContent: "Clear",
-            title: "Clear all selections",
-            onClick: () => clearAll(tabName),
-        });
-        const btnApply = el("button", {
-            className: "sg-btn sg-btn-primary",
-            textContent: "✔ Apply",
-            title: "Apply selected styles to prompt",
-            onClick: () => applyStyles(tabName),
-        });
-        const btnClose = el("button", {
-            className: "sg-btn sg-btn-close",
-            innerHTML: "✕",
-            title: "Close",
-            onClick: () => togglePanel(tabName, false),
-        });
-        var btnCollapseAll = el("button", {
-            className: "sg-btn sg-btn-secondary",
-            textContent: "Collapse all",
-            title: "Collapse all category blocks",
+        // Silent mode toggle
+        var silentBtn = el("button", {
+            className: "sg-btn sg-btn-secondary" + (state[tabName].silentMode ? " sg-active" : ""),
+            textContent: "👁 Silent",
+            title: "Silent mode: styles won't appear in prompt fields but will be applied during generation",
             onClick: function () {
-                qsa(".sg-category", panel).forEach(function (sec) {
-                    sec.classList.add("sg-collapsed");
-                    var arrow = sec.querySelector(".sg-cat-arrow");
-                    if (arrow) arrow.textContent = "▸";
-                });
-            },
+                state[tabName].silentMode = !state[tabName].silentMode;
+                setSilentMode(tabName, state[tabName].silentMode);
+                silentBtn.classList.toggle("sg-active", state[tabName].silentMode);
+                setSilentGradio(tabName);
+            }
         });
-        var btnExpandAll = el("button", {
-            className: "sg-btn sg-btn-secondary",
-            textContent: "Expand all",
-            title: "Expand all category blocks",
+        searchRow.appendChild(silentBtn);
+
+        // Random style
+        var btnRandom = el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "🎲", title: "Random style (use at your own risk!)",
             onClick: function () {
-                qsa(".sg-category", panel).forEach(function (sec) {
-                    sec.classList.remove("sg-collapsed");
-                    var arrow = sec.querySelector(".sg-cat-arrow");
-                    if (arrow) arrow.textContent = "▾";
-                });
-            },
+                var allStyles = [];
+                Object.values(state[tabName].categories).forEach(function (arr) { arr.forEach(function (s) { allStyles.push(s); }); });
+                if (allStyles.length === 0) return;
+                var rand = allStyles[Math.floor(Math.random() * allStyles.length)];
+                if (!state[tabName].selected.has(rand.name)) {
+                    state[tabName].selected.add(rand.name);
+                    applyStyleImmediate(tabName, rand.name);
+                    qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
+                    updateSelectedUI(tabName);
+                }
+            }
         });
+        searchRow.appendChild(btnRandom);
+
+        // Presets
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "📦", title: "Presets", onClick: function () { showPresetsMenu(tabName); } }));
+
+        // Collapse/Expand
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "↕", title: "Collapse all",
+            onClick: function () {
+                var allCollapsed = qsa(".sg-category:not(.sg-collapsed)", panel).length === 0;
+                qsa(".sg-category", panel).forEach(function (sec) {
+                    if (allCollapsed) { sec.classList.remove("sg-collapsed"); var a = sec.querySelector(".sg-cat-arrow"); if (a) a.textContent = "▾"; }
+                    else { sec.classList.add("sg-collapsed"); var a = sec.querySelector(".sg-cat-arrow"); if (a) a.textContent = "▸"; }
+                });
+            }
+        }));
+
+        // Compact
         var compactMode = localStorage.getItem("sg_compact") === "1";
         var btnCompact = el("button", {
-            className: "sg-btn sg-btn-secondary" + (compactMode ? " sg-active" : ""),
-            textContent: "Compact",
-            title: "Dense list / smaller cards",
-            onClick: function () {
-                compactMode = !compactMode;
-                localStorage.setItem("sg_compact", compactMode ? "1" : "0");
-                panel.classList.toggle("sg-compact", compactMode);
-                btnCompact.classList.toggle("sg-active", compactMode);
-            },
+            className: "sg-btn sg-btn-secondary" + (compactMode ? " sg-active" : ""), textContent: "▪", title: "Compact mode",
+            onClick: function () { compactMode = !compactMode; localStorage.setItem("sg_compact", compactMode ? "1" : "0"); panel.classList.toggle("sg-compact", compactMode); btnCompact.classList.toggle("sg-active", compactMode); }
         });
         if (compactMode) panel.classList.add("sg-compact");
-
-        searchRow.appendChild(btnCollapseAll);
-        searchRow.appendChild(btnExpandAll);
         searchRow.appendChild(btnCompact);
-        searchRow.appendChild(btnClearAll);
-        searchRow.appendChild(btnApply);
-        searchRow.appendChild(btnClose);
-        header.appendChild(searchRow);
 
+        // Refresh
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "🔄", title: "Refresh styles", onClick: function () { refreshPanel(tabName); } }));
+
+        // New style
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "➕", title: "Create new style", onClick: function () { openStyleEditor(tabName, null); } }));
+
+        // Import/Export
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "📥", title: "Import/Export", onClick: function () { showExportImport(tabName); } }));
+
+        // Manual backup
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "💾",
+            title: "Backup all CSV style files manually. Saves a timestamped copy to data/backups/ (keeps last 20).",
+            onClick: function () {
+                apiPost("/style_grid/backup").then(function (r) {
+                    if (r && r.ok) alert("Backup saved successfully!");
+                    else alert("Nothing to backup or backup failed.");
+                });
+            }
+        }));
+
+        // Clear
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Clear", title: "Clear all selections", onClick: function () { clearAll(tabName); } }));
+
+        // Close
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-close", innerHTML: "✕", title: "Close", onClick: function () { togglePanel(tabName, false); } }));
+
+        header.appendChild(searchRow);
         panel.appendChild(header);
 
-        // --- Body: sidebar (anchor nav) + main content ---
+        // ---- Body ----
         var body = el("div", { className: "sg-body" });
         var main = el("div", { className: "sg-main", id: "sg_main_" + tabName });
         var showSidebar = sortedCats.length > 5;
         var favSet = getFavorites(tabName);
 
-        /** Show only one category section (or all if catId is null). Never show sections with 0 visible cards (respects source/search filter). */
         function showOnlyCategory(catId) {
-            var sections = main.querySelectorAll(".sg-category");
-            sections.forEach(function (sec) {
-                var visibleCount = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
-                if (visibleCount === 0) {
-                    sec.style.display = "none";
-                    return;
-                }
-                if (catId === null) {
-                    sec.style.display = "";
-                } else {
-                    var want = (sec.id === "sg-cat-FAVORITES" && catId === "FAVORITES") || (sec.id === "sg-cat-" + catId.replace(/\s/g, "_"));
-                    sec.style.display = want ? "" : "none";
-                }
+            qsa(".sg-category", main).forEach(function (sec) {
+                var vis = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+                if (vis === 0) { sec.style.display = "none"; return; }
+                if (catId === null) { sec.style.display = ""; }
+                else { sec.style.display = (sec.getAttribute("data-category") === catId) ? "" : "none"; }
             });
         }
 
         if (showSidebar) {
             var sidebar = el("div", { className: "sg-sidebar" });
             sidebar.appendChild(el("div", { className: "sg-sidebar-label", textContent: "Categories" }));
-            var btnAll = el("button", {
-                type: "button",
-                className: "sg-sidebar-btn sg-sidebar-btn-all",
-                textContent: "All",
-                onClick: function () {
-                    showOnlyCategory(null);
-                    qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
-                    btnAll.classList.add("sg-active");
-                },
-            });
-            btnAll.classList.add("sg-active");
+            var btnAll = el("button", { type: "button", className: "sg-sidebar-btn sg-sidebar-btn-all sg-active", textContent: "All", onClick: function () { showOnlyCategory(null); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); btnAll.classList.add("sg-active"); } });
             sidebar.appendChild(btnAll);
-            var btnFav = el("button", {
-                type: "button",
-                className: "sg-sidebar-btn",
-                textContent: "★ Favorites",
-                onClick: function () {
-                    showOnlyCategory("FAVORITES");
-                    qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
-                    btnFav.classList.add("sg-active");
-                },
-            });
-            sidebar.appendChild(btnFav);
+            sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "★ Favorites", onClick: function () { showOnlyCategory("FAVORITES"); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
+            sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "🕑 Recent", onClick: function () { showOnlyCategory("RECENT"); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
             sortedCats.forEach(function (catName) {
-                var btn = el("button", {
-                    type: "button",
-                    className: "sg-sidebar-btn",
-                    textContent: catName,
-                    "data-category": catName,
-                    onClick: function () {
-                        showOnlyCategory(catName);
-                        qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); });
-                        btn.classList.add("sg-active");
-                    },
-                });
-                sidebar.appendChild(btn);
+                sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", "data-category": catName, textContent: catName, onClick: function () { showOnlyCategory(catName); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
             });
             body.appendChild(sidebar);
-        }
-
-        /** Compact All / Favorites toggle above the grid (when sidebar is hidden). */
-        if (!showSidebar) {
+        } else {
             var filterBar = el("div", { className: "sg-filter-bar" });
-            var compactAll = el("button", {
-                type: "button",
-                className: "sg-filter-btn sg-active",
-                textContent: "All",
-                onClick: function () {
-                    showOnlyCategory(null);
-                    compactAll.classList.add("sg-active");
-                    compactFav.classList.remove("sg-active");
-                },
-            });
-            var compactFav = el("button", {
-                type: "button",
-                className: "sg-filter-btn",
-                textContent: "★ Favorites",
-                onClick: function () {
-                    showOnlyCategory("FAVORITES");
-                    compactFav.classList.add("sg-active");
-                    compactAll.classList.remove("sg-active");
-                },
-            });
-            filterBar.appendChild(compactAll);
-            filterBar.appendChild(compactFav);
+            var fAll = el("button", { type: "button", className: "sg-filter-btn sg-active", textContent: "All", onClick: function () { showOnlyCategory(null); fAll.classList.add("sg-active"); fFav.classList.remove("sg-active"); } });
+            var fFav = el("button", { type: "button", className: "sg-filter-btn", textContent: "★ Favorites", onClick: function () { showOnlyCategory("FAVORITES"); fFav.classList.add("sg-active"); fAll.classList.remove("sg-active"); } });
+            filterBar.appendChild(fAll);
+            filterBar.appendChild(fFav);
             body.appendChild(filterBar);
         }
 
-        /** Update Favorites section when star is toggled: add or remove card, update count. */
-        function updateFavoritesSection(tabName, styleName, style, added) {
-            var panel = state[tabName].panel;
-            if (!panel) return;
-            var favSection = panel.querySelector("#sg-cat-FAVORITES");
-            if (!favSection) return;
-            var grid = favSection.querySelector(".sg-grid");
-            if (!grid) return;
-            if (added) {
-                if (grid.querySelector(".sg-card[data-style-name=\"" + CSS.escape(styleName) + "\"]")) return;
-                var color = "#eab308";
-                var card = el("div", {
-                    className: "sg-card",
-                    "data-style-name": style.name,
-                    "data-category": "FAVORITES",
-                    "data-search-name": buildSearchTextNameOnly(style),
-                    "data-source": style.source || "",
-                });
-                card.style.setProperty("--cat-color", color);
-                if (state[tabName].selected.has(style.name)) card.classList.add("sg-selected");
-                var star = el("span", {
-                    className: "sg-card-star sg-fav",
-                    title: "Toggle favorite",
-                    innerHTML: "★",
-                    onClick: function (e) {
-                        e.stopPropagation();
-                        toggleFavorite(tabName, style.name);
-                        updateFavoritesSection(tabName, style.name, style, false);
-                    },
-                });
-                card.appendChild(star);
-                card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
-                if (style.prompt) card.title = style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt;
-                card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
-                grid.appendChild(card);
-            } else {
-                var cardToRemove = grid.querySelector(".sg-card[data-style-name=\"" + CSS.escape(styleName) + "\"]");
-                if (cardToRemove) cardToRemove.remove();
-            }
-            var count = grid.children.length;
-            var catTitle = favSection.querySelector(".sg-cat-title");
-            if (catTitle && catTitle.childNodes.length >= 2) catTitle.childNodes[1].textContent = " (" + count + ")";
-        }
-
-        /** Build one category section (collapsible header + grid of cards with star). */
-        function appendCategorySection(container, catName, styles, color, isFav) {
-            var section = el("div", {
-                className: "sg-category",
-                "data-category": isFav ? "FAVORITES" : catName,
-            });
-            section.id = isFav ? "sg-cat-FAVORITES" : ("sg-cat-" + (catName + "").replace(/\s/g, "_"));
-
-            var catHeader = el("div", { className: "sg-cat-header" });
-            catHeader.style.borderLeftColor = color;
-            var catTitle = el("span", { className: "sg-cat-title" });
-            var catBadge = el("span", { className: "sg-cat-badge" });
-            catBadge.style.backgroundColor = color;
-            catBadge.textContent = catName;
-            catTitle.appendChild(catBadge);
-            catTitle.appendChild(document.createTextNode(" (" + styles.length + ")"));
-            var catArrow = el("span", { className: "sg-cat-arrow", textContent: "▾" });
-            var catSelectAll = el("button", {
-                className: "sg-cat-select-all",
-                textContent: "Select All",
-                onClick: function (e) {
-                    e.stopPropagation();
-                    toggleCategoryAll(tabName, catName);
-                },
-            });
-            catHeader.appendChild(catTitle);
-            catHeader.appendChild(catSelectAll);
-            catHeader.appendChild(catArrow);
-            catHeader.addEventListener("click", function () {
-                section.classList.toggle("sg-collapsed");
-                catArrow.textContent = section.classList.contains("sg-collapsed") ? "▸" : "▾";
-            });
-            section.appendChild(catHeader);
-
-            var grid = el("div", { className: "sg-grid" });
-            styles.forEach(function (style) {
-                var card = el("div", {
-                    className: "sg-card",
-                    "data-style-name": style.name,
-                    "data-category": isFav ? (style.category || FAV_CAT) : catName,
-                    "data-search-name": buildSearchTextNameOnly(style),
-                    "data-source": style.source || "",
-                });
-                card.style.setProperty("--cat-color", color);
-                if (state[tabName].selected.has(style.name)) card.classList.add("sg-selected");
-
-                var star = el("span", {
-                    className: "sg-card-star" + (getFavorites(tabName).has(style.name) ? " sg-fav" : ""),
-                    title: "Toggle favorite",
-                    innerHTML: "★",
-                    onClick: function (e) {
-                        e.stopPropagation();
-                        var added = !getFavorites(tabName).has(style.name);
-                        toggleFavorite(tabName, style.name);
-                        star.classList.toggle("sg-fav", getFavorites(tabName).has(style.name));
-                        updateFavoritesSection(tabName, style.name, style, added);
-                    },
-                });
-                card.appendChild(star);
-                var cardName = el("div", { className: "sg-card-name", textContent: style.display_name });
-                card.appendChild(cardName);
-                if (style.prompt) {
-                    card.title = style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt;
-                }
-                card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
-                grid.appendChild(card);
-            });
-            section.appendChild(grid);
-            container.appendChild(section);
-        }
-
-        // --- Favorites section (always present; empty when no favorites) ---
+        // Build favorites section
         var favStyles = [];
         sortedCats.forEach(function (catName) {
-            (categories[catName] || []).forEach(function (s) {
-                if (favSet.has(s.name)) favStyles.push(s);
-            });
+            (categories[catName] || []).forEach(function (s) { if (favSet.has(s.name)) favStyles.push(s); });
         });
-        appendCategorySection(main, "★ " + FAV_CAT, favStyles, "#eab308", true);
+        appendCategorySection(main, "★ " + FAV_CAT, favStyles, "#eab308", true, tabName);
 
-        // --- Category sections ---
+        // Build recent section
+        var recentHistory = getRecentHistory(tabName);
+        var recentStyles = [];
+        recentHistory.slice(0, 10).forEach(function (n) {
+            var s = findStyleByName(tabName, n);
+            if (s) recentStyles.push(s);
+        });
+        if (recentStyles.length > 0) {
+            appendCategorySection(main, "🕑 RECENT", recentStyles, "#8b5cf6", false, tabName, "RECENT");
+        }
+
+        // Build category sections
         sortedCats.forEach(function (catName) {
             var styles = categories[catName];
             if (!styles || styles.length === 0) return;
-            var color = getCategoryColor(catName);
-            appendCategorySection(main, catName, styles, color, false);
+            appendCategorySection(main, catName, styles, getCategoryColor(catName), false, tabName);
         });
 
         body.appendChild(main);
         panel.appendChild(body);
 
-        // --- Footer with selected tags ---
-        const footer = el("div", { className: "sg-footer", id: `sg_footer_${tabName}` });
-        const footerLabel = el("span", { className: "sg-footer-label", textContent: "Selected: " });
-        const footerTags = el("div", { className: "sg-footer-tags", id: `sg_tags_${tabName}` });
-        footer.appendChild(footerLabel);
-        footer.appendChild(footerTags);
+        // Footer
+        var footer = el("div", { className: "sg-footer", id: "sg_footer_" + tabName });
+        footer.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
+        footer.appendChild(el("div", { className: "sg-footer-tags", id: "sg_tags_" + tabName }));
         panel.appendChild(footer);
 
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
-
         state[tabName].panel = overlay;
         filterStyles(tabName);
         return overlay;
+    }
+
+    function rebuildGridCards(tabName) {
+      var wasVisible =
+        state[tabName].panel &&
+        state[tabName].panel.classList.contains("sg-visible");
+      var savedSelection = new Set(state[tabName].selected);
+      var savedApplied = new Map(state[tabName].applied);
+      if (state[tabName].panel) {
+        state[tabName].panel.remove();
+        state[tabName].panel = null;
+      }
+      buildPanel(tabName);
+      savedSelection.forEach(function (n) {
+        state[tabName].selected.add(n);
+        qsa(
+          '.sg-card[data-style-name="' + CSS.escape(n) + '"]',
+          state[tabName].panel,
+        ).forEach(function (c) {
+          c.classList.add("sg-selected");
+          if (savedApplied.has(n)) c.classList.add("sg-applied");
+        });
+      });
+      state[tabName].applied = savedApplied;
+      updateSelectedUI(tabName);
+      if (wasVisible) state[tabName].panel.classList.add("sg-visible");
+    }
+
+    // -----------------------------------------------------------------------
+    // Build a category section
+    // -----------------------------------------------------------------------
+    function appendCategorySection(container, catName, styles, color, isFav, tabName, overrideCatId) {
+        var catId = overrideCatId || (isFav ? "FAVORITES" : catName);
+        var section = el("div", { className: "sg-category", "data-category": catId });
+        section.id = "sg-cat-" + catId.replace(/\s/g, "_");
+
+        var catHeader = el("div", { className: "sg-cat-header" });
+        catHeader.style.borderLeftColor = color;
+        var catTitle = el("span", { className: "sg-cat-title" });
+        var catBadge = el("span", { className: "sg-cat-badge" }); catBadge.style.backgroundColor = color; catBadge.textContent = catName;
+        catTitle.appendChild(catBadge);
+        catTitle.appendChild(document.createTextNode(" (" + styles.length + ")"));
+        var catArrow = el("span", { className: "sg-cat-arrow", textContent: "▾" });
+        var catSelectAll = el("button", {
+            className: "sg-cat-select-all", textContent: "Select All",
+            onClick: function (e) { e.stopPropagation(); toggleCategoryAll(tabName, catId); }
+        });
+        catHeader.appendChild(catTitle);
+        catHeader.appendChild(catSelectAll);
+        catHeader.appendChild(catArrow);
+        catHeader.addEventListener("click", function () {
+            section.classList.toggle("sg-collapsed");
+            catArrow.textContent = section.classList.contains("sg-collapsed") ? "▸" : "▾";
+        });
+        section.appendChild(catHeader);
+
+        var grid = el("div", { className: "sg-grid" });
+        styles.forEach(function (style) {
+            var card = el("div", {
+                className: "sg-card" + (style.has_placeholder ? " sg-has-placeholder" : ""),
+                "data-style-name": style.name,
+                "data-category": catId,
+                "data-search-name": buildSearchText(style),
+                "data-source": style.source || "",
+            });
+            card.style.setProperty("--cat-color", color);
+            if (state[tabName].selected.has(style.name)) { card.classList.add("sg-selected"); card.classList.add("sg-applied"); }
+
+            // Icons container (top-right): check + star side by side
+            var icons = el("div", { className: "sg-card-icons" });
+
+            // Check icon (shows when selected)
+            var check = el("span", { className: "sg-card-check", innerHTML: "✓" });
+            icons.appendChild(check);
+
+            // Star icon
+            var star = el("span", {
+                className: "sg-card-star" + (getFavorites(tabName).has(style.name) ? " sg-fav" : ""),
+                title: "Toggle favorite", innerHTML: "★",
+                onClick: function (e) {
+                    e.stopPropagation();
+                    toggleFavorite(tabName, style.name);
+                    star.classList.toggle("sg-fav", getFavorites(tabName).has(style.name));
+                }
+            });
+            icons.appendChild(star);
+            card.appendChild(icons);
+
+            // Usage badge
+            var usage = state[tabName].usage || {};
+            var uCount = (usage[style.name] || {}).count || 0;
+            if (uCount > 0) {
+                var uBadge = el("span", { className: "sg-card-usage", textContent: uCount.toString(), title: "Used " + uCount + " times" });
+                card.appendChild(uBadge);
+            }
+
+            // Name
+            card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
+
+            // Tooltip
+            if (style.prompt) {
+                card.title = (style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt);
+            }
+
+            // Click = dynamic apply/unapply
+            card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
+
+            // Right-click = context menu
+            card.addEventListener("contextmenu", function (e) { showContextMenu(e, tabName, style.name, style); });
+
+            grid.appendChild(card);
+        });
+        section.appendChild(grid);
+        container.appendChild(section);
     }
 
     // -----------------------------------------------------------------------
@@ -605,465 +898,237 @@
         if (state[tabName].selected.has(styleName)) {
             state[tabName].selected.delete(styleName);
             cardEl.classList.remove("sg-selected");
-            // If this style was applied, remove its prompt contribution
-            if (state[tabName].applied.has(styleName)) {
-                unapplyStyle(tabName, styleName);
-            }
+            cardEl.classList.remove("sg-applied");
+            unapplyStyle(tabName, styleName);
+            // Also update all duplicate cards (e.g. in favorites)
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
+                c.classList.remove("sg-selected");
+                c.classList.remove("sg-applied");
+            });
         } else {
             state[tabName].selected.add(styleName);
-            cardEl.classList.add("sg-selected");
+            applyStyleImmediate(tabName, styleName);
+            // Update all matching cards
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
+                c.classList.add("sg-selected");
+                c.classList.add("sg-applied");
+            });
+            addToRecentHistory(tabName, [styleName]);
         }
         updateSelectedUI(tabName);
+        // Check conflicts
+        updateConflicts(tabName);
     }
 
     function clearAll(tabName) {
-        // Unapply all applied styles first
-        state[tabName].applied.forEach(function (_, styleName) {
-            unapplyStyle(tabName, styleName);
-        });
+        state[tabName].applied.forEach(function (_, n) { unapplyStyle(tabName, n); });
         state[tabName].selected.clear();
-        qsa(".sg-card.sg-selected", state[tabName].panel).forEach(c =>
-            c.classList.remove("sg-selected")
-        );
-        qsa(".sg-card.sg-applied", state[tabName].panel).forEach(c =>
-            c.classList.remove("sg-applied")
-        );
+        state[tabName].applied.clear();
+        if (state[tabName].panel) {
+            qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
+        }
+        setSilentGradio(tabName);
         updateSelectedUI(tabName);
+        updateConflicts(tabName);
     }
 
     function toggleCategoryAll(tabName, catName) {
-        const cards = qsa(`.sg-category[data-category="${catName}"] .sg-card`, state[tabName].panel);
-        const allSelected = [...cards].every(c => c.classList.contains("sg-selected"));
-
-        cards.forEach(c => {
-            const name = c.getAttribute("data-style-name");
+        var cards = qsa('.sg-category[data-category="' + catName + '"] .sg-card', state[tabName].panel);
+        var allSelected = Array.from(cards).every(function (c) { return c.classList.contains("sg-selected"); });
+        cards.forEach(function (c) {
+            var name = c.getAttribute("data-style-name");
             if (allSelected) {
-                if (state[tabName].applied.has(name)) {
-                    unapplyStyle(tabName, name);
-                }
+                unapplyStyle(tabName, name);
                 state[tabName].selected.delete(name);
                 c.classList.remove("sg-selected");
                 c.classList.remove("sg-applied");
             } else {
-                state[tabName].selected.add(name);
+                if (!state[tabName].selected.has(name)) {
+                    state[tabName].selected.add(name);
+                    applyStyleImmediate(tabName, name);
+                }
                 c.classList.add("sg-selected");
+                c.classList.add("sg-applied");
             }
         });
         updateSelectedUI(tabName);
+        updateConflicts(tabName);
     }
 
     function filterStyles(tabName) {
-        const panel = state[tabName].panel;
+        var panel = state[tabName].panel;
         if (!panel) return;
-        const searchEl = qs(`#sg_search_${tabName}`, panel);
-        const query = searchEl ? normalizeSearchText(searchEl.value) : "";
-        const selectedSource = state[tabName].selectedSource || "All";
-        const cards = qsa(".sg-card", panel);
-        const sections = qsa(".sg-category", panel);
+        var searchEl = qs("#sg_search_" + tabName, panel);
+        var query = searchEl ? normalizeSearchText(searchEl.value) : "";
+        var selectedSource = state[tabName].selectedSource || "All";
+        var cards = qsa(".sg-card", panel);
+        var sections = qsa(".sg-category", panel);
 
-        function sourceMatch(card) {
-            return selectedSource === "All" || (card.getAttribute("data-source") || "") === selectedSource;
-        }
+        function sourceMatch(card) { return selectedSource === "All" || (card.getAttribute("data-source") || "") === selectedSource; }
 
-        var matchedCategory = findCategoryMatch(query, tabName);
-
-        if (matchedCategory !== null) {
-            // Query matches a category → show only that category (and apply source filter)
-            sections.forEach(function (sec) {
-                var cat = sec.getAttribute("data-category");
-                sec.style.display = (cat === matchedCategory) ? "" : "none";
-            });
-            cards.forEach(function (card) {
-                var cardCat = card.getAttribute("data-category");
-                var searchMatch = cardCat === matchedCategory;
-                var visible = searchMatch && sourceMatch(card);
-                card.classList.toggle("sg-card-hidden", !visible);
-            });
+        var matchedCat = findCategoryMatch(query, tabName);
+        if (matchedCat) {
+            sections.forEach(function (sec) { sec.style.display = sec.getAttribute("data-category") === matchedCat ? "" : "none"; });
+            cards.forEach(function (card) { card.classList.toggle("sg-card-hidden", !(card.getAttribute("data-category") === matchedCat && sourceMatch(card))); });
         } else {
-            // Strict name matching within selected source
-            sections.forEach(function (sec) {
-                sec.style.display = "";
-            });
+            sections.forEach(function (sec) { sec.style.display = ""; });
             cards.forEach(function (card) {
-                var nameOnlyText = card.getAttribute("data-search-name") || "";
-                var searchMatch = !query || nameMatchesQuery(nameOnlyText, query);
-                var visible = searchMatch && sourceMatch(card);
-                card.classList.toggle("sg-card-hidden", !visible);
+                var text = card.getAttribute("data-search-name") || "";
+                card.classList.toggle("sg-card-hidden", !((!query || nameMatchesQuery(text, query)) && sourceMatch(card)));
             });
-            sections.forEach(function (sec) {
-                var visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
-                sec.style.display = visibleCards.length > 0 ? "" : "none";
-            });
+            sections.forEach(function (sec) { sec.style.display = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length > 0 ? "" : "none"; });
         }
-
-        // Update category header counts from visible cards and hide empty sections
+        // Update counts
         sections.forEach(function (sec) {
-            var visibleCards = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)");
-            var n = visibleCards.length;
-            var catTitle = sec.querySelector(".sg-cat-title");
-            if (catTitle && catTitle.childNodes.length >= 2) {
-                catTitle.childNodes[1].textContent = " (" + n + ")";
-            }
+            var n = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+            var ct = sec.querySelector(".sg-cat-title");
+            if (ct && ct.childNodes.length >= 2) ct.childNodes[1].textContent = " (" + n + ")";
             if (n === 0) sec.style.display = "none";
         });
-
-        // Hide sidebar category buttons that have 0 visible cards (source filter)
+        // Sidebar visibility
         var sidebar = panel.querySelector(".sg-sidebar");
         if (sidebar) {
             qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (btn) {
-                var catName = btn.getAttribute("data-category");
-                var sec = panel.querySelector("#sg-cat-" + (catName + "").replace(/\s/g, "_"));
-                if (!sec) { btn.style.display = ""; return; }
-                var n = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
-                btn.style.display = n > 0 ? "" : "none";
+                var sec = panel.querySelector("#sg-cat-" + (btn.getAttribute("data-category") || "").replace(/\s/g, "_"));
+                btn.style.display = (!sec || sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length > 0) ? "" : "none";
             });
         }
     }
 
     function updateSelectedUI(tabName) {
-        const count = state[tabName].selected.size;
-        const countEl = qs(`#sg_count_${tabName}`);
-        if (countEl) countEl.textContent = `${count} selected`;
+        var count = state[tabName].selected.size;
+        var countEl = qs("#sg_count_" + tabName);
+        if (countEl) countEl.textContent = count + " selected";
 
-        // Update footer tags
-        const tagsEl = qs(`#sg_tags_${tabName}`);
+        var tagsEl = qs("#sg_tags_" + tabName);
         if (tagsEl) {
             tagsEl.innerHTML = "";
-            state[tabName].selected.forEach(name => {
-                const tag = el("span", { className: "sg-tag" });
-                // Find display name
-                let displayName = name;
-                for (const styles of Object.values(state[tabName].categories)) {
-                    const found = styles.find(s => s.name === name);
-                    if (found) { displayName = found.display_name; break; }
+            state[tabName].selected.forEach(function (name) {
+                var tag = el("span", { className: "sg-tag" });
+                var displayName = name;
+                for (var styles of Object.values(state[tabName].categories)) {
+                    var f = styles.find(function (s) { return s.name === name; });
+                    if (f) { displayName = f.display_name; break; }
                 }
                 tag.textContent = displayName;
-                const removeBtn = el("span", {
-                    className: "sg-tag-remove",
-                    textContent: "×",
-                    onClick: (e) => {
+                tag.appendChild(el("span", {
+                    className: "sg-tag-remove", textContent: "×",
+                    onClick: function (e) {
                         e.stopPropagation();
-                        // Unapply if applied
-                        if (state[tabName].applied.has(name)) {
-                            unapplyStyle(tabName, name);
-                        }
+                        unapplyStyle(tabName, name);
                         state[tabName].selected.delete(name);
-                        qsa(`.sg-card[data-style-name="${CSS.escape(name)}"]`, state[tabName].panel).forEach(c => {
-                            c.classList.remove("sg-selected");
-                            c.classList.remove("sg-applied");
-                        });
+                        qsa('.sg-card[data-style-name="' + CSS.escape(name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
                         updateSelectedUI(tabName);
-                    },
-                });
-                tag.appendChild(removeBtn);
+                        updateConflicts(tabName);
+                    }
+                }));
                 tagsEl.appendChild(tag);
             });
         }
 
-        // Update grid button badge
-        const badge = qs(`#sg_btn_badge_${tabName}`);
-        if (badge) {
-            badge.textContent = count > 0 ? count : "";
-            badge.style.display = count > 0 ? "flex" : "none";
-        }
+        var badge = qs("#sg_btn_badge_" + tabName);
+        if (badge) { badge.textContent = count > 0 ? count : ""; badge.style.display = count > 0 ? "flex" : "none"; }
     }
 
-    // -----------------------------------------------------------------------
-    // Prompt text manipulation helpers
-    // -----------------------------------------------------------------------
-
-    /** Remove a substring from a prompt field value, cleaning up surrounding comma separators. */
-    function removeSubstringFromPrompt(fieldValue, substring) {
-        if (!substring || !fieldValue) return fieldValue;
-        var idx = fieldValue.indexOf(substring);
-        if (idx === -1) return fieldValue;
-
-        var before = fieldValue.substring(0, idx);
-        var after = fieldValue.substring(idx + substring.length);
-
-        // Clean up separators: remove leading/trailing ", " at the join point
-        before = before.replace(/,\s*$/, "");
-        after = after.replace(/^,\s*/, "");
-
-        if (before.trim() && after.trim()) {
-            return before.trimEnd() + ", " + after.trimStart();
+    function updateConflicts(tabName) {
+        var conflicts = checkConflictsLocal(tabName);
+        var badge = qs("#sg_conflict_" + tabName);
+        if (!badge) return;
+        if (conflicts.length > 0) {
+            badge.style.display = "inline-flex";
+            badge.textContent = "⚠ " + conflicts.length + " conflict" + (conflicts.length > 1 ? "s" : "");
+            badge.title = conflicts.join("\n");
+        } else {
+            badge.style.display = "none";
         }
-        return (before + after).trim();
-    }
-
-    /** Set a textarea value and trigger Gradio update event. */
-    function setPromptValue(el, value) {
-        el.value = value;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
-    }
-
-    /** Find a style object by name across all categories. */
-    function findStyleByName(tabName, styleName) {
-        var categories = state[tabName].categories;
-        for (var cat of Object.values(categories)) {
-            var found = cat.find(function (s) { return s.name === styleName; });
-            if (found) return found;
-        }
-        return null;
-    }
-
-    // -----------------------------------------------------------------------
-    // Unapply a single style (remove its prompt contribution from fields)
-    // -----------------------------------------------------------------------
-    function unapplyStyle(tabName, styleName) {
-        var record = state[tabName].applied.get(styleName);
-        if (!record) return;
-
-        var promptEl = qs("#" + tabName + "_prompt textarea");
-        var negEl = qs("#" + tabName + "_neg_prompt textarea");
-        if (!promptEl || !negEl) return;
-
-        if (record.prompt) {
-            setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
-        }
-        if (record.negative) {
-            setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
-        }
-
-        state[tabName].applied.delete(styleName);
-
-        // Update applied CSS on all matching cards
-        qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
-            c.classList.remove("sg-applied");
-        });
-    }
-
-    // -----------------------------------------------------------------------
-    // Apply styles to prompt fields
-    // -----------------------------------------------------------------------
-    function applyStyles(tabName) {
-        const selected = [...state[tabName].selected];
-        if (selected.length === 0) {
-            togglePanel(tabName, false);
-            return;
-        }
-
-        const promptEl = qs(`#${tabName}_prompt textarea`);
-        const negEl = qs(`#${tabName}_neg_prompt textarea`);
-
-        if (!promptEl || !negEl) {
-            console.error("[Style Grid] Could not find prompt textareas for", tabName);
-            togglePanel(tabName, false);
-            return;
-        }
-
-        let prompt = promptEl.value;
-        let neg = negEl.value;
-
-        // Only apply styles that are not already applied
-        selected.forEach(name => {
-            if (state[tabName].applied.has(name)) return;
-
-            const style = findStyleByName(tabName, name);
-            if (!style) return;
-
-            var addedPrompt = "";
-            var addedNeg = "";
-
-            if (style.prompt) {
-                if (style.prompt.includes("{prompt}")) {
-                    // {prompt} placeholder: wrap current prompt
-                    var before = prompt;
-                    prompt = style.prompt.replace("{prompt}", prompt);
-                    addedPrompt = null; // Mark as placeholder-based (cannot cleanly remove)
-                } else {
-                    addedPrompt = style.prompt;
-                    var sep = prompt.trim() ? ", " : "";
-                    prompt = prompt.replace(/,\s*$/, "") + sep + addedPrompt;
-                }
-            }
-            if (style.negative_prompt) {
-                if (style.negative_prompt.includes("{prompt}")) {
-                    var beforeNeg = neg;
-                    neg = style.negative_prompt.replace("{prompt}", neg);
-                    addedNeg = null; // Placeholder-based
-                } else {
-                    addedNeg = style.negative_prompt;
-                    var sepN = neg.trim() ? ", " : "";
-                    neg = neg.replace(/,\s*$/, "") + sepN + addedNeg;
-                }
-            }
-
-            // Record what was added (null means placeholder-based, non-removable)
-            state[tabName].applied.set(name, { prompt: addedPrompt, negative: addedNeg });
-
-            // Mark cards as applied
-            qsa('.sg-card[data-style-name="' + CSS.escape(name) + '"]', state[tabName].panel).forEach(function (c) {
-                c.classList.add("sg-applied");
-            });
-        });
-
-        // Set values and trigger Gradio update
-        setPromptValue(promptEl, prompt);
-        setPromptValue(negEl, neg);
-
-        togglePanel(tabName, false);
     }
 
     // -----------------------------------------------------------------------
     // Toggle panel visibility
     // -----------------------------------------------------------------------
     function togglePanel(tabName, show) {
-        let panel = state[tabName].panel;
-        if (!panel) {
-            panel = buildPanel(tabName);
-        }
-
-        if (typeof show === "undefined") {
-            show = !panel.classList.contains("sg-visible");
-        }
-
+        var panel = state[tabName].panel;
+        if (!panel) panel = buildPanel(tabName);
+        if (typeof show === "undefined") show = !panel.classList.contains("sg-visible");
         if (show) {
             panel.classList.add("sg-visible");
             filterStyles(tabName);
-            setTimeout(function () {
-                const search = qs(`#sg_search_${tabName}`, panel);
-                if (search) search.focus();
-            }, 100);
+            setTimeout(function () { var s = qs("#sg_search_" + tabName, panel); if (s) s.focus(); }, 100);
         } else {
             panel.classList.remove("sg-visible");
         }
     }
 
     // -----------------------------------------------------------------------
-    // Create the trigger button next to the small buttons under Generate
+    // Trigger button
     // -----------------------------------------------------------------------
     function createTriggerButton(tabName) {
-        // The small tool buttons are in a div near the Generate button
-        // In Forge, they're typically in: #txt2img_actions_column or #img2img_actions_column
-        // Inside .style_create_row or near the style-related buttons
-
-        const btn = el("button", {
+        var btn = el("button", {
             className: "sg-trigger-btn lg secondary gradio-button tool svelte-cmf5ev",
-            id: `sg_trigger_${tabName}`,
-            title: "Open Style Grid",
-            innerHTML: "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" width=\"16\" height=\"16\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\"/></svg>",
+            id: "sg_trigger_" + tabName, title: "Open Style Grid",
+            innerHTML: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
         });
-
-        const badge = el("span", {
-            className: "sg-btn-badge",
-            id: `sg_btn_badge_${tabName}`,
-        });
+        var badge = el("span", { className: "sg-btn-badge", id: "sg_btn_badge_" + tabName });
         badge.style.display = "none";
         btn.appendChild(badge);
-
-        btn.addEventListener("click", (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            togglePanel(tabName);
-        });
-
+        btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); togglePanel(tabName); });
         return btn;
     }
 
     function injectButton(tabName) {
-        // Strategy: find the row of small buttons under Generate
-        // In Forge/A1111, these are in: #{tabName}_tools or #{tabName}_style_*
-        
-        // Try multiple possible locations
-        const selectors = [
-            `#${tabName}_tools`,                           // Standard tools row
-            `#${tabName}_styles_row`,                      // Styles row  
-            `#${tabName}_actions_column .style_create_row`, // Style create row
-            `#${tabName}_actions_column`,                   // Fallback to actions column
+        var selectors = [
+            "#" + tabName + "_tools",
+            "#" + tabName + "_styles_row",
+            "#" + tabName + "_actions_column .style_create_row",
+            "#" + tabName + "_actions_column",
         ];
-
-        let target = null;
-        for (const sel of selectors) {
-            target = qs(sel);
-            if (target) break;
-        }
-
-        // Alternative: find the small buttons (paste, clear, etc.) near prompt
+        var target = null;
+        for (var i = 0; i < selectors.length; i++) { target = qs(selectors[i]); if (target) break; }
         if (!target) {
-            // Look for the row of icon buttons below the prompt area
-            const styleDropdown = qs(`#${tabName}_styles_row`) || qs(`#${tabName}_styles`);
-            if (styleDropdown) {
-                target = styleDropdown.parentElement;
-            }
+            var dd = qs("#" + tabName + "_styles_row") || qs("#" + tabName + "_styles");
+            if (dd) target = dd.parentElement;
         }
-
         if (!target) {
-            // Last resort: find any tool button row in the tab
-            const tabEl = qs(`#tab_${tabName}`);
-            if (tabEl) {
-                const toolBtns = tabEl.querySelectorAll(".tool");
-                if (toolBtns.length > 0) {
-                    target = toolBtns[toolBtns.length - 1].parentElement;
-                }
-            }
+            var tab = qs("#tab_" + tabName);
+            if (tab) { var btns = tab.querySelectorAll(".tool"); if (btns.length > 0) target = btns[btns.length - 1].parentElement; }
         }
-
-        if (!target) {
-            console.warn(`[Style Grid] Could not find injection point for ${tabName}. Will retry...`);
-            return false;
-        }
-
-        const btn = createTriggerButton(tabName);
-        
-        // Try to insert in a reasonable position
-        // If we found the tools row, append to it
-        if (target.id && target.id.includes("tools")) {
-            target.appendChild(btn);
-        } else if (target.classList.contains("style_create_row")) {
-            target.appendChild(btn);
-        } else {
-            // Insert after the target element
-            target.parentNode.insertBefore(btn, target.nextSibling);
-        }
-
+        if (!target) return false;
+        var btn = createTriggerButton(tabName);
+        if (target.id && target.id.includes("tools")) target.appendChild(btn);
+        else if (target.classList.contains("style_create_row")) target.appendChild(btn);
+        else target.parentNode.insertBefore(btn, target.nextSibling);
         return true;
     }
 
     // -----------------------------------------------------------------------
-    // Keyboard shortcut
+    // Keyboard
     // -----------------------------------------------------------------------
-    document.addEventListener("keydown", (e) => {
-        // Escape to close panel
+    document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
-            ["txt2img", "img2img"].forEach(tab => {
-                if (state[tab].panel && state[tab].panel.classList.contains("sg-visible")) {
-                    togglePanel(tab, false);
-                    e.preventDefault();
-                }
+            ["txt2img", "img2img"].forEach(function (t) {
+                if (state[t].panel && state[t].panel.classList.contains("sg-visible")) { togglePanel(t, false); e.preventDefault(); }
             });
         }
     });
 
     // -----------------------------------------------------------------------
-    // Initialize
+    // Init
     // -----------------------------------------------------------------------
     function init() {
-        let attempts = 0;
-        const maxAttempts = 50;
-
-        const tryInject = () => {
+        var attempts = 0;
+        var tryInject = function () {
             attempts++;
-            let txt2imgDone = qs("#sg_trigger_txt2img") !== null;
-            let img2imgDone = qs("#sg_trigger_img2img") !== null;
-
-            if (!txt2imgDone) txt2imgDone = injectButton("txt2img");
-            if (!img2imgDone) img2imgDone = injectButton("img2img");
-
-            if ((!txt2imgDone || !img2imgDone) && attempts < maxAttempts) {
-                setTimeout(tryInject, 500);
-            } else {
-                if (txt2imgDone) console.log("[Style Grid] txt2img button injected");
-                if (img2imgDone) console.log("[Style Grid] img2img button injected");
+            var t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
+            var t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
+            if ((!t1 || !t2) && attempts < 50) setTimeout(tryInject, 500);
+            else {
+                if (t1) console.log("[Style Grid] txt2img injected");
+                if (t2) console.log("[Style Grid] img2img injected");
+                startPolling();
             }
         };
-
-        // Start trying after a short delay to let Gradio render
-        if (document.readyState === "loading") {
-            document.addEventListener("DOMContentLoaded", () => setTimeout(tryInject, 1500));
-        } else {
-            setTimeout(tryInject, 1500);
-        }
+        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(tryInject, 1500); });
+        else setTimeout(tryInject, 1500);
     }
 
     init();

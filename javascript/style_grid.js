@@ -1,7 +1,7 @@
 /**
  * Style Grid - Visual grid/gallery style selector for Forge WebUI
  * v2.0 — Full-featured: silent mode, dynamic apply, presets, sorting,
- * conflict detection, context menu, inline editor, thumbnails, etc.
+ * conflict detection, context menu, inline editor, etc.
  */
 
 (function () {
@@ -37,7 +37,7 @@
     function addToRecentHistory(t, names) {
         var h = getRecentHistory(t);
         names.forEach(function (n) { h = h.filter(function (x) { return x !== n; }); h.unshift(n); });
-        if (h.length > 30) h = h.slice(0, 30);
+        if (h.length > 10) h = h.slice(0, 10);
         localStorage.setItem("sg_recent_" + t, JSON.stringify(h));
     }
 
@@ -514,14 +514,14 @@
     // -----------------------------------------------------------------------
     function refreshPanel(tabName) {
         apiGet("/style_grid/styles").then(function (data) {
-            // Update hidden Gradio component
             var dataEl = qs("#style_grid_data_" + tabName + " textarea");
             if (dataEl) {
                 var full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
                 setPromptValue(dataEl, JSON.stringify(full));
             }
-            // Rebuild panel
+            // Save state before rebuild
             var savedSelection = new Set(state[tabName].selected);
+            var wasVisible = state[tabName].panel && state[tabName].panel.classList.contains("sg-visible");
             if (state[tabName].panel) {
                 state[tabName].panel.remove();
                 state[tabName].panel = null;
@@ -538,6 +538,10 @@
                 });
             });
             updateSelectedUI(tabName);
+            // Restore visibility — keep panel open if it was open
+            if (wasVisible) {
+                state[tabName].panel.classList.add("sg-visible");
+            }
         });
     }
 
@@ -722,6 +726,18 @@
         // Import/Export
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "📥", title: "Import/Export", onClick: function () { showExportImport(tabName); } }));
 
+        // Manual backup
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "💾",
+            title: "Backup all CSV style files manually. Saves a timestamped copy to data/backups/ (keeps last 20).",
+            onClick: function () {
+                apiPost("/style_grid/backup").then(function (r) {
+                    if (r && r.ok) alert("Backup saved successfully!");
+                    else alert("Nothing to backup or backup failed.");
+                });
+            }
+        }));
+
         // Clear
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Clear", title: "Clear all selections", onClick: function () { clearAll(tabName); } }));
 
@@ -771,12 +787,13 @@
         sortedCats.forEach(function (catName) {
             (categories[catName] || []).forEach(function (s) { if (favSet.has(s.name)) favStyles.push(s); });
         });
+        favStyles = sortStyles(favStyles, state[tabName].sortMode, tabName);
         appendCategorySection(main, "★ " + FAV_CAT, favStyles, "#eab308", true, tabName);
 
         // Build recent section
         var recentHistory = getRecentHistory(tabName);
         var recentStyles = [];
-        recentHistory.slice(0, 20).forEach(function (n) {
+        recentHistory.slice(0, 10).forEach(function (n) {
             var s = findStyleByName(tabName, n);
             if (s) recentStyles.push(s);
         });
@@ -865,14 +882,7 @@
             card.style.setProperty("--cat-color", color);
             if (state[tabName].selected.has(style.name)) { card.classList.add("sg-selected"); card.classList.add("sg-applied"); }
 
-            // Thumbnail
-            if (style.thumbnail) {
-                var thumb = el("div", { className: "sg-card-thumb" });
-                thumb.style.backgroundImage = "url('" + style.thumbnail + "')";
-                card.appendChild(thumb);
-            }
-
-            // Icons container (top-right): star + check side by side
+            // Icons container (top-right): check + star side by side
             var icons = el("div", { className: "sg-card-icons" });
 
             // Check icon (shows when selected)

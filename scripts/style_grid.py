@@ -21,9 +21,8 @@ DATA_DIR = os.path.join(EXT_DIR, "data")
 PRESETS_FILE = os.path.join(DATA_DIR, "presets.json")
 USAGE_FILE = os.path.join(DATA_DIR, "usage.json")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
-THUMBNAILS_DIR = os.path.join(EXT_DIR, "thumbnails")
 
-for _d in [DATA_DIR, BACKUP_DIR, THUMBNAILS_DIR]:
+for _d in [DATA_DIR, BACKUP_DIR]:
     os.makedirs(_d, exist_ok=True)
 
 # ---------------------------------------------------------------------------
@@ -156,13 +155,6 @@ def categorize_styles(styles):
         s["category"] = cat
         s["display_name"] = display
         s["has_placeholder"] = "{prompt}" in (s.get("prompt") or "") or "{prompt}" in (s.get("negative_prompt") or "")
-        # Check thumbnail
-        thumb_name = name.replace(" ", "_").replace("/", "_").replace("\\", "_")
-        for ext in [".png", ".jpg", ".jpeg", ".webp"]:
-            thumb_path = os.path.join(THUMBNAILS_DIR, thumb_name + ext)
-            if os.path.isfile(thumb_path):
-                s["thumbnail"] = f"/file={thumb_path}"
-                break
         if cat not in categories:
             categories[cat] = []
         categories[cat].append(s)
@@ -295,7 +287,6 @@ def save_style_to_csv(name, prompt, negative_prompt, source_file=None):
         ext_styles = os.path.join(EXT_DIR, "styles")
         os.makedirs(ext_styles, exist_ok=True)
         target_path = os.path.join(ext_styles, source_file)
-    backup_csv_files()
     rows = []
     header = None
     if os.path.isfile(target_path):
@@ -339,7 +330,6 @@ def delete_style_from_csv(name, source_file=None):
             break
     if not target_path:
         return False
-    backup_csv_files()
     rows = []
     header = None
     with open(target_path, "r", encoding="utf-8-sig") as f:

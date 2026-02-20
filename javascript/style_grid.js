@@ -1,6 +1,6 @@
 /**
  * Style Grid - Visual grid/gallery style selector for Forge WebUI
- * v2.0 — Full-featured: silent mode, dynamic apply, presets, sorting,
+ * v2.0 — Full-featured: silent mode, dynamic apply, presets,
  * conflict detection, context menu, inline editor, etc.
  */
 
@@ -11,8 +11,8 @@
     // State
     // -----------------------------------------------------------------------
     const state = {
-        txt2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false, sortMode: "name" },
-        img2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false, sortMode: "name" },
+        txt2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false },
+        img2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false },
     };
 
     // -----------------------------------------------------------------------
@@ -23,8 +23,6 @@
     function setStoredSource(t, v) { try { var d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}"); d[t] = v; localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d)); } catch (_) {} }
     function getSilentMode(t) { try { var d = JSON.parse(localStorage.getItem("sg_silent") || "{}"); return !!d[t]; } catch (_) { return false; } }
     function setSilentMode(t, v) { try { var d = JSON.parse(localStorage.getItem("sg_silent") || "{}"); d[t] = v; localStorage.setItem("sg_silent", JSON.stringify(d)); } catch (_) {} }
-    function getSortMode(t) { try { var d = JSON.parse(localStorage.getItem("sg_sort") || "{}"); return d[t] || "name"; } catch (_) { return "name"; } }
-    function setSortMode(t, v) { try { var d = JSON.parse(localStorage.getItem("sg_sort") || "{}"); d[t] = v; localStorage.setItem("sg_sort", JSON.stringify(d)); } catch (_) {} }
 
     // Favorites
     const FAV_CAT = "FAVORITES";
@@ -132,34 +130,6 @@
         var el = qs("#style_grid_cat_order_" + tabName + " textarea");
         if (!el || !el.value) return [];
         try { return JSON.parse(el.value); } catch (_) { return []; }
-    }
-
-    // -----------------------------------------------------------------------
-    // Sorting
-    // -----------------------------------------------------------------------
-    function sortStyles(styles, mode, tabName) {
-        var usage = state[tabName].usage || {};
-        var sorted = styles.slice();
-        switch (mode) {
-            case "name":
-                sorted.sort(function (a, b) { return (a.display_name || a.name).toLowerCase().localeCompare((b.display_name || b.name).toLowerCase()); });
-                break;
-            case "usage":
-                sorted.sort(function (a, b) {
-                    var ua = (usage[a.name] || {}).count || 0, ub = (usage[b.name] || {}).count || 0;
-                    return ub - ua || (a.display_name || a.name).toLowerCase().localeCompare((b.display_name || b.name).toLowerCase());
-                });
-                break;
-            case "recent":
-                var recent = getRecentHistory(tabName);
-                sorted.sort(function (a, b) {
-                    var ia = recent.indexOf(a.name), ib = recent.indexOf(b.name);
-                    if (ia === -1) ia = 9999; if (ib === -1) ib = 9999;
-                    return ia - ib || (a.display_name || a.name).toLowerCase().localeCompare((b.display_name || b.name).toLowerCase());
-                });
-                break;
-        }
-        return sorted;
     }
 
     // -----------------------------------------------------------------------
@@ -570,7 +540,6 @@
         var categories = loadStyles(tabName);
         state[tabName].categories = categories;
         state[tabName].silentMode = getSilentMode(tabName);
-        state[tabName].sortMode = getSortMode(tabName);
         var catOrder = getCategoryOrder(tabName);
 
         var catKeys = Object.keys(categories);
@@ -645,21 +614,6 @@
             searchInput.addEventListener("input", function () { if (timer) clearTimeout(timer); timer = setTimeout(function () { filterStyles(tabName); }, 200); });
         })();
         searchRow.appendChild(searchInput);
-
-        // Sort dropdown
-        var sortBtn = el("button", {
-            className: "sg-btn sg-btn-secondary", title: "Sort styles",
-            textContent: "⇅ " + ({ name: "A-Z", usage: "Usage", recent: "Recent" }[state[tabName].sortMode] || "A-Z"),
-            onClick: function () {
-                var modes = ["name", "usage", "recent"];
-                var idx = (modes.indexOf(state[tabName].sortMode) + 1) % modes.length;
-                state[tabName].sortMode = modes[idx];
-                setSortMode(tabName, modes[idx]);
-                sortBtn.textContent = "⇅ " + ({ name: "A-Z", usage: "Usage", recent: "Recent" }[modes[idx]]);
-                reorderGridBySort(tabName);
-            }
-        });
-        searchRow.appendChild(sortBtn);
 
         // Silent mode toggle
         var silentBtn = el("button", {
@@ -787,7 +741,6 @@
         sortedCats.forEach(function (catName) {
             (categories[catName] || []).forEach(function (s) { if (favSet.has(s.name)) favStyles.push(s); });
         });
-        favStyles = sortStyles(favStyles, state[tabName].sortMode, tabName);
         appendCategorySection(main, "★ " + FAV_CAT, favStyles, "#eab308", true, tabName);
 
         // Build recent section
@@ -805,7 +758,6 @@
         sortedCats.forEach(function (catName) {
             var styles = categories[catName];
             if (!styles || styles.length === 0) return;
-            styles = sortStyles(styles, state[tabName].sortMode, tabName);
             appendCategorySection(main, catName, styles, getCategoryColor(catName), false, tabName);
         });
 
@@ -823,47 +775,6 @@
         state[tabName].panel = overlay;
         filterStyles(tabName);
         return overlay;
-    }
-
-    /** Reorder cards inside each category section by current sort mode (no full rebuild). */
-    function reorderGridBySort(tabName) {
-        var panel = state[tabName].panel;
-        if (!panel) return;
-        var main = panel.querySelector("#sg_main_" + tabName);
-        if (!main) return;
-        var categories = state[tabName].categories;
-        if (!categories) return;
-
-        qsa(".sg-category", main).forEach(function (section) {
-            var catId = section.getAttribute("data-category");
-            var grid = section.querySelector(".sg-grid");
-            if (!grid) return;
-            var styles = [];
-            if (catId === "FAVORITES") {
-                var favSet = getFavorites(tabName);
-                Object.values(categories).forEach(function (arr) {
-                    arr.forEach(function (s) { if (favSet.has(s.name)) styles.push(s); });
-                });
-            } else if (catId === "RECENT") {
-                getRecentHistory(tabName).slice(0, 10).forEach(function (n) {
-                    var s = findStyleByName(tabName, n);
-                    if (s) styles.push(s);
-                });
-            } else {
-                styles = (categories[catId] || []).slice();
-            }
-            if (styles.length === 0) return;
-            var sorted = sortStyles(styles, state[tabName].sortMode, tabName);
-            var cardMap = {};
-            qsa(".sg-card", grid).forEach(function (card) {
-                var name = card.getAttribute("data-style-name");
-                if (name) cardMap[name] = card;
-            });
-            sorted.forEach(function (style) {
-                var card = cardMap[style.name];
-                if (card) grid.appendChild(card);
-            });
-        });
     }
 
     function rebuildGridCards(tabName) {

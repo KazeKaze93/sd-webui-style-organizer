@@ -173,8 +173,8 @@
 
 /* Search input */
 .sg-search {
-    flex: 1;
-    min-width: 120px;
+    flex: 1 1 auto;
+    min-width: 200px;
     padding: 7px 12px;
     border: 1px solid var(--border-color-primary, #374151) !important;
     border-radius: 6px;

@@ -38,4 +38,9 @@ config.local.*
 # Extension: contents of styles/ (CSVs stay local); folder kept via styles/.gitkeep
 styles/*
 !styles/.gitkeep
+
+# Extension: user data and thumbnails (generated/local)
+data/*
+thumbnails/*
+
 .claude/

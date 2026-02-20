@@ -537,6 +537,27 @@
     color: var(--cat-color, #6366f1);
 }
 
+/* Applied state — style is active in prompt fields */
+.sg-card.sg-applied {
+    border: 2px solid var(--cat-color) !important;
+    background: color-mix(in srgb, var(--cat-color, #6366f1) 20%, #111827);
+    box-shadow: 0 0 0 1px var(--cat-color, #6366f1), 0 0 8px rgba(99, 102, 241, 0.15);
+}
+
+.sg-card.sg-applied::before {
+    opacity: 1;
+    width: 4px;
+}
+
+.sg-card.sg-applied::after {
+    content: "✓";
+    position: absolute;
+    top: 4px; right: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cat-color, #6366f1);
+}
+
 .sg-card-name {
     font-size: 12px;
     font-weight: 500;

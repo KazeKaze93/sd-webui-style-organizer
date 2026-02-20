@@ -656,7 +656,7 @@
                 state[tabName].sortMode = modes[idx];
                 setSortMode(tabName, modes[idx]);
                 sortBtn.textContent = "⇅ " + ({ name: "A-Z", usage: "Usage", recent: "Recent" }[modes[idx]]);
-                rebuildGridCards(tabName);
+                reorderGridBySort(tabName);
             }
         });
         searchRow.appendChild(sortBtn);
@@ -823,6 +823,47 @@
         state[tabName].panel = overlay;
         filterStyles(tabName);
         return overlay;
+    }
+
+    /** Reorder cards inside each category section by current sort mode (no full rebuild). */
+    function reorderGridBySort(tabName) {
+        var panel = state[tabName].panel;
+        if (!panel) return;
+        var main = panel.querySelector("#sg_main_" + tabName);
+        if (!main) return;
+        var categories = state[tabName].categories;
+        if (!categories) return;
+
+        qsa(".sg-category", main).forEach(function (section) {
+            var catId = section.getAttribute("data-category");
+            var grid = section.querySelector(".sg-grid");
+            if (!grid) return;
+            var styles = [];
+            if (catId === "FAVORITES") {
+                var favSet = getFavorites(tabName);
+                Object.values(categories).forEach(function (arr) {
+                    arr.forEach(function (s) { if (favSet.has(s.name)) styles.push(s); });
+                });
+            } else if (catId === "RECENT") {
+                getRecentHistory(tabName).slice(0, 10).forEach(function (n) {
+                    var s = findStyleByName(tabName, n);
+                    if (s) styles.push(s);
+                });
+            } else {
+                styles = (categories[catId] || []).slice();
+            }
+            if (styles.length === 0) return;
+            var sorted = sortStyles(styles, state[tabName].sortMode, tabName);
+            var cardMap = {};
+            qsa(".sg-card", grid).forEach(function (card) {
+                var name = card.getAttribute("data-style-name");
+                if (name) cardMap[name] = card;
+            });
+            sorted.forEach(function (style) {
+                var card = cardMap[style.name];
+                if (card) grid.appendChild(card);
+            });
+        });
     }
 
     function rebuildGridCards(tabName) {

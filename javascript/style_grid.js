@@ -10,8 +10,8 @@
     // State
     // -----------------------------------------------------------------------
     const state = {
-        txt2img: { selected: new Set(), categories: {}, panel: null, selectedSource: "All" },
-        img2img: { selected: new Set(), categories: {}, panel: null, selectedSource: "All" },
+        txt2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All" },
+        img2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All" },
     };
 
     const SOURCE_STORAGE_KEY = "sg_source";
@@ -605,6 +605,10 @@
         if (state[tabName].selected.has(styleName)) {
             state[tabName].selected.delete(styleName);
             cardEl.classList.remove("sg-selected");
+            // If this style was applied, remove its prompt contribution
+            if (state[tabName].applied.has(styleName)) {
+                unapplyStyle(tabName, styleName);
+            }
         } else {
             state[tabName].selected.add(styleName);
             cardEl.classList.add("sg-selected");
@@ -613,9 +617,16 @@
     }
 
     function clearAll(tabName) {
+        // Unapply all applied styles first
+        state[tabName].applied.forEach(function (_, styleName) {
+            unapplyStyle(tabName, styleName);
+        });
         state[tabName].selected.clear();
         qsa(".sg-card.sg-selected", state[tabName].panel).forEach(c =>
             c.classList.remove("sg-selected")
+        );
+        qsa(".sg-card.sg-applied", state[tabName].panel).forEach(c =>
+            c.classList.remove("sg-applied")
         );
         updateSelectedUI(tabName);
     }
@@ -623,12 +634,16 @@
     function toggleCategoryAll(tabName, catName) {
         const cards = qsa(`.sg-category[data-category="${catName}"] .sg-card`, state[tabName].panel);
         const allSelected = [...cards].every(c => c.classList.contains("sg-selected"));
-        
+
         cards.forEach(c => {
             const name = c.getAttribute("data-style-name");
             if (allSelected) {
+                if (state[tabName].applied.has(name)) {
+                    unapplyStyle(tabName, name);
+                }
                 state[tabName].selected.delete(name);
                 c.classList.remove("sg-selected");
+                c.classList.remove("sg-applied");
             } else {
                 state[tabName].selected.add(name);
                 c.classList.add("sg-selected");
@@ -728,9 +743,15 @@
                     textContent: "×",
                     onClick: (e) => {
                         e.stopPropagation();
+                        // Unapply if applied
+                        if (state[tabName].applied.has(name)) {
+                            unapplyStyle(tabName, name);
+                        }
                         state[tabName].selected.delete(name);
-                        const card = qs(`.sg-card[data-style-name="${CSS.escape(name)}"]`, state[tabName].panel);
-                        if (card) card.classList.remove("sg-selected");
+                        qsa(`.sg-card[data-style-name="${CSS.escape(name)}"]`, state[tabName].panel).forEach(c => {
+                            c.classList.remove("sg-selected");
+                            c.classList.remove("sg-applied");
+                        });
                         updateSelectedUI(tabName);
                     },
                 });
@@ -748,6 +769,71 @@
     }
 
     // -----------------------------------------------------------------------
+    // Prompt text manipulation helpers
+    // -----------------------------------------------------------------------
+
+    /** Remove a substring from a prompt field value, cleaning up surrounding comma separators. */
+    function removeSubstringFromPrompt(fieldValue, substring) {
+        if (!substring || !fieldValue) return fieldValue;
+        var idx = fieldValue.indexOf(substring);
+        if (idx === -1) return fieldValue;
+
+        var before = fieldValue.substring(0, idx);
+        var after = fieldValue.substring(idx + substring.length);
+
+        // Clean up separators: remove leading/trailing ", " at the join point
+        before = before.replace(/,\s*$/, "");
+        after = after.replace(/^,\s*/, "");
+
+        if (before.trim() && after.trim()) {
+            return before.trimEnd() + ", " + after.trimStart();
+        }
+        return (before + after).trim();
+    }
+
+    /** Set a textarea value and trigger Gradio update event. */
+    function setPromptValue(el, value) {
+        el.value = value;
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    /** Find a style object by name across all categories. */
+    function findStyleByName(tabName, styleName) {
+        var categories = state[tabName].categories;
+        for (var cat of Object.values(categories)) {
+            var found = cat.find(function (s) { return s.name === styleName; });
+            if (found) return found;
+        }
+        return null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Unapply a single style (remove its prompt contribution from fields)
+    // -----------------------------------------------------------------------
+    function unapplyStyle(tabName, styleName) {
+        var record = state[tabName].applied.get(styleName);
+        if (!record) return;
+
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        if (!promptEl || !negEl) return;
+
+        if (record.prompt) {
+            setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
+        }
+        if (record.negative) {
+            setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
+        }
+
+        state[tabName].applied.delete(styleName);
+
+        // Update applied CSS on all matching cards
+        qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
+            c.classList.remove("sg-applied");
+        });
+    }
+
+    // -----------------------------------------------------------------------
     // Apply styles to prompt fields
     // -----------------------------------------------------------------------
     function applyStyles(tabName) {
@@ -756,10 +842,6 @@
             togglePanel(tabName, false);
             return;
         }
-
-        const categories = state[tabName].categories;
-        const allStyles = [];
-        Object.values(categories).forEach(arr => arr.forEach(s => allStyles.push(s)));
 
         const promptEl = qs(`#${tabName}_prompt textarea`);
         const negEl = qs(`#${tabName}_neg_prompt textarea`);
@@ -772,43 +854,53 @@
 
         let prompt = promptEl.value;
         let neg = negEl.value;
-        const posAdd = [];
-        const negAdd = [];
 
+        // Only apply styles that are not already applied
         selected.forEach(name => {
-            const style = allStyles.find(s => s.name === name);
+            if (state[tabName].applied.has(name)) return;
+
+            const style = findStyleByName(tabName, name);
             if (!style) return;
+
+            var addedPrompt = "";
+            var addedNeg = "";
 
             if (style.prompt) {
                 if (style.prompt.includes("{prompt}")) {
+                    // {prompt} placeholder: wrap current prompt
+                    var before = prompt;
                     prompt = style.prompt.replace("{prompt}", prompt);
+                    addedPrompt = null; // Mark as placeholder-based (cannot cleanly remove)
                 } else {
-                    posAdd.push(style.prompt);
+                    addedPrompt = style.prompt;
+                    var sep = prompt.trim() ? ", " : "";
+                    prompt = prompt.replace(/,\s*$/, "") + sep + addedPrompt;
                 }
             }
             if (style.negative_prompt) {
                 if (style.negative_prompt.includes("{prompt}")) {
+                    var beforeNeg = neg;
                     neg = style.negative_prompt.replace("{prompt}", neg);
+                    addedNeg = null; // Placeholder-based
                 } else {
-                    negAdd.push(style.negative_prompt);
+                    addedNeg = style.negative_prompt;
+                    var sepN = neg.trim() ? ", " : "";
+                    neg = neg.replace(/,\s*$/, "") + sepN + addedNeg;
                 }
             }
+
+            // Record what was added (null means placeholder-based, non-removable)
+            state[tabName].applied.set(name, { prompt: addedPrompt, negative: addedNeg });
+
+            // Mark cards as applied
+            qsa('.sg-card[data-style-name="' + CSS.escape(name) + '"]', state[tabName].panel).forEach(function (c) {
+                c.classList.add("sg-applied");
+            });
         });
 
-        if (posAdd.length > 0) {
-            const sep = prompt.trim() ? ", " : "";
-            prompt = prompt.replace(/,\s*$/, "") + sep + posAdd.join(", ");
-        }
-        if (negAdd.length > 0) {
-            const sep = neg.trim() ? ", " : "";
-            neg = neg.replace(/,\s*$/, "") + sep + negAdd.join(", ");
-        }
-
         // Set values and trigger Gradio update
-        promptEl.value = prompt;
-        negEl.value = neg;
-        promptEl.dispatchEvent(new Event("input", { bubbles: true }));
-        negEl.dispatchEvent(new Event("input", { bubbles: true }));
+        setPromptValue(promptEl, prompt);
+        setPromptValue(negEl, neg);
 
         togglePanel(tabName, false);
     }

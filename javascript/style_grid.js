@@ -826,20 +826,29 @@
     }
 
     function rebuildGridCards(tabName) {
-        // Re-sort cards within each category grid
-        var panel = state[tabName].panel;
-        if (!panel) return;
-        qsa(".sg-category", panel).forEach(function (sec) {
-            var catName = sec.getAttribute("data-category");
-            var grid = sec.querySelector(".sg-grid");
-            if (!grid) return;
-            var cards = Array.from(grid.children);
-            var styles = cards.map(function (c) { return findStyleByName(tabName, c.getAttribute("data-style-name")); }).filter(Boolean);
-            styles = sortStyles(styles, state[tabName].sortMode, tabName);
-            var nameOrder = styles.map(function (s) { return s.name; });
-            cards.sort(function (a, b) { return nameOrder.indexOf(a.getAttribute("data-style-name")) - nameOrder.indexOf(b.getAttribute("data-style-name")); });
-            cards.forEach(function (c) { grid.appendChild(c); });
+      var wasVisible =
+        state[tabName].panel &&
+        state[tabName].panel.classList.contains("sg-visible");
+      var savedSelection = new Set(state[tabName].selected);
+      var savedApplied = new Map(state[tabName].applied);
+      if (state[tabName].panel) {
+        state[tabName].panel.remove();
+        state[tabName].panel = null;
+      }
+      buildPanel(tabName);
+      savedSelection.forEach(function (n) {
+        state[tabName].selected.add(n);
+        qsa(
+          '.sg-card[data-style-name="' + CSS.escape(n) + '"]',
+          state[tabName].panel,
+        ).forEach(function (c) {
+          c.classList.add("sg-selected");
+          if (savedApplied.has(n)) c.classList.add("sg-applied");
         });
+      });
+      state[tabName].applied = savedApplied;
+      updateSelectedUI(tabName);
+      if (wasVisible) state[tabName].panel.classList.add("sg-visible");
     }
 
     // -----------------------------------------------------------------------

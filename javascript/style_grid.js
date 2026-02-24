@@ -847,6 +847,32 @@
             section.classList.toggle("sg-collapsed");
             catArrow.textContent = section.classList.contains("sg-collapsed") ? "▸" : "▾";
         });
+        catHeader.addEventListener("contextmenu", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var old = qs(".sg-context-menu"); if (old) old.remove();
+            var menu = el("div", { className: "sg-context-menu" });
+            menu.style.left = e.clientX + "px"; menu.style.top = e.clientY + "px";
+            var item = el("div", {
+                className: "sg-ctx-item",
+                textContent: "🎲 Add category as wildcard",
+                onClick: function () {
+                    menu.remove();
+                    var wcTag = "__" + catId.toLowerCase() + "__";
+                    var promptEl = qs("#" + tabName + "_prompt textarea");
+                    if (promptEl) {
+                        var sep = promptEl.value.trim() ? ", " : "";
+                        setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
+                    }
+                }
+            });
+            menu.appendChild(item);
+            document.body.appendChild(menu);
+            setTimeout(function () {
+                var close = function () { menu.remove(); document.removeEventListener("click", close); };
+                document.addEventListener("click", close);
+            }, 0);
+        });
         section.appendChild(catHeader);
 
         var grid = el("div", { className: "sg-grid" });

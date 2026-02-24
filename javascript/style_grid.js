@@ -11,8 +11,8 @@
     // State
     // -----------------------------------------------------------------------
     const state = {
-        txt2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false },
-        img2img: { selected: new Set(), applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false },
+        txt2img: { selected: new Set(), selectedOrder: [], applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false, userPromptBase: "", userPromptBaseNeg: "" },
+        img2img: { selected: new Set(), selectedOrder: [], applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false, userPromptBase: "", userPromptBaseNeg: "" },
     };
 
     // -----------------------------------------------------------------------
@@ -190,6 +190,11 @@
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
+
+        if (state[tabName].applied.size === 0) {
+            state[tabName].userPromptBase = promptEl.value;
+            state[tabName].userPromptBaseNeg = negEl.value;
+        }
 
         var prompt = promptEl.value;
         var neg = negEl.value;
@@ -414,8 +419,10 @@
                     onClick: function () {
                         // Clear current and load preset
                         clearAll(tabName);
-                        (p.styles || []).forEach(function (sn) {
+                        var presetStyles = p.styles || [];
+                        presetStyles.forEach(function (sn) {
                             state[tabName].selected.add(sn);
+                            state[tabName].selectedOrder.push(sn);
                             applyStyleImmediate(tabName, sn);
                             qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
                         });
@@ -673,6 +680,7 @@
                 var rand = allStyles[Math.floor(Math.random() * allStyles.length)];
                 if (!state[tabName].selected.has(rand.name)) {
                     state[tabName].selected.add(rand.name);
+                    if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
                     applyStyleImmediate(tabName, rand.name);
                     qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
                     updateSelectedUI(tabName);
@@ -816,14 +824,17 @@
         state[tabName].panel &&
         state[tabName].panel.classList.contains("sg-visible");
       var savedSelection = new Set(state[tabName].selected);
+      var savedOrder = (state[tabName].selectedOrder || []).slice();
       var savedApplied = new Map(state[tabName].applied);
       if (state[tabName].panel) {
         state[tabName].panel.remove();
         state[tabName].panel = null;
       }
       buildPanel(tabName);
+      state[tabName].selectedOrder = savedOrder.filter(function (n) { return savedSelection.has(n); });
       savedSelection.forEach(function (n) {
         state[tabName].selected.add(n);
+        if (state[tabName].selectedOrder.indexOf(n) === -1) state[tabName].selectedOrder.push(n);
         qsa(
           '.sg-card[data-style-name="' + CSS.escape(n) + '"]',
           state[tabName].panel,
@@ -957,6 +968,7 @@
     function toggleStyle(tabName, styleName, cardEl) {
         if (state[tabName].selected.has(styleName)) {
             state[tabName].selected.delete(styleName);
+            state[tabName].selectedOrder = state[tabName].selectedOrder.filter(function (n) { return n !== styleName; });
             cardEl.classList.remove("sg-selected");
             cardEl.classList.remove("sg-applied");
             unapplyStyle(tabName, styleName);
@@ -967,6 +979,7 @@
             });
         } else {
             state[tabName].selected.add(styleName);
+            if (state[tabName].selectedOrder.indexOf(styleName) === -1) state[tabName].selectedOrder.push(styleName);
             applyStyleImmediate(tabName, styleName);
             // Update all matching cards
             qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
@@ -983,7 +996,10 @@
     function clearAll(tabName) {
         state[tabName].applied.forEach(function (_, n) { unapplyStyle(tabName, n); });
         state[tabName].selected.clear();
+        state[tabName].selectedOrder = [];
         state[tabName].applied.clear();
+        state[tabName].userPromptBase = "";
+        state[tabName].userPromptBaseNeg = "";
         if (state[tabName].panel) {
             qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
         }
@@ -1000,11 +1016,13 @@
             if (allSelected) {
                 unapplyStyle(tabName, name);
                 state[tabName].selected.delete(name);
+                state[tabName].selectedOrder = state[tabName].selectedOrder.filter(function (n) { return n !== name; });
                 c.classList.remove("sg-selected");
                 c.classList.remove("sg-applied");
             } else {
                 if (!state[tabName].selected.has(name)) {
                     state[tabName].selected.add(name);
+                    if (state[tabName].selectedOrder.indexOf(name) === -1) state[tabName].selectedOrder.push(name);
                     applyStyleImmediate(tabName, name);
                 }
                 c.classList.add("sg-selected");
@@ -1055,16 +1073,49 @@
         }
     }
 
+    function rebuildPromptFromOrder(tabName) {
+        if (state[tabName].silentMode) {
+            setSilentGradio(tabName);
+            return;
+        }
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        if (!promptEl || !negEl) return;
+        var order = state[tabName].selectedOrder || [];
+        var orderedApplied = order.filter(function (n) { return state[tabName].applied.has(n); });
+        var prompts = orderedApplied.map(function (n) {
+            var r = state[tabName].applied.get(n);
+            return r && r.prompt ? r.prompt : null;
+        }).filter(Boolean);
+        var negs = orderedApplied.map(function (n) {
+            var r = state[tabName].applied.get(n);
+            return r && r.negative ? r.negative : null;
+        }).filter(Boolean);
+        var base = (state[tabName].userPromptBase || "").trim();
+        var newPrompt = base + (prompts.length ? (base ? ", " : "") + prompts.join(", ") : "");
+        var baseNeg = (state[tabName].userPromptBaseNeg || "").trim();
+        var newNeg = baseNeg + (negs.length ? (baseNeg ? ", " : "") + negs.join(", ") : "");
+        setPromptValue(promptEl, newPrompt);
+        setPromptValue(negEl, newNeg);
+    }
+
     function updateSelectedUI(tabName) {
         var count = state[tabName].selected.size;
         var countEl = qs("#sg_count_" + tabName);
         if (countEl) countEl.textContent = count + " selected";
 
+        var order = state[tabName].selectedOrder || [];
+        order = order.filter(function (n) { return state[tabName].selected.has(n); });
+        state[tabName].selected.forEach(function (n) {
+            if (order.indexOf(n) === -1) order.push(n);
+        });
+        state[tabName].selectedOrder = order;
+
         var tagsEl = qs("#sg_tags_" + tabName);
         if (tagsEl) {
             tagsEl.innerHTML = "";
-            state[tabName].selected.forEach(function (name) {
-                var tag = el("span", { className: "sg-tag" });
+            order.forEach(function (name) {
+                var tag = el("span", { className: "sg-tag", draggable: "true", "data-style-name": name });
                 var displayName = name;
                 for (var styles of Object.values(state[tabName].categories)) {
                     var f = styles.find(function (s) { return s.name === name; });
@@ -1077,11 +1128,62 @@
                         e.stopPropagation();
                         unapplyStyle(tabName, name);
                         state[tabName].selected.delete(name);
+                        state[tabName].selectedOrder = state[tabName].selectedOrder.filter(function (n) { return n !== name; });
                         qsa('.sg-card[data-style-name="' + CSS.escape(name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
                         updateSelectedUI(tabName);
                         updateConflicts(tabName);
                     }
                 }));
+
+                tag.addEventListener("dragstart", function (e) {
+                    if (e.target.closest(".sg-tag-remove")) { e.preventDefault(); return; }
+                    e.dataTransfer.setData("text/plain", name);
+                    e.dataTransfer.effectAllowed = "move";
+                    tag.classList.add("sg-tag-dragging");
+                });
+                tag.addEventListener("dragend", function () {
+                    tag.classList.remove("sg-tag-dragging");
+                    qsa(".sg-tag", tagsEl).forEach(function (t) { t.classList.remove("sg-drag-over-left", "sg-drag-over-right"); });
+                });
+                tag.addEventListener("dragover", function (e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    var rect = this.getBoundingClientRect();
+                    var midX = rect.left + rect.width / 2;
+                    qsa(".sg-tag", tagsEl).forEach(function (t) {
+                        t.classList.remove("sg-drag-over-left", "sg-drag-over-right");
+                    });
+                    if (e.clientX < midX) {
+                        this.classList.add("sg-drag-over-left");
+                    } else {
+                        this.classList.add("sg-drag-over-right");
+                    }
+                });
+                tag.addEventListener("dragleave", function () {
+                    this.classList.remove("sg-drag-over-left", "sg-drag-over-right");
+                });
+                tag.addEventListener("drop", function (e) {
+                    e.preventDefault();
+                    var rect = this.getBoundingClientRect();
+                    var midX = rect.left + rect.width / 2;
+                    qsa(".sg-tag", tagsEl).forEach(function (t) {
+                        t.classList.remove("sg-drag-over-left", "sg-drag-over-right");
+                    });
+                    var fromName = e.dataTransfer.getData("text/plain");
+                    if (!fromName || fromName === name) return;
+                    var ord = state[tabName].selectedOrder.slice();
+                    var fromIdx = ord.indexOf(fromName);
+                    var toIdx = ord.indexOf(name);
+                    if (fromIdx === -1 || toIdx === -1) return;
+                    var insertIdx = e.clientX < midX ? toIdx : toIdx + 1;
+                    ord.splice(fromIdx, 1);
+                    if (fromIdx < insertIdx) insertIdx--;
+                    ord.splice(insertIdx, 0, fromName);
+                    state[tabName].selectedOrder = ord;
+                    rebuildPromptFromOrder(tabName);
+                    updateSelectedUI(tabName);
+                });
+
                 tagsEl.appendChild(tag);
             });
         }

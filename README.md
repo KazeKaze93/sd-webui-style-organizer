@@ -33,6 +33,11 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 - **Selected summary** — Footer shows selected styles as removable tags; the trigger button shows a count badge.
 - **Preferences** — Source choice and compact mode are saved in the browser (survive refresh).
 - **Both tabs** — Separate state for txt2img and img2img; same behavior on both.
+- **Smart tag deduplication** — When applying multiple styles, duplicate tags are automatically skipped. Works in both normal and silent mode.
+- **Source-aware randomizer** — The 🎲 button respects the selected CSV source: if a specific file is selected, random picks only from that file.
+- **Search clear button** — × button in the search field for quick clear.
+- **Drag-and-drop prompt ordering** — Tags of selected styles in the footer can be dragged to change order. The prompt updates in real time; user text stays in place.
+- **Category wildcard injection** — Right-click on a category header → "Add as wildcard to prompt" inserts all styles of the category as `__sg_CATEGORY__` into the prompt. Compatible with Dynamic Prompts.
 
 ---
 
@@ -62,6 +67,7 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 - **Select All** on a category header to select or clear all styles in that category.
 - **Star (★)** on a card to add or remove it from **★ Favorites**; the Favorites block updates at once.
 - **Silent mode** — When `👁 Silent` is active, clicking a card selects it, but prompts are not modified visually. Styles are injected during generation and appear in image metadata.
+- You can reorder applied styles by dragging their tags in the Selected footer. The prompt field updates to reflect the new order.
 
 <img width="1110" height="776" alt="{7E6AFE9D-ED25-4B17-8AA1-13CC2CEF3528}" src="https://github.com/user-attachments/assets/f0a8a0d8-564b-4a38-b97a-651d0c2a42c8" />
 <img width="921" height="743" alt="{6512EE52-164C-410A-9A19-99EFC3556F05}" src="https://github.com/user-attachments/assets/fb075df3-d3cd-4a10-b36f-f2e2d61da162" />
@@ -181,6 +187,7 @@ Then restart the UI.
 | Styles not loading | Ensure CSVs are in Forge root or the extension's `styles/` folder; check `name,prompt,negative_prompt` header and encoding (UTF-8). |
 | Conflict warning wrong | The detector compares comma-separated tokens. Complex prompts with shared common words may trigger false positives. |
 | Silent mode not working | Ensure the extension's `process()` hook is running — check that `Style Grid` appears in your image metadata after generation. |
+| Drag-and-drop not working | Ensure you're dragging the style tags in the footer area (bottom of Style Grid panel), not the cards in the grid. |
 
 ---
 

@@ -516,14 +516,26 @@ class StyleGridScript(scripts.Script):
                 else:
                     neg_add.append(s["negative_prompt"])
         if prompts_add:
-            addition = ", ".join(prompts_add)
+            style_tags = [t.strip() for s in prompts_add for t in s.split(",") if t.strip()]
             for i in range(len(p.all_prompts)):
-                sep = ", " if p.all_prompts[i].strip() else ""
-                p.all_prompts[i] = p.all_prompts[i].rstrip(", ") + sep + addition
+                current_tags = [t.strip() for t in p.all_prompts[i].split(",") if t.strip()]
+                seen = {t.lower() for t in current_tags}
+                result = list(current_tags)
+                for t in style_tags:
+                    if t.lower() not in seen:
+                        result.append(t)
+                        seen.add(t.lower())
+                p.all_prompts[i] = ", ".join(result)
         if neg_add:
-            addition = ", ".join(neg_add)
+            style_neg_tags = [t.strip() for s in neg_add for t in s.split(",") if t.strip()]
             for i in range(len(p.all_negative_prompts)):
-                sep = ", " if p.all_negative_prompts[i].strip() else ""
-                p.all_negative_prompts[i] = p.all_negative_prompts[i].rstrip(", ") + sep + addition
+                current_tags = [t.strip() for t in p.all_negative_prompts[i].split(",") if t.strip()]
+                seen = {t.lower() for t in current_tags}
+                result = list(current_tags)
+                for t in style_neg_tags:
+                    if t.lower() not in seen:
+                        result.append(t)
+                        seen.add(t.lower())
+                p.all_negative_prompts[i] = ", ".join(result)
         p.extra_generation_params["Style Grid"] = ", ".join(style_names)
         increment_usage(style_names)

@@ -201,9 +201,17 @@
                 prompt = style.prompt.replace("{prompt}", prompt);
                 addedPrompt = null;
             } else {
-                addedPrompt = style.prompt;
-                var sep = prompt.trim() ? ", " : "";
-                prompt = prompt.replace(/,\s*$/, "") + sep + addedPrompt;
+                var existingNorm = {};
+                (prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNorm[t.toLowerCase()] = true; });
+                var toAdd = [];
+                (style.prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) {
+                    if (!existingNorm[t.toLowerCase()]) { toAdd.push(t); existingNorm[t.toLowerCase()] = true; }
+                });
+                addedPrompt = toAdd.length ? toAdd.join(", ") : "";
+                if (addedPrompt) {
+                    var sep = prompt.trim() ? ", " : "";
+                    prompt = prompt.replace(/,\s*$/, "") + sep + addedPrompt;
+                }
             }
         }
         if (style.negative_prompt) {
@@ -211,9 +219,17 @@
                 neg = style.negative_prompt.replace("{prompt}", neg);
                 addedNeg = null;
             } else {
-                addedNeg = style.negative_prompt;
-                var sepN = neg.trim() ? ", " : "";
-                neg = neg.replace(/,\s*$/, "") + sepN + addedNeg;
+                var existingNegNorm = {};
+                (neg.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNegNorm[t.toLowerCase()] = true; });
+                var toAddNeg = [];
+                (style.negative_prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) {
+                    if (!existingNegNorm[t.toLowerCase()]) { toAddNeg.push(t); existingNegNorm[t.toLowerCase()] = true; }
+                });
+                addedNeg = toAddNeg.length ? toAddNeg.join(", ") : "";
+                if (addedNeg) {
+                    var sepN = neg.trim() ? ", " : "";
+                    neg = neg.replace(/,\s*$/, "") + sepN + addedNeg;
+                }
             }
         }
 

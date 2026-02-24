@@ -172,6 +172,31 @@
 .sg-source-dropdown-item.sg-active { background: var(--color-accent, #6366f1); color: #fff !important; }
 
 /* Search input */
+.sg-search-wrapper {
+    position: relative;
+    display: flex;
+    flex: 1;
+}
+.sg-search-wrapper .sg-search {
+    padding-right: 28px;
+}
+.sg-search-clear {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #9ca3af;
+    font-size: 16px;
+    display: none;
+    z-index: 1;
+}
+.sg-search-clear:hover {
+    color: #f87171;
+}
+.sg-search-clear.sg-visible {
+    display: block;
+}
 .sg-search {
     flex: 1 1 auto;
     min-width: 200px;

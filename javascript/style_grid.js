@@ -609,11 +609,24 @@
 
         // Search
         var searchInput = el("input", { className: "sg-search", type: "text", placeholder: "Search styles...", id: "sg_search_" + tabName });
+        var searchWrapper = el("div", { className: "sg-search-wrapper" });
+        var clearBtn = el("span", { className: "sg-search-clear", textContent: "×" });
+        clearBtn.addEventListener("click", function () {
+            searchInput.value = "";
+            clearBtn.classList.remove("sg-visible");
+            filterStyles(tabName);
+        });
         (function () {
             var timer = null;
-            searchInput.addEventListener("input", function () { if (timer) clearTimeout(timer); timer = setTimeout(function () { filterStyles(tabName); }, 200); });
+            searchInput.addEventListener("input", function () {
+                clearBtn.classList.toggle("sg-visible", searchInput.value.length > 0);
+                if (timer) clearTimeout(timer);
+                timer = setTimeout(function () { filterStyles(tabName); }, 200);
+            });
         })();
-        searchRow.appendChild(searchInput);
+        searchWrapper.appendChild(searchInput);
+        searchWrapper.appendChild(clearBtn);
+        searchRow.appendChild(searchWrapper);
 
         // Silent mode toggle
         var silentBtn = el("button", {

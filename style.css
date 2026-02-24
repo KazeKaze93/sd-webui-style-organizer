@@ -420,6 +420,22 @@
     border: 1px solid var(--border-color-primary, #374151);
     color: var(--body-text-color, #d1d5db);
     font-size: 11px; white-space: nowrap;
+    cursor: grab;
+}
+.sg-tag:active { cursor: grabbing; }
+.sg-tag.sg-tag-dragging {
+    opacity: 0.3;
+    transform: scale(0.9);
+}
+.sg-tag.sg-drag-over-left {
+    border-left: 3px solid #818cf8;
+    margin-left: 6px;
+    box-shadow: -4px 0 8px rgba(99, 102, 241, 0.5);
+}
+.sg-tag.sg-drag-over-right {
+    border-right: 3px solid #818cf8;
+    margin-right: 6px;
+    box-shadow: 4px 0 8px rgba(99, 102, 241, 0.5);
 }
 .sg-tag-remove { cursor: pointer; color: var(--body-text-color-subdued, #9ca3af); font-size: 14px; line-height: 1; font-weight: 700; }
 .sg-tag-remove:hover { color: #f87171; }

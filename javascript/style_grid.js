@@ -647,7 +647,12 @@
             className: "sg-btn sg-btn-secondary", textContent: "🎲", title: "Random style (use at your own risk!)",
             onClick: function () {
                 var allStyles = [];
-                Object.values(state[tabName].categories).forEach(function (arr) { arr.forEach(function (s) { allStyles.push(s); }); });
+                var src = state[tabName].selectedSource;
+                Object.values(state[tabName].categories).forEach(function (arr) {
+                    arr.forEach(function (s) {
+                        if (src === "All" || s.source === src) allStyles.push(s);
+                    });
+                });
                 if (allStyles.length === 0) return;
                 var rand = allStyles[Math.floor(Math.random() * allStyles.length)];
                 if (!state[tabName].selected.has(rand.name)) {

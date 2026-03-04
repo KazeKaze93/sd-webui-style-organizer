@@ -105,7 +105,7 @@ def parse_styles_csv(filepath):
 
 def load_all_styles():
     all_styles = []
-    seen_names = set()
+    seen_keys = set()
     for d in get_styles_dirs():
         if not os.path.isdir(d):
             continue
@@ -113,14 +113,16 @@ def load_all_styles():
             if fname.lower().endswith(".csv"):
                 filepath = os.path.join(d, fname)
                 for s in parse_styles_csv(filepath):
-                    if s["name"] not in seen_names:
-                        seen_names.add(s["name"])
+                    key = (s.get("source", ""), s["name"])
+                    if key not in seen_keys:
+                        seen_keys.add(key)
                         all_styles.append(s)
     root_csv = os.path.join(os.getcwd(), "styles.csv")
     if os.path.isfile(root_csv):
         for s in parse_styles_csv(root_csv):
-            if s["name"] not in seen_names:
-                seen_names.add(s["name"])
+            key = (s.get("source", ""), s["name"])
+            if key not in seen_keys:
+                seen_keys.add(key)
                 all_styles.append(s)
     return all_styles
 

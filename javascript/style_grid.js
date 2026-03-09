@@ -1183,7 +1183,6 @@
         searchWrapper.appendChild(acDropdown);
         searchRow.appendChild(searchWrapper);
 
-        const suggestions = buildSuggestions(tabName);
         let acSuppressNext = false;
 
         searchInput.addEventListener("input", function () {
@@ -1203,6 +1202,7 @@
                 const tokens = val.split(/\s+/);
                 const lastToken = tokens[tokens.length - 1] || "";
 
+                const suggestions = buildSuggestions(tabName);
                 const matches = suggestions.filter(function (s) {
                     return acMatches(s, lastToken);
                 }).slice(0, 8);
@@ -1713,16 +1713,14 @@
     // -----------------------------------------------------------------------
     function buildSuggestions(tabName) {
         const sugg = new Set();
-        const usage = state[tabName].usage || {};
-        const allStyles = [];
+        var selectedSource = state[tabName].selectedSource || "All";
         Object.values(state[tabName].categories || {}).forEach(function (arr) {
-            arr.forEach(function (s) { allStyles.push(s); });
+            arr.forEach(function (style) {
+                if (selectedSource === "All" || style.source === selectedSource) {
+                    sugg.add(style.display_name || style.name);
+                }
+            });
         });
-        allStyles
-            .sort(function (a, b) {
-                return (usage[b.name] && usage[b.name].count || 0) - (usage[a.name] && usage[a.name].count || 0);
-            })
-            .forEach(function (s) { sugg.add(s.display_name || s.name); });
         return Array.from(sugg);
     }
 

@@ -1,8 +1,73 @@
-# 🎨 Style Grid — Visual Style Selector for Forge WebUI
+# Style Grid v2.0
+
+A visual style selector for Stable Diffusion WebUI Forge.
+Replaces the default dropdown with a searchable, categorized grid.
 
 A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge). Replaces the default dropdown with a searchable, categorized grid — multi-select, favorites, source filter, instant apply, silent mode, presets, conflict detection, and more.
 
 ![UI](https://img.shields.io/badge/UI-Grid%20Selector-6366f1?style=flat-square)
+
+---
+
+## What's New in v2.0
+
+### Smart Search with Autocomplete
+Start typing to search across all 800+ style names.
+Autocomplete dropdown suggests matching styles as you type —
+searches anywhere in the name, case-insensitive.
+
+![Smart Search](docs/screenshots/smart_search.png)
+
+---
+
+### Thumbnail Preview on Hover
+Hover over any card for 700ms to see a preview popup with:
+- Thumbnail image (if uploaded or generated)
+- Style display name
+- Prompt content preview
+
+**Add thumbnails two ways:**
+1. Right-click a card → **Upload preview image** — pick any image from disk
+2. Right-click a card → **Generate preview (SD)** — auto-generates using
+   your current model with the style's prompt, fixed seed 42, 384×512px
+
+Cards with thumbnails get a subtle left-border indicator.
+
+![Thumbnail Hover Preview](docs/screenshots/thumbnail_hover.png)
+![Generate Preview](docs/screenshots/thumbnail_generate.png)
+
+Thumbnails stored in `data/thumbnails/` inside the extension folder.
+
+---
+
+### Recommended Combos
+Select any style → a row appears at the bottom of the panel showing
+what the style author recommends combining it with.
+
+- **Blue chips** = specific styles. Click to apply immediately.
+- **Yellow chips** = entire categories. Click to filter the grid.
+- **Red chips** = conflicts to avoid.
+- ✓ mark on chips that are already selected.
+
+Works automatically for all style packs that have description fields filled.
+
+![Recommended Combos](docs/screenshots/recommended_combos.png)
+![Recommended Combos Footer](docs/screenshots/recommended_combos_footer.png)
+---
+
+### Performance
+- Grid renders instantly regardless of style count thanks to
+  `content-visibility: auto` — browser skips off-screen categories entirely
+- Server-side style cache with ETag — CSV files read once, not on every panel open
+- All API calls have error handling with visible status messages
+
+---
+
+### Style Editor Improvements
+- **Description & Combos field** — write combo suggestions when creating
+  custom styles. Format: `Your description. Combos: STYLE_X; CATEGORY_*`
+- Delete and Move dialogs are now proper modals instead of browser confirm()
+- Error feedback for failed save/delete operations
 
 ---
 
@@ -149,6 +214,22 @@ These files are gitignored and created automatically.
 3. The grid auto-refreshes within 5 seconds, or click 🔄 to reload immediately.
 
 You can also create styles directly from the grid using ➕ or right-click → Edit.
+
+---
+
+## CSV Format
+
+Five columns: `name, prompt, negative_prompt, description, category`
+
+The `description` field supports combo suggestions:
+
+Combos: STYLE_X; SCENE_Outdoor; LIGHTING_*
+Conflicts: do not mix with BASE_Pony
+
+## Style Packs
+
+[existing links here]
+Place screenshots in docs/screenshots/.
 
 ---
 

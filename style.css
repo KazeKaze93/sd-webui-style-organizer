@@ -270,7 +270,11 @@
 .sg-main::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
 
 /* ---- Category ---- */
-.sg-category { margin-bottom: 16px; }
+.sg-category {
+    content-visibility: auto;
+    contain-intrinsic-size: 0 300px;
+    margin-bottom: 16px;
+}
 .sg-cat-header {
     display: flex; align-items: center; gap: 10px;
     padding: 6px 10px; border-left: 3px solid #6b7280;

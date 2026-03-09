@@ -918,14 +918,9 @@
             card.style.setProperty("--cat-color", color);
             if (state[tabName].selected.has(style.name)) { card.classList.add("sg-selected"); card.classList.add("sg-applied"); }
 
-            // Icons container (top-right): check + star side by side
             var icons = el("div", { className: "sg-card-icons" });
-
-            // Check icon (shows when selected)
             var check = el("span", { className: "sg-card-check", textContent: "✓" });
             icons.appendChild(check);
-
-            // Star icon
             var star = el("span", {
                 className: "sg-card-star" + (getFavorites(tabName).has(style.name) ? " sg-fav" : ""),
                 title: "Toggle favorite", textContent: "★",
@@ -938,7 +933,6 @@
             icons.appendChild(star);
             card.appendChild(icons);
 
-            // Usage badge
             var usage = state[tabName].usage || {};
             var uCount = (usage[style.name] || {}).count || 0;
             if (uCount > 0) {
@@ -946,18 +940,13 @@
                 card.appendChild(uBadge);
             }
 
-            // Name
             card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
 
-            // Tooltip
             if (style.prompt) {
                 card.title = (style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt);
             }
 
-            // Click = dynamic apply/unapply
             card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
-
-            // Right-click = context menu
             card.addEventListener("contextmenu", function (e) { showContextMenu(e, tabName, style.name, style); });
 
             grid.appendChild(card);
@@ -1060,14 +1049,12 @@
             });
             sections.forEach(function (sec) { sec.style.display = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length > 0 ? "" : "none"; });
         }
-        // Update counts
         sections.forEach(function (sec) {
             var n = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
             var ct = sec.querySelector(".sg-cat-title");
             if (ct && ct.childNodes.length >= 2) ct.childNodes[1].textContent = " (" + n + ")";
             if (n === 0) sec.style.display = "none";
         });
-        // Sidebar visibility
         var sidebar = panel.querySelector(".sg-sidebar");
         if (sidebar) {
             qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (btn) {

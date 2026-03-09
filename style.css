@@ -461,6 +461,103 @@
 .sg-tag-remove { cursor: pointer; color: var(--body-text-color-subdued, #9ca3af); font-size: 14px; line-height: 1; font-weight: 700; }
 .sg-tag-remove:hover { color: #f87171; }
 
+.sg-combos-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 6px 18px;
+    border-top: 1px solid var(--border-color-primary, #374151);
+    min-height: 0;
+}
+
+.sg-combo-desc {
+    font-size: 11px;
+    color: var(--body-text-color-subdued, #9ca3af);
+    font-style: italic;
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+}
+
+.sg-combo-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--body-text-color-subdued, #9ca3af);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.sg-combo-conflict-label {
+    color: #fca5a5;
+}
+
+.sg-combo-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 9px;
+    border-radius: 10px;
+    font-size: 11px;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    transition: all 0.12s;
+}
+
+/* Clickable style chip */
+.sg-combo-chip-style {
+    background: rgba(99, 102, 241, 0.1);
+    border-color: rgba(99, 102, 241, 0.3);
+    color: #a5b4fc;
+    cursor: pointer;
+}
+.sg-combo-chip-style:hover {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: #6366f1;
+    color: #fff;
+}
+/* Already applied */
+.sg-combo-chip-active {
+    background: rgba(99, 102, 241, 0.25);
+    border-color: #6366f1;
+    color: #fff;
+    cursor: default;
+}
+.sg-combo-chip-active::before {
+    content: "✓ ";
+    font-size: 10px;
+}
+
+/* Category wildcard chip */
+.sg-combo-chip-cat {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.3);
+    color: #fcd34d;
+    cursor: pointer;
+}
+.sg-combo-chip-cat:hover {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: #f59e0b;
+}
+
+/* Plain hint — not clickable */
+.sg-combo-chip-hint {
+    background: var(--background-fill-secondary, #1f2937);
+    border-color: var(--border-color-primary, #374151);
+    color: var(--body-text-color-subdued, #6b7280);
+    cursor: default;
+    opacity: 0.7;
+}
+
+/* Conflict chip */
+.sg-combo-chip-conflict {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.25);
+    color: #fca5a5;
+    cursor: default;
+}
+
 /* ---- Context Menu ---- */
 .sg-context-menu {
     position: fixed;

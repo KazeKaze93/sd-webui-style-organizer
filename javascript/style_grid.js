@@ -186,6 +186,76 @@
         }
         return null;
     }
+    function parseDescription(desc) {
+        if (!desc) return { text: "", combos: [], conflicts: [] };
+
+        var result = { text: "", combos: [], conflicts: [] };
+
+        // Extract Combos: section
+        var combosMatch = desc.match(/Combos:\s*([^.]+)/i);
+        if (combosMatch) {
+            result.combos = combosMatch[1]
+                .split(";")
+                .map(function (s) { return s.trim(); })
+                .filter(Boolean);
+        }
+
+        // Extract Conflicts: section
+        var conflictsMatch = desc.match(/Conflicts:\s*([^.]+)/i);
+        if (conflictsMatch) {
+            result.conflicts = conflictsMatch[1]
+                .split(";")
+                .map(function (s) { return s.trim(); })
+                .filter(Boolean);
+        }
+
+        // Plain text = everything before first "Combos:" or "Conflicts:"
+        result.text = desc
+            .replace(/Combos:[^.]+\.?/i, "")
+            .replace(/Conflicts:[^.]+\.?/i, "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+        return result;
+    }
+    function resolveComboItem(tabName, comboStr) {
+        var s = comboStr.trim();
+
+        // Wildcard: "SCENE_*" or "PALETTE styles" → category link
+        if (s.endsWith("_*") || s.toLowerCase().endsWith(" styles")) {
+            var cat = s.replace(/_\*$/, "").replace(/\s+styles$/i, "").toUpperCase();
+            return { type: "category", label: cat + " (any)", category: cat };
+        }
+
+        // Exact style name match
+        var found = findStyleByName(tabName, s);
+        if (found) {
+            return {
+                type: "style",
+                label: found.display_name || s,
+                styleName: s
+            };
+        }
+
+        // Partial match: "LIGHTING_Dramatic_Shadow" when display is "Dramatic Shadow"
+        // Try finding by scanning all categories
+        var cats = state[tabName].categories || {};
+        for (var catName in cats) {
+            var match = cats[catName].find(function (st) {
+                return st.name === s || st.display_name === s;
+            });
+            if (match) {
+                return {
+                    type: "style",
+                    label: match.display_name || match.name,
+                    styleName: match.name
+                };
+            }
+        }
+
+        // Unknown — show as plain text hint
+        return { type: "hint", label: s };
+    }
 
     // ════════════════════════════════════════════════════
     // PROMPT ENGINE
@@ -666,6 +736,19 @@
         modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Negative Prompt" }));
         modal.appendChild(negInput);
 
+        var descInput = el("textarea", {
+            className: "sg-editor-textarea",
+            placeholder: "Description. Use 'Combos: STYLE_X; CATEGORY_*' for recommendations.",
+            rows: "3"
+        });
+        descInput.value = existingStyle ? (existingStyle.description || "") : "";
+
+        modal.appendChild(el("label", {
+            className: "sg-editor-label",
+            textContent: "Description & Combos"
+        }));
+        modal.appendChild(descInput);
+
         const btnRow = el("div", { className: "sg-editor-btns" });
         btnRow.appendChild(el("button", {
             className: "sg-btn sg-btn-primary", textContent: "💾 Save",
@@ -673,7 +756,10 @@
                 const name = nameInput.value.trim();
                 if (!name) { nameInput.style.borderColor = "#f87171"; return; }
                 apiPost("/style_grid/style/save", {
-                    name: name, prompt: promptInput.value, negative_prompt: negInput.value,
+                    name: name,
+                    prompt: promptInput.value,
+                    negative_prompt: negInput.value,
+                    description: descInput.value,
                     source: existingStyle ? existingStyle.source : null,
                 }).then(function () {
                     overlay.remove();
@@ -1346,6 +1432,12 @@
         const footer = el("div", { className: "sg-footer", id: "sg_footer_" + tabName });
         footer.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
         footer.appendChild(el("div", { className: "sg-footer-tags", id: "sg_tags_" + tabName }));
+        const combosRow = el("div", {
+            className: "sg-combos-row",
+            id: "sg_combos_" + tabName
+        });
+        combosRow.style.display = "none";
+        footer.appendChild(combosRow);
         panel.appendChild(footer);
 
         overlay.appendChild(panel);
@@ -1497,6 +1589,8 @@
                         card.classList.remove("sg-thumb-loading");
                     }, 700);
                 }
+
+                updateCombosPanel(tabName, name);
             });
 
             card.addEventListener("mouseleave", function () {
@@ -1504,6 +1598,10 @@
                 clearTimeout(_thumbProgressTimer);
                 card.classList.remove("sg-thumb-loading");
                 hideThumbPopup();
+                var lastSelected = state[tabName].selectedOrder.length > 0
+                    ? state[tabName].selectedOrder[state[tabName].selectedOrder.length - 1]
+                    : null;
+                updateCombosPanel(tabName, lastSelected);
             });
 
             grid.appendChild(card);
@@ -1661,6 +1759,120 @@
     // -----------------------------------------------------------------------
     // Interaction handlers
     // -----------------------------------------------------------------------
+    function updateCombosPanel(tabName, styleName) {
+        var panel = state[tabName].panel;
+        if (!panel) return;
+
+        var combosEl = qs("#sg_combos_" + tabName, panel);
+        if (!combosEl) return;
+
+        if (!styleName) {
+            combosEl.style.display = "none";
+            return;
+        }
+
+        var style = findStyleByName(tabName, styleName);
+        if (!style || !style.description) {
+            combosEl.style.display = "none";
+            return;
+        }
+
+        var parsed = parseDescription(style.description);
+        if (!parsed.combos.length && !parsed.conflicts.length && !parsed.text) {
+            combosEl.style.display = "none";
+            return;
+        }
+
+        combosEl.innerHTML = "";
+        combosEl.style.display = "flex";
+
+        // Description text (truncated)
+        if (parsed.text) {
+            var descEl = el("span", {
+                className: "sg-combo-desc",
+                textContent: parsed.text.length > 80
+                    ? parsed.text.slice(0, 80) + "…"
+                    : parsed.text
+            });
+            descEl.title = parsed.text;
+            combosEl.appendChild(descEl);
+        }
+
+        // Combos
+        if (parsed.combos.length) {
+            var labelEl = el("span", {
+                className: "sg-combo-label",
+                textContent: "Works with:"
+            });
+            combosEl.appendChild(labelEl);
+
+            parsed.combos.forEach(function (comboStr) {
+                var resolved = resolveComboItem(tabName, comboStr);
+                var chip = el("span", { className: "sg-combo-chip" });
+
+                if (resolved.type === "style") {
+                    chip.textContent = resolved.label;
+                    chip.classList.add("sg-combo-chip-style");
+                    var alreadySelected = state[tabName].selected.has(resolved.styleName);
+                    if (alreadySelected) chip.classList.add("sg-combo-chip-active");
+                    chip.title = resolved.styleName;
+                    chip.addEventListener("click", function () {
+                        if (state[tabName].selected.has(resolved.styleName)) return;
+                        state[tabName].selected.add(resolved.styleName);
+                        if (state[tabName].selectedOrder.indexOf(resolved.styleName) === -1)
+                            state[tabName].selectedOrder.push(resolved.styleName);
+                        applyStyleImmediate(tabName, resolved.styleName);
+                        qsa('.sg-card[data-style-name="' +
+                            CSS.escape(resolved.styleName) + '"]', panel)
+                            .forEach(function (c) {
+                                c.classList.add("sg-selected", "sg-applied");
+                            });
+                        chip.classList.add("sg-combo-chip-active");
+                        updateSelectedUI(tabName);
+                        updateConflicts(tabName);
+                        updateCombosPanel(tabName, styleName);
+                    });
+
+                } else if (resolved.type === "category") {
+                    chip.textContent = resolved.label;
+                    chip.classList.add("sg-combo-chip-cat");
+                    chip.title = "Filter to " + resolved.category + " category";
+                    chip.addEventListener("click", function () {
+                        // Focus search with cat: filter
+                        var searchEl = qs("#sg_search_" + tabName, panel);
+                        if (searchEl) {
+                            searchEl.value = "cat:" + resolved.category.toLowerCase();
+                            searchEl.dispatchEvent(new Event("input", { bubbles: true }));
+                            searchEl.focus();
+                        }
+                    });
+
+                } else {
+                    // Plain hint — not clickable
+                    chip.textContent = resolved.label;
+                    chip.classList.add("sg-combo-chip-hint");
+                }
+
+                combosEl.appendChild(chip);
+            });
+        }
+
+        // Conflicts warning
+        if (parsed.conflicts.length) {
+            var conflLabel = el("span", {
+                className: "sg-combo-label sg-combo-conflict-label",
+                textContent: "⚠ Avoid:"
+            });
+            combosEl.appendChild(conflLabel);
+            parsed.conflicts.forEach(function (c) {
+                combosEl.appendChild(el("span", {
+                    className: "sg-combo-chip sg-combo-chip-conflict",
+                    textContent: c
+                }));
+            });
+        }
+    }
+
     function toggleStyle(tabName, styleName, cardEl) {
         if (state[tabName].selected.has(styleName)) {
             state[tabName].selected.delete(styleName);
@@ -1692,6 +1904,10 @@
         updateSelectedUI(tabName);
         // Check conflicts
         updateConflicts(tabName);
+        var lastSelected = state[tabName].selectedOrder.length > 0
+            ? state[tabName].selectedOrder[state[tabName].selectedOrder.length - 1]
+            : null;
+        updateCombosPanel(tabName, lastSelected);
     }
 
     function clearAll(tabName) {
@@ -1707,6 +1923,7 @@
         setSilentGradio(tabName);
         updateSelectedUI(tabName);
         updateConflicts(tabName);
+        updateCombosPanel(tabName, null);
     }
 
     function toggleCategoryAll(tabName, catName) {

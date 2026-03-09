@@ -1274,23 +1274,62 @@
     });
 
     // -----------------------------------------------------------------------
-    // Init
+    // Init with MutationObserver re-injection guard
     // -----------------------------------------------------------------------
+    function ensureButtons() {
+        var t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
+        var t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
+        if (t1) console.log("[Style Grid] txt2img trigger OK");
+        if (t2) console.log("[Style Grid] img2img trigger OK");
+        return t1 && t2;
+    }
+
     function init() {
-        var attempts = 0;
-        var tryInject = function () {
-            attempts++;
+        var observer = null;
+
+        function stopObserver() {
+            if (observer) { observer.disconnect(); observer = null; }
+        }
+
+        function tryInject() {
             var t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
             var t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
-            if ((!t1 || !t2) && attempts < 50) setTimeout(tryInject, 500);
-            else {
-                if (t1) console.log("[Style Grid] txt2img injected");
-                if (t2) console.log("[Style Grid] img2img injected");
+            if (t1 && t2) {
+                stopObserver(); // ← kill observer once both buttons are alive
                 startPolling();
+                return true;
             }
-        };
-        if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function () { setTimeout(tryInject, 1500); });
-        else setTimeout(tryInject, 1500);
+            return false;
+        }
+
+        function startObserver() {
+            if (observer) return; // already watching
+            observer = new MutationObserver(function() {
+                // Only act if our buttons actually vanished
+                if (!qs("#sg_trigger_txt2img") || !qs("#sg_trigger_img2img")) {
+                    clearTimeout(observer._timer);
+                    observer._timer = setTimeout(tryInject, 400);
+                }
+            });
+            var root = qs("#gradio-app") || qs(".gradio-container") || document.body;
+            observer.observe(root, { childList: true, subtree: true });
+        }
+
+        // Progressive delays for initial inject
+        [800, 1500, 3000, 6000].forEach(function(d) {
+            setTimeout(function() {
+                if (!qs("#sg_trigger_txt2img") || !qs("#sg_trigger_img2img")) tryInject();
+            }, d);
+        });
+
+        // Observer as safety net, not primary mechanism
+        if (document.readyState === "loading") {
+            document.addEventListener("DOMContentLoaded", function() {
+                setTimeout(startObserver, 500);
+            });
+        } else {
+            setTimeout(startObserver, 500);
+        }
     }
 
     init();

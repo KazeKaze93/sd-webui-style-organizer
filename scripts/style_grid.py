@@ -61,6 +61,21 @@ def check_files_changed():
 
 
 # ---------------------------------------------------------------------------
+# Styles cache
+# ---------------------------------------------------------------------------
+_styles_cache = {"data": None, "hashes": {}}
+
+
+def get_cached_styles():
+    """Return cached styles if CSVs haven't changed, else reload and cache."""
+    global _styles_cache
+    if check_files_changed() or _styles_cache["data"] is None:
+        _styles_cache["data"] = load_all_styles()
+        _styles_cache["hashes"] = dict(_file_hashes)
+    return _styles_cache["data"]
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -372,15 +387,26 @@ def delete_style_from_csv(name, source_file=None):
 # API
 # ---------------------------------------------------------------------------
 def register_api(demo, app):
+    from fastapi import Request
+    from fastapi.responses import JSONResponse, Response
+
     @app.get("/style_grid/styles")
-    async def get_styles():
-        styles = load_all_styles()
+    async def get_styles(request: Request):
+        styles = get_cached_styles()
         categories = categorize_styles(styles)
-        return {"categories": categories, "usage": load_usage()}
+        etag = hashlib.md5(json.dumps(_styles_cache["hashes"], sort_keys=True).encode()).hexdigest()
+        if_none_match = request.headers.get("If-None-Match", "").strip().strip('"')
+        if if_none_match and if_none_match == etag:
+            return Response(status_code=304)
+        response = JSONResponse(content={"categories": categories, "usage": load_usage()})
+        response.headers["ETag"] = etag
+        return response
 
     @app.post("/style_grid/reload")
     async def reload_styles():
-        styles = load_all_styles()
+        check_files_changed()
+        _styles_cache["data"] = None
+        styles = get_cached_styles()
         categories = categorize_styles(styles)
         return {"categories": categories, "usage": load_usage()}
 

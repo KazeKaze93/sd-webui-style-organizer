@@ -212,6 +212,34 @@
 .sg-search:focus { border-color: var(--color-accent, #6366f1) !important; }
 .sg-search::placeholder { color: var(--body-text-color-subdued, #6b7280); }
 
+.sg-ac-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    margin-top: 4px;
+    background: var(--body-background-fill, #0b0f19);
+    border: 1px solid var(--border-color-primary, #374151);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    z-index: 10002;
+    overflow: hidden;
+    animation: sg-fade-in 0.1s ease;
+}
+.sg-ac-item {
+    padding: 7px 12px;
+    font-size: 13px;
+    color: var(--body-text-color, #d1d5db);
+    cursor: pointer;
+    transition: background 0.1s;
+    font-family: monospace;
+}
+.sg-ac-item:hover,
+.sg-ac-item.sg-ac-active {
+    background: var(--button-secondary-background-fill-hover, #374151);
+    color: #fff;
+}
+
 /* ---- Buttons ---- */
 .sg-btn {
     padding: 5px 10px;
@@ -375,17 +403,6 @@
 }
 
 /* Has {prompt} placeholder indicator */
-.sg-card.sg-has-placeholder::after {
-    content: "⟳";
-    position: absolute;
-    bottom: 3px;
-    left: 8px;
-    font-size: 10px;
-    color: #60a5fa;
-    opacity: 0.6;
-    title: "Contains {prompt} placeholder";
-}
-
 /* Selected state */
 .sg-card.sg-selected,
 .sg-card.sg-applied {

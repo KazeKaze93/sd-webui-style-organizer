@@ -69,6 +69,14 @@
         var n = normalizeSearchText(query); if (!n) return true;
         return n.split(/\s+/).filter(Boolean).every(function (t) { return text.includes(t); });
     }
+    function acMatches(candidate, query) {
+        var normalized = normalizeSearchText(candidate);
+        var q = normalizeSearchText(query);
+        if (!q) return true;
+        return q.split(/\s+/).filter(Boolean).every(function (token) {
+            return normalized.includes(token);
+        });
+    }
     function getUniqueSources(t) {
         var cats = state[t].categories || {}, s = new Set();
         Object.values(cats).forEach(function (arr) { arr.forEach(function (st) { if (st.source) s.add(st.source); }); });
@@ -196,6 +204,8 @@
             state[tabName].userPromptBaseNeg = negEl.value;
         }
 
+        var snapshotPrompt = promptEl.value;
+        var snapshotNeg = negEl.value;
         var prompt = promptEl.value;
         var neg = negEl.value;
         var addedPrompt = "";
@@ -238,7 +248,16 @@
             }
         }
 
-        state[tabName].applied.set(styleName, { prompt: addedPrompt, negative: addedNeg });
+        var isPromptWrap = style.prompt && style.prompt.indexOf("{prompt}") !== -1;
+        var isNegWrap = style.negative_prompt && style.negative_prompt.indexOf("{prompt}") !== -1;
+        state[tabName].applied.set(styleName, {
+            prompt: isPromptWrap ? null : addedPrompt,
+            negative: isNegWrap ? null : addedNeg,
+            wrapTemplate: isPromptWrap ? style.prompt : null,
+            negWrapTemplate: isNegWrap ? style.negative_prompt : null,
+            originalPrompt: isPromptWrap ? snapshotPrompt : null,
+            originalNeg: isNegWrap ? snapshotNeg : null
+        });
         setPromptValue(promptEl, prompt);
         setPromptValue(negEl, neg);
 
@@ -263,8 +282,37 @@
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
-        if (record.prompt) setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
-        if (record.negative) setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
+        if (record.wrapTemplate && record.originalPrompt != null) {
+            var parts = record.wrapTemplate.split("{prompt}");
+            var prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
+            var suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
+            var current = promptEl.value.trim();
+            if (prefix && current.indexOf(prefix) === 0) {
+                current = current.slice(prefix.length).replace(/^,\s*/, "").trim();
+            }
+            if (suffix && current.lastIndexOf(suffix) === current.length - suffix.length) {
+                current = current.slice(0, current.length - suffix.length).replace(/,\s*$/, "").trim();
+            }
+            setPromptValue(promptEl, current);
+        } else if (record.prompt) {
+            setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
+        }
+
+        if (record.negWrapTemplate && record.originalNeg != null) {
+            var partsNeg = record.negWrapTemplate.split("{prompt}");
+            var prefixNeg = (partsNeg[0] || "").replace(/,\s*$/, "").trim();
+            var suffixNeg = (partsNeg[1] || "").replace(/^,\s*/, "").trim();
+            var currentNeg = negEl.value.trim();
+            if (prefixNeg && currentNeg.indexOf(prefixNeg) === 0) {
+                currentNeg = currentNeg.slice(prefixNeg.length).replace(/^,\s*/, "").trim();
+            }
+            if (suffixNeg && currentNeg.lastIndexOf(suffixNeg) === currentNeg.length - suffixNeg.length) {
+                currentNeg = currentNeg.slice(0, currentNeg.length - suffixNeg.length).replace(/,\s*$/, "").trim();
+            }
+            setPromptValue(negEl, currentNeg);
+        } else if (record.negative) {
+            setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
+        }
 
         state[tabName].applied.delete(styleName);
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
@@ -639,21 +687,101 @@
             clearBtn.classList.remove("sg-visible");
             filterStyles(tabName);
         });
-        (function () {
-            var timer = null;
-            searchInput.addEventListener("input", function () {
-                // Cap input length to prevent O(n*m) degradation on adversarial strings
-                if (this.value.length > 200) {
-                    this.value = this.value.slice(0, 200);
-                }
-                clearBtn.classList.toggle("sg-visible", searchInput.value.length > 0);
-                if (timer) clearTimeout(timer);
-                timer = setTimeout(function () { filterStyles(tabName); }, 200);
-            });
-        })();
+
+        var acDropdown = el("div", { className: "sg-ac-dropdown" });
+        acDropdown.style.display = "none";
+        searchWrapper.style.position = "relative";
         searchWrapper.appendChild(searchInput);
         searchWrapper.appendChild(clearBtn);
+        searchWrapper.appendChild(acDropdown);
         searchRow.appendChild(searchWrapper);
+
+        var suggestions = buildSuggestions(tabName);
+        var acSuppressNext = false;
+
+        searchInput.addEventListener("input", function () {
+            var val = this.value;
+            clearBtn.classList.toggle("sg-visible", val.length > 0);
+
+            if (acSuppressNext) {
+                acSuppressNext = false;
+                if (window._sgSearchTimer) clearTimeout(window._sgSearchTimer);
+                window._sgSearchTimer = setTimeout(function () { filterStyles(tabName); }, 200);
+                return;
+            }
+
+            if (!val.trim()) {
+                acDropdown.style.display = "none";
+            } else {
+                var tokens = val.split(/\s+/);
+                var lastToken = tokens[tokens.length - 1] || "";
+
+                var matches = suggestions.filter(function (s) {
+                    return acMatches(s, lastToken);
+                }).slice(0, 8);
+
+                if (matches.length === 0) {
+                    acDropdown.style.display = "none";
+                } else {
+                    acDropdown.innerHTML = "";
+                    matches.forEach(function (match) {
+                        var item = el("div", {
+                            className: "sg-ac-item",
+                            textContent: match
+                        });
+                        item.addEventListener("mousedown", function (e) {
+                            e.preventDefault();
+                            var tokensInner = val.split(/\s+/);
+                            tokensInner[tokensInner.length - 1] = match;
+                            var needsValue = match.lastIndexOf(":") === match.length - 1;
+                            searchInput.value = tokensInner.join(" ") + (needsValue ? "" : " ");
+                            acSuppressNext = true;
+                            acDropdown.style.display = "none";
+                            searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+                            searchInput.focus();
+                        });
+                        acDropdown.appendChild(item);
+                    });
+                    acDropdown.style.display = "block";
+                }
+            }
+
+            if (window._sgSearchTimer) clearTimeout(window._sgSearchTimer);
+            window._sgSearchTimer = setTimeout(function () { filterStyles(tabName); }, 200);
+        });
+
+        searchInput.addEventListener("focus", function () {
+            if (!this.value.trim()) {
+                acDropdown.style.display = "none";
+            }
+        });
+
+        searchInput.addEventListener("blur", function () {
+            setTimeout(function () { acDropdown.style.display = "none"; }, 150);
+        });
+
+        searchInput.addEventListener("keydown", function (e) {
+            var items = Array.prototype.slice.call(qsa(".sg-ac-item", acDropdown));
+            if (!items.length || acDropdown.style.display === "none") return;
+            var active = qs(".sg-ac-item.sg-ac-active", acDropdown);
+            var idx = items.indexOf(active);
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                if (active) active.classList.remove("sg-ac-active");
+                var next = items[idx + 1 < items.length ? idx + 1 : 0];
+                if (next) next.classList.add("sg-ac-active");
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                if (active) active.classList.remove("sg-ac-active");
+                var prev = items[idx - 1 >= 0 ? idx - 1 : items.length - 1];
+                if (prev) prev.classList.add("sg-ac-active");
+            } else if ((e.key === "Enter" || e.key === "Tab") && active) {
+                e.preventDefault();
+                active.dispatchEvent(new MouseEvent("mousedown"));
+            } else if (e.key === "Escape") {
+                acDropdown.style.display = "none";
+            }
+        });
 
         // Silent mode toggle
         var silentBtn = el("button", {
@@ -915,6 +1043,7 @@
                 "data-search-name": buildSearchText(style),
                 "data-source": style.source || "",
             });
+            card._styleRef = style;
             card.style.setProperty("--cat-color", color);
             if (state[tabName].selected.has(style.name)) { card.classList.add("sg-selected"); card.classList.add("sg-applied"); }
 
@@ -956,6 +1085,54 @@
     }
 
     // -----------------------------------------------------------------------
+    // Search autocomplete suggestions
+    // -----------------------------------------------------------------------
+    function buildSuggestions(tabName) {
+        var sugg = new Set();
+        var usage = state[tabName].usage || {};
+        var allStyles = [];
+        Object.values(state[tabName].categories || {}).forEach(function (arr) {
+            arr.forEach(function (s) { allStyles.push(s); });
+        });
+        allStyles
+            .sort(function (a, b) {
+                return (usage[b.name] && usage[b.name].count || 0) - (usage[a.name] && usage[a.name].count || 0);
+            })
+            .forEach(function (s) { sugg.add(s.display_name || s.name); });
+        return Array.from(sugg);
+    }
+
+    // -----------------------------------------------------------------------
+    // Structured search query parsing
+    // -----------------------------------------------------------------------
+    function parseSearchQuery(rawQuery) {
+        var filters = {
+            text: [], tag: [], neg: [], cat: null,
+            fav: false, hasPlaceholder: false, usedMin: null
+        };
+        var tokenRegex = /(\w+):("[^"]*"|\S+)/g;
+        var match;
+        var remaining = rawQuery;
+        while ((match = tokenRegex.exec(rawQuery)) !== null) {
+            var key = match[1].toLowerCase();
+            var val = match[2].replace(/^"|"$/g, "").toLowerCase();
+            remaining = remaining.replace(match[0], "").trim();
+            if (key === "tag")      filters.tag.push(val);
+            else if (key === "neg") filters.neg.push(val);
+            else if (key === "cat") filters.cat = val;
+            else if (key === "fav" && val === "yes")          filters.fav = true;
+            else if (key === "has" && val === "placeholder")  filters.hasPlaceholder = true;
+            else if (key === "used") {
+                var m = val.match(/^>(\d+)$/);
+                if (m) filters.usedMin = parseInt(m[1], 10);
+            }
+        }
+        if (remaining.trim())
+            filters.text.push.apply(filters.text, remaining.trim().split(/\s+/).filter(Boolean));
+        return filters;
+    }
+
+    // -----------------------------------------------------------------------
     // Interaction handlers
     // -----------------------------------------------------------------------
     function toggleStyle(tabName, styleName, cardEl) {
@@ -980,6 +1157,11 @@
                 c.classList.add("sg-applied");
             });
             addToRecentHistory(tabName, [styleName]);
+            if (!state[tabName].usage[styleName]) {
+                state[tabName].usage[styleName] = { count: 0 };
+            }
+            state[tabName].usage[styleName].count =
+                (state[tabName].usage[styleName].count || 0) + 1;
         }
         updateSelectedUI(tabName);
         // Check conflicts
@@ -1030,38 +1212,77 @@
         var panel = state[tabName].panel;
         if (!panel) return;
         var searchEl = qs("#sg_search_" + tabName, panel);
-        var query = searchEl ? normalizeSearchText(searchEl.value) : "";
+        var rawQuery = searchEl ? normalizeSearchText(searchEl.value) : "";
         var selectedSource = state[tabName].selectedSource || "All";
-        var cards = qsa(".sg-card", panel);
-        var sections = qsa(".sg-category", panel);
+        var filters = parseSearchQuery(rawQuery);
 
-        function sourceMatch(card) { return selectedSource === "All" || (card.getAttribute("data-source") || "") === selectedSource; }
-
-        var matchedCat = findCategoryMatch(query, tabName);
-        if (matchedCat) {
-            sections.forEach(function (sec) { sec.style.display = sec.getAttribute("data-category") === matchedCat ? "" : "none"; });
-            cards.forEach(function (card) { card.classList.toggle("sg-card-hidden", !(card.getAttribute("data-category") === matchedCat && sourceMatch(card))); });
-        } else {
-            sections.forEach(function (sec) { sec.style.display = ""; });
-            cards.forEach(function (card) {
-                var text = card.getAttribute("data-search-name") || "";
-                card.classList.toggle("sg-card-hidden", !((!query || nameMatchesQuery(text, query)) && sourceMatch(card)));
-            });
-            sections.forEach(function (sec) { sec.style.display = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length > 0 ? "" : "none"; });
+        function sourceFilter(src) {
+            return selectedSource === "All" || src === selectedSource;
         }
-        sections.forEach(function (sec) {
-            var n = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
-            var ct = sec.querySelector(".sg-cat-title");
-            if (ct && ct.childNodes.length >= 2) ct.childNodes[1].textContent = " (" + n + ")";
-            if (n === 0) sec.style.display = "none";
+
+        function cardPasses(card) {
+            var style = card._styleRef;
+            if (!sourceFilter(card.getAttribute("data-source") || "")) return false;
+            if (filters.fav &&
+                !getFavorites(tabName).has(card.getAttribute("data-style-name")))
+                return false;
+            if (filters.hasPlaceholder &&
+                !card.classList.contains("sg-has-placeholder"))
+                return false;
+            if (filters.cat &&
+                (card.getAttribute("data-category") || "").toLowerCase() !== filters.cat)
+                return false;
+            if (filters.usedMin !== null) {
+                console.log("[SG debug] usedMin filter:", filters.usedMin);
+                var styleName = card.getAttribute("data-style-name");
+                var usageData = state[tabName].usage || {};
+                var count = (usageData[styleName] || {}).count || 0;
+                if (count <= filters.usedMin) return false;
+            }
+            if (filters.tag.length && style) {
+                var prompt = (style.prompt || "").toLowerCase();
+                if (!filters.tag.every(function (t) { return prompt.indexOf(t) !== -1; })) return false;
+            }
+            if (filters.neg.length && style) {
+                var neg = (style.negative_prompt || "").toLowerCase();
+                if (!filters.neg.every(function (t) { return neg.indexOf(t) !== -1; })) return false;
+            }
+            if (filters.text.length) {
+                var searchName = card.getAttribute("data-search-name") || "";
+                var desc = (style && style.description || "").toLowerCase();
+                if (!filters.text.every(function (t) {
+                    return searchName.indexOf(t) !== -1 || desc.indexOf(t) !== -1;
+                })) return false;
+            }
+            return true;
+        }
+
+        requestAnimationFrame(function () {
+            qsa(".sg-card", panel).forEach(function (card) {
+                card.classList.toggle("sg-card-hidden", !cardPasses(card));
+            });
+
+            qsa(".sg-category", panel).forEach(function (sec) {
+                var visible = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+                var ct = sec.querySelector(".sg-cat-title");
+                if (ct && ct.childNodes.length >= 2)
+                    ct.childNodes[1].textContent = " (" + visible + ")";
+                sec.style.display = visible > 0 ? "" : "none";
+            });
+
+            var sidebar = panel.querySelector(".sg-sidebar");
+            if (sidebar) {
+                qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (btn) {
+                    var sec = panel.querySelector(
+                        "#sg-cat-" +
+                        (btn.getAttribute("data-category") || "").replace(/\s/g, "_")
+                    );
+                    btn.style.display =
+                        (!sec || sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length > 0)
+                        ? "" : "none";
+                });
+            }
         });
-        var sidebar = panel.querySelector(".sg-sidebar");
-        if (sidebar) {
-            qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (btn) {
-                var sec = panel.querySelector("#sg-cat-" + (btn.getAttribute("data-category") || "").replace(/\s/g, "_"));
-                btn.style.display = (!sec || sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length > 0) ? "" : "none";
-            });
-        }
     }
 
     function rebuildPromptFromOrder(tabName) {

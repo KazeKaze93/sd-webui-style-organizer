@@ -1285,54 +1285,50 @@
     }
 
     function init() {
-        var stabilized = false;
         var observer = null;
 
-        function tryInject() {
-            if (ensureButtons() && !stabilized) {
-                stabilized = true;
-                startPolling();
-            }
+        function stopObserver() {
+            if (observer) { observer.disconnect(); observer = null; }
         }
 
-        // MutationObserver: recheck whenever DOM mutates in the app root
-        observer = new MutationObserver(function(mutations) {
-            // Only care if our buttons disappeared or targets appeared
-            var needsCheck = mutations.some(function(m) {
-                return m.addedNodes.length > 0;
-            });
-            if (!needsCheck) return;
-            // Debounce
-            clearTimeout(observer._timer);
-            observer._timer = setTimeout(function() {
-                // If buttons are gone (Svelte re-render ate them), re-inject
-                if (!qs("#sg_trigger_txt2img") || !qs("#sg_trigger_img2img")) {
-                    stabilized = false;
-                }
-                tryInject();
-            }, 300);
-        });
+        function tryInject() {
+            var t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
+            var t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
+            if (t1 && t2) {
+                stopObserver(); // ← kill observer once both buttons are alive
+                startPolling();
+                return true;
+            }
+            return false;
+        }
 
-        // Start observing as early as possible
         function startObserver() {
+            if (observer) return; // already watching
+            observer = new MutationObserver(function() {
+                // Only act if our buttons actually vanished
+                if (!qs("#sg_trigger_txt2img") || !qs("#sg_trigger_img2img")) {
+                    clearTimeout(observer._timer);
+                    observer._timer = setTimeout(tryInject, 400);
+                }
+            });
             var root = qs("#gradio-app") || qs(".gradio-container") || document.body;
             observer.observe(root, { childList: true, subtree: true });
         }
 
-        // Initial attempt sequence: 500ms, 1s, 2s, 4s (covers 99% of cases)
-        var delays = [500, 1000, 2000, 4000, 8000];
-        delays.forEach(function(delay) {
-            setTimeout(tryInject, delay);
+        // Progressive delays for initial inject
+        [800, 1500, 3000, 6000].forEach(function(d) {
+            setTimeout(function() {
+                if (!qs("#sg_trigger_txt2img") || !qs("#sg_trigger_img2img")) tryInject();
+            }, d);
         });
 
+        // Observer as safety net, not primary mechanism
         if (document.readyState === "loading") {
             document.addEventListener("DOMContentLoaded", function() {
-                startObserver();
-                setTimeout(tryInject, 500);
+                setTimeout(startObserver, 500);
             });
         } else {
-            startObserver();
-            setTimeout(tryInject, 300);
+            setTimeout(startObserver, 500);
         }
     }
 

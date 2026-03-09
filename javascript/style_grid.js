@@ -7,33 +7,104 @@
 (function () {
     "use strict";
 
-    // -----------------------------------------------------------------------
-    // State
-    // -----------------------------------------------------------------------
+    // ════════════════════════════════════════════════════
+    // STATE & STORAGE
+    // ════════════════════════════════════════════════════
     const state = {
-        txt2img: { selected: new Set(), selectedOrder: [], applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false, userPromptBase: "", userPromptBaseNeg: "" },
-        img2img: { selected: new Set(), selectedOrder: [], applied: new Map(), categories: {}, panel: null, selectedSource: "All", usage: {}, presets: {}, silentMode: false, userPromptBase: "", userPromptBaseNeg: "" },
+        txt2img: {
+            selected: new Set(),
+            selectedOrder: [],
+            applied: new Map(),
+            categories: {},
+            panel: null,
+            selectedSource: "All",
+            usage: {},
+            presets: {},
+            silentMode: false,
+            userPromptBase: "",
+            userPromptBaseNeg: "",
+        },
+        img2img: {
+            selected: new Set(),
+            selectedOrder: [],
+            applied: new Map(),
+            categories: {},
+            panel: null,
+            selectedSource: "All",
+            usage: {},
+            presets: {},
+            silentMode: false,
+            userPromptBase: "",
+            userPromptBaseNeg: "",
+        },
     };
 
-    // -----------------------------------------------------------------------
-    // Storage helpers
-    // -----------------------------------------------------------------------
     const SOURCE_STORAGE_KEY = "sg_source";
-    function getStoredSource(t) { try { var d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}"); return d[t] || "All"; } catch (_) { return "All"; } }
-    function setStoredSource(t, v) { try { var d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}"); d[t] = v; localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d)); } catch (_) {} }
-    function getSilentMode(t) { try { var d = JSON.parse(localStorage.getItem("sg_silent") || "{}"); return !!d[t]; } catch (_) { return false; } }
-    function setSilentMode(t, v) { try { var d = JSON.parse(localStorage.getItem("sg_silent") || "{}"); d[t] = v; localStorage.setItem("sg_silent", JSON.stringify(d)); } catch (_) {} }
+    function getStoredSource(t) {
+        try {
+            const d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}");
+            return d[t] || "All";
+        } catch (_) {
+            return "All";
+        }
+    }
+    function setStoredSource(t, v) {
+        try {
+            const d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}");
+            d[t] = v;
+            localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d));
+        } catch (_) { }
+    }
+    function getSilentMode(t) {
+        try {
+            const d = JSON.parse(localStorage.getItem("sg_silent") || "{}");
+            return !!d[t];
+        } catch (_) {
+            return false;
+        }
+    }
+    function setSilentMode(t, v) {
+        try {
+            const d = JSON.parse(localStorage.getItem("sg_silent") || "{}");
+            d[t] = v;
+            localStorage.setItem("sg_silent", JSON.stringify(d));
+        } catch (_) { }
+    }
 
     // Favorites
     const FAV_CAT = "FAVORITES";
-    function getFavorites(t) { try { var d = JSON.parse(localStorage.getItem("sg_favorites") || "{}"); return new Set(d[t] || []); } catch (_) { return new Set(); } }
-    function setFavorites(t, s) { try { var d = JSON.parse(localStorage.getItem("sg_favorites") || "{}"); d[t] = [...s]; localStorage.setItem("sg_favorites", JSON.stringify(d)); } catch (_) {} }
-    function toggleFavorite(t, n) { var f = getFavorites(t); if (f.has(n)) f.delete(n); else f.add(n); setFavorites(t, f); }
+    function getFavorites(t) {
+        try {
+            const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
+            return new Set(d[t] || []);
+        } catch (_) {
+            return new Set();
+        }
+    }
+    function setFavorites(t, s) {
+        try {
+            const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
+            d[t] = [...s];
+            localStorage.setItem("sg_favorites", JSON.stringify(d));
+        } catch (_) { }
+    }
+    function toggleFavorite(t, n) {
+        const f = getFavorites(t);
+        if (f.has(n)) f.delete(n);
+        else f.add(n);
+        setFavorites(t, f);
+    }
 
     // Recent history
-    function getRecentHistory(t) { try { return JSON.parse(localStorage.getItem("sg_recent_" + t) || "[]"); } catch (_) { return []; } }
+    function getRecentHistory(t) {
+        try {
+            return JSON.parse(localStorage.getItem("sg_recent_" + t) || "[]");
+        } catch (_) {
+            return [];
+        }
+    }
     function addToRecentHistory(t, names) {
-        var h = getRecentHistory(t);
+        let h = getRecentHistory(t);
         names.forEach(function (n) { h = h.filter(function (x) { return x !== n; }); h.unshift(n); });
         if (h.length > 10) h = h.slice(0, 10);
         localStorage.setItem("sg_recent_" + t, JSON.stringify(h));
@@ -42,14 +113,27 @@
     // -----------------------------------------------------------------------
     // Utility
     // -----------------------------------------------------------------------
-    function hashString(s) { if (!s) s = ""; var h = 0; for (var i = 0; i < s.length; i++) { h = ((h << 5) - h) + s.charCodeAt(i); h = h & h; } return Math.abs(h); }
-    function getCategoryColor(c) { var h = hashString(c) % 360, s = 55 + (hashString(c + "s") % 25), l = 48 + (hashString(c + "l") % 12); return "hsl(" + h + "," + s + "%," + l + "%)"; }
+    function hashString(s) {
+        if (!s) s = "";
+        let h = 0;
+        for (let i = 0; i < s.length; i++) {
+            h = ((h << 5) - h) + s.charCodeAt(i);
+            h = h & h;
+        }
+        return Math.abs(h);
+    }
+    function getCategoryColor(c) {
+        const h = hashString(c) % 360;
+        const s = 55 + (hashString(c + "s") % 25);
+        const l = 48 + (hashString(c + "l") % 12);
+        return "hsl(" + h + "," + s + "%," + l + "%)";
+    }
     function qs(sel, root) { return (root || document).querySelector(sel); }
     function qsa(sel, root) { return (root || document).querySelectorAll(sel); }
     function el(tag, attrs, children) {
-        var e = document.createElement(tag);
+        const e = document.createElement(tag);
         if (attrs) Object.entries(attrs).forEach(function (kv) {
-            var k = kv[0], v = kv[1];
+            const k = kv[0], v = kv[1];
             if (k === "className") e.className = v;
             else if (k === "textContent") e.textContent = v;
             else if (k === "innerHTML") e.innerHTML = v;
@@ -66,45 +150,46 @@
     function normalizeSearchText(s) { return (s || "").replace(/\s+/g, " ").trim().toLowerCase(); }
     function buildSearchText(style) { return normalizeSearchText([style.name, style.display_name].filter(Boolean).join(" ")); }
     function nameMatchesQuery(text, query) {
-        var n = normalizeSearchText(query); if (!n) return true;
+        const n = normalizeSearchText(query); if (!n) return true;
         return n.split(/\s+/).filter(Boolean).every(function (t) { return text.includes(t); });
     }
     function acMatches(candidate, query) {
-        var normalized = normalizeSearchText(candidate);
-        var q = normalizeSearchText(query);
+        const normalized = normalizeSearchText(candidate);
+        const q = normalizeSearchText(query);
         if (!q) return true;
         return q.split(/\s+/).filter(Boolean).every(function (token) {
             return normalized.includes(token);
         });
     }
     function getUniqueSources(t) {
-        var cats = state[t].categories || {}, s = new Set();
+        const cats = state[t].categories || {};
+        const s = new Set();
         Object.values(cats).forEach(function (arr) { arr.forEach(function (st) { if (st.source) s.add(st.source); }); });
         return Array.from(s).sort();
     }
     function findCategoryMatch(q, t) {
         if (!q) return null;
-        var names = Object.keys(state[t].categories || {});
+        const names = Object.keys(state[t].categories || {});
         if (getFavorites(t).size > 0) names.push("FAVORITES");
         return names.find(function (c) { return c.toLowerCase().startsWith(q); }) || null;
     }
     function findStyleByName(t, n) {
-        for (var styles of Object.values(state[t].categories)) {
-            var f = styles.find(function (s) { return s.name === n; });
+        for (const styles of Object.values(state[t].categories)) {
+            const f = styles.find(function (s) { return s.name === n; });
             if (f) return f;
         }
         return null;
     }
 
-    // -----------------------------------------------------------------------
-    // Prompt manipulation
-    // -----------------------------------------------------------------------
+    // ════════════════════════════════════════════════════
+    // PROMPT ENGINE
+    // ════════════════════════════════════════════════════
     function removeSubstringFromPrompt(val, sub) {
         if (!sub || !val) return val;
-        var idx = val.indexOf(sub);
+        const idx = val.indexOf(sub);
         if (idx === -1) return val;
-        var before = val.substring(0, idx).replace(/,\s*$/, "");
-        var after = val.substring(idx + sub.length).replace(/^,\s*/, "");
+        const before = val.substring(0, idx).replace(/,\s*$/, "");
+        const after = val.substring(idx + sub.length).replace(/^,\s*/, "");
         if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
         return (before + after).trim();
     }
@@ -115,9 +200,9 @@
     }
     function setSilentGradio(tabName) {
         // Update the hidden Gradio textbox with silent mode style names
-        var silentEl = qs("#style_grid_silent_" + tabName + " textarea");
+        const silentEl = qs("#style_grid_silent_" + tabName + " textarea");
         if (!silentEl) return;
-        var names = state[tabName].silentMode ? [...state[tabName].selected] : [];
+        const names = state[tabName].silentMode ? [...state[tabName].selected] : [];
         setPromptValue(silentEl, JSON.stringify(names));
     }
 
@@ -125,50 +210,74 @@
     // Load data from Gradio hidden component
     // -----------------------------------------------------------------------
     function loadStyles(tabName) {
-        var dataEl = qs("#style_grid_data_" + tabName + " textarea");
+        const dataEl = qs("#style_grid_data_" + tabName + " textarea");
         if (!dataEl || !dataEl.value) return {};
         try {
-            var data = JSON.parse(dataEl.value);
+            const data = JSON.parse(dataEl.value);
             state[tabName].usage = data.usage || {};
             state[tabName].presets = data.presets || {};
             return data.categories || {};
         } catch (e) { console.error("[Style Grid] Parse error:", e); return {}; }
     }
     function getCategoryOrder(tabName) {
-        var el = qs("#style_grid_cat_order_" + tabName + " textarea");
+        const el = qs("#style_grid_cat_order_" + tabName + " textarea");
         if (!el || !el.value) return [];
         try { return JSON.parse(el.value); } catch (_) { return []; }
     }
 
-    // -----------------------------------------------------------------------
+    // ════════════════════════════════════════════════════
+    // API LAYER
+    // ════════════════════════════════════════════════════
     // API helpers
-    // -----------------------------------------------------------------------
     function apiPost(endpoint, data) {
-        return fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data || {}) }).then(function (r) { return r.json(); });
+        return fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data || {}),
+        }).then(function (r) {
+            return r.json();
+        });
     }
     function apiGet(endpoint) {
         return fetch(endpoint).then(function (r) { return r.json(); });
     }
 
-    // -----------------------------------------------------------------------
+    function showStatusMessage(tabName, text, isError = false) {
+        const panel = state[tabName].panel;
+        if (!panel) return;
+        const existing = qs(".sg-status-msg", panel);
+        if (existing) existing.remove();
+        const msg = el("div", {
+            className: "sg-status-msg" + (isError ? " sg-status-error" : ""),
+            textContent: text,
+        });
+        const footer = qs(".sg-footer", panel);
+        if (footer) footer.prepend(msg);
+        setTimeout(function () {
+            msg.remove();
+        }, 3000);
+    }
+
+    // ════════════════════════════════════════════════════
+    // CONFLICT DETECTION
+    // ════════════════════════════════════════════════════
     // Conflict detection (client-side quick check)
-    // -----------------------------------------------------------------------
     function checkConflictsLocal(tabName) {
-        var selected = [...state[tabName].selected];
+        const selected = [...state[tabName].selected];
         if (selected.length < 2) return [];
-        var conflicts = [];
-        var tokenMap = {};
+        const conflicts = [];
+        const tokenMap = {};
         selected.forEach(function (name) {
-            var s = findStyleByName(tabName, name);
+            const s = findStyleByName(tabName, name);
             if (!s) return;
             tokenMap[name] = { pos: new Set(), neg: new Set() };
             (s.prompt || "").split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t && t !== "{prompt}") tokenMap[name].pos.add(t); });
             (s.negative_prompt || "").split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t && t !== "{prompt}") tokenMap[name].neg.add(t); });
         });
-        var names = Object.keys(tokenMap);
-        for (var i = 0; i < names.length; i++) {
-            for (var j = i + 1; j < names.length; j++) {
-                var a = names[i], b = names[j];
+        const names = Object.keys(tokenMap);
+        for (let i = 0; i < names.length; i++) {
+            for (let j = i + 1; j < names.length; j++) {
+                const a = names[i], b = names[j];
                 tokenMap[a].pos.forEach(function (t) {
                     if (tokenMap[b].neg.has(t)) conflicts.push("'" + a + "' adds '" + t + "' but '" + b + "' negates it");
                 });
@@ -185,7 +294,7 @@
     // -----------------------------------------------------------------------
     function applyStyleImmediate(tabName, styleName) {
         if (state[tabName].applied.has(styleName)) return;
-        var style = findStyleByName(tabName, styleName);
+        const style = findStyleByName(tabName, styleName);
         if (!style) return;
 
         if (state[tabName].silentMode) {
@@ -195,8 +304,8 @@
             return;
         }
 
-        var promptEl = qs("#" + tabName + "_prompt textarea");
-        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        const promptEl = qs("#" + tabName + "_prompt textarea");
+        const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
         if (state[tabName].applied.size === 0) {
@@ -204,27 +313,27 @@
             state[tabName].userPromptBaseNeg = negEl.value;
         }
 
-        var snapshotPrompt = promptEl.value;
-        var snapshotNeg = negEl.value;
-        var prompt = promptEl.value;
-        var neg = negEl.value;
-        var addedPrompt = "";
-        var addedNeg = "";
+        const snapshotPrompt = promptEl.value;
+        const snapshotNeg = negEl.value;
+        let prompt = promptEl.value;
+        let neg = negEl.value;
+        let addedPrompt = "";
+        let addedNeg = "";
 
         if (style.prompt) {
             if (style.prompt.includes("{prompt}")) {
                 prompt = style.prompt.replace("{prompt}", prompt);
                 addedPrompt = null;
             } else {
-                var existingNorm = {};
+                const existingNorm = {};
                 (prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNorm[t.toLowerCase()] = true; });
-                var toAdd = [];
+                const toAdd = [];
                 (style.prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) {
                     if (!existingNorm[t.toLowerCase()]) { toAdd.push(t); existingNorm[t.toLowerCase()] = true; }
                 });
                 addedPrompt = toAdd.length ? toAdd.join(", ") : "";
                 if (addedPrompt) {
-                    var sep = prompt.trim() ? ", " : "";
+                    const sep = prompt.trim() ? ", " : "";
                     prompt = prompt.replace(/,\s*$/, "") + sep + addedPrompt;
                 }
             }
@@ -234,22 +343,22 @@
                 neg = style.negative_prompt.replace("{prompt}", neg);
                 addedNeg = null;
             } else {
-                var existingNegNorm = {};
+                const existingNegNorm = {};
                 (neg.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNegNorm[t.toLowerCase()] = true; });
-                var toAddNeg = [];
+                const toAddNeg = [];
                 (style.negative_prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) {
                     if (!existingNegNorm[t.toLowerCase()]) { toAddNeg.push(t); existingNegNorm[t.toLowerCase()] = true; }
                 });
                 addedNeg = toAddNeg.length ? toAddNeg.join(", ") : "";
                 if (addedNeg) {
-                    var sepN = neg.trim() ? ", " : "";
+                    const sepN = neg.trim() ? ", " : "";
                     neg = neg.replace(/,\s*$/, "") + sepN + addedNeg;
                 }
             }
         }
 
-        var isPromptWrap = style.prompt && style.prompt.indexOf("{prompt}") !== -1;
-        var isNegWrap = style.negative_prompt && style.negative_prompt.indexOf("{prompt}") !== -1;
+        const isPromptWrap = style.prompt && style.prompt.indexOf("{prompt}") !== -1;
+        const isNegWrap = style.negative_prompt && style.negative_prompt.indexOf("{prompt}") !== -1;
         state[tabName].applied.set(styleName, {
             prompt: isPromptWrap ? null : addedPrompt,
             negative: isNegWrap ? null : addedNeg,
@@ -268,7 +377,7 @@
     }
 
     function unapplyStyle(tabName, styleName) {
-        var record = state[tabName].applied.get(styleName);
+        const record = state[tabName].applied.get(styleName);
         if (!record) return;
 
         if (record.silent || state[tabName].silentMode) {
@@ -278,15 +387,15 @@
             return;
         }
 
-        var promptEl = qs("#" + tabName + "_prompt textarea");
-        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        const promptEl = qs("#" + tabName + "_prompt textarea");
+        const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
         if (record.wrapTemplate && record.originalPrompt != null) {
-            var parts = record.wrapTemplate.split("{prompt}");
-            var prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
-            var suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
-            var current = promptEl.value.trim();
+            const parts = record.wrapTemplate.split("{prompt}");
+            const prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
+            const suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
+            let current = promptEl.value.trim();
             if (prefix && current.indexOf(prefix) === 0) {
                 current = current.slice(prefix.length).replace(/^,\s*/, "").trim();
             }
@@ -299,10 +408,10 @@
         }
 
         if (record.negWrapTemplate && record.originalNeg != null) {
-            var partsNeg = record.negWrapTemplate.split("{prompt}");
-            var prefixNeg = (partsNeg[0] || "").replace(/,\s*$/, "").trim();
-            var suffixNeg = (partsNeg[1] || "").replace(/^,\s*/, "").trim();
-            var currentNeg = negEl.value.trim();
+            const partsNeg = record.negWrapTemplate.split("{prompt}");
+            const prefixNeg = (partsNeg[0] || "").replace(/,\s*$/, "").trim();
+            const suffixNeg = (partsNeg[1] || "").replace(/^,\s*/, "").trim();
+            let currentNeg = negEl.value.trim();
             if (prefixNeg && currentNeg.indexOf(prefixNeg) === 0) {
                 currentNeg = currentNeg.slice(prefixNeg.length).replace(/^,\s*/, "").trim();
             }
@@ -324,14 +433,14 @@
     function showContextMenu(e, tabName, styleName, style) {
         e.preventDefault();
         // Remove existing
-        var old = qs(".sg-context-menu");
+        const old = qs(".sg-context-menu");
         if (old) old.remove();
 
-        var menu = el("div", { className: "sg-context-menu" });
+        const menu = el("div", { className: "sg-context-menu" });
         menu.style.left = e.clientX + "px";
         menu.style.top = e.clientY + "px";
 
-        var items = [
+        const items = [
             { label: "✏️ Edit style", action: function () { openStyleEditor(tabName, style); } },
             { label: "📋 Duplicate", action: function () { duplicateStyle(tabName, style); } },
             { label: "🗑️ Delete", action: function () { deleteStyle(tabName, styleName, style.source); } },
@@ -339,14 +448,14 @@
             { label: "📎 Copy prompt", action: function () { navigator.clipboard.writeText(style.prompt || ""); } },
         ];
         items.forEach(function (item) {
-            var btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
+            const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
             menu.appendChild(btn);
         });
 
         document.body.appendChild(menu);
         // Auto-close
         setTimeout(function () {
-            var close = function () { menu.remove(); document.removeEventListener("click", close); };
+            const close = function () { menu.remove(); document.removeEventListener("click", close); };
             document.addEventListener("click", close);
         }, 0);
     }
@@ -355,17 +464,17 @@
     // Style editor modal
     // -----------------------------------------------------------------------
     function openStyleEditor(tabName, existingStyle) {
-        var isNew = !existingStyle;
-        var overlay = el("div", { className: "sg-editor-overlay" });
-        var modal = el("div", { className: "sg-editor-modal" });
+        const isNew = !existingStyle;
+        const overlay = el("div", { className: "sg-editor-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
 
-        var title = el("h3", { textContent: isNew ? "Create New Style" : "Edit Style: " + (existingStyle ? existingStyle.name : ""), className: "sg-editor-title" });
+        const title = el("h3", { textContent: isNew ? "Create New Style" : "Edit Style: " + (existingStyle ? existingStyle.name : ""), className: "sg-editor-title" });
         modal.appendChild(title);
 
-        var nameInput = el("input", { className: "sg-editor-input", type: "text", placeholder: "Style name (e.g. BODY_Thicc)", value: existingStyle ? existingStyle.name : "" });
-        var promptInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Prompt (use {prompt} as placeholder)", rows: "4" });
+        const nameInput = el("input", { className: "sg-editor-input", type: "text", placeholder: "Style name (e.g. BODY_Thicc)", value: existingStyle ? existingStyle.name : "" });
+        const promptInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Prompt (use {prompt} as placeholder)", rows: "4" });
         promptInput.value = existingStyle ? (existingStyle.prompt || "") : "";
-        var negInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Negative prompt", rows: "3" });
+        const negInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Negative prompt", rows: "3" });
         negInput.value = existingStyle ? (existingStyle.negative_prompt || "") : "";
 
         modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Name" }));
@@ -375,16 +484,22 @@
         modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Negative Prompt" }));
         modal.appendChild(negInput);
 
-        var btnRow = el("div", { className: "sg-editor-btns" });
+        const btnRow = el("div", { className: "sg-editor-btns" });
         btnRow.appendChild(el("button", {
             className: "sg-btn sg-btn-primary", textContent: "💾 Save",
             onClick: function () {
-                var name = nameInput.value.trim();
+                const name = nameInput.value.trim();
                 if (!name) { nameInput.style.borderColor = "#f87171"; return; }
                 apiPost("/style_grid/style/save", {
                     name: name, prompt: promptInput.value, negative_prompt: negInput.value,
                     source: existingStyle ? existingStyle.source : null,
-                }).then(function () { overlay.remove(); refreshPanel(tabName); });
+                }).then(function () {
+                    overlay.remove();
+                    refreshPanel(tabName);
+                }).catch(function (err) {
+                    console.error("[Style Grid] API error:", err);
+                    showStatusMessage(tabName, "Save failed", true);
+                });
             }
         }));
         btnRow.appendChild(el("button", {
@@ -399,52 +514,140 @@
     }
 
     function duplicateStyle(tabName, style) {
-        var newName = style.name + "_copy";
+        const newName = style.name + "_copy";
         apiPost("/style_grid/style/save", {
             name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
-        }).then(function () { refreshPanel(tabName); });
+        }).then(function () {
+            refreshPanel(tabName);
+        }).catch(function (err) {
+            console.error("[Style Grid] API error:", err);
+        });
     }
 
     function deleteStyle(tabName, styleName, source) {
-        if (!confirm("Delete style '" + styleName + "'?")) return;
-        apiPost("/style_grid/style/delete", { name: styleName, source: source }).then(function () { refreshPanel(tabName); });
+        const overlay = el("div", { className: "sg-editor-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
+        modal.appendChild(el("h3", {
+            className: "sg-editor-title",
+            textContent: "Delete style?"
+        }));
+        modal.appendChild(el("p", {
+            textContent: "\"" + styleName + "\" will be permanently removed from the CSV.",
+            style: "font-size:13px; color: var(--body-text-color-subdued, #9ca3af);"
+        }));
+        const btns = el("div", { className: "sg-editor-btns" });
+        btns.appendChild(el("button", {
+            className: "sg-btn",
+            style: "background:#dc2626; border-color:#dc2626; color:#fff;",
+            textContent: "🗑️ Delete",
+            onClick: function () {
+                overlay.remove();
+                apiPost("/style_grid/style/delete", { name: styleName, source: source })
+                    .then(function () { refreshPanel(tabName); })
+                    .catch(function (err) {
+                        console.error("[Style Grid] Delete failed:", err);
+                        showStatusMessage(tabName, "Delete failed", true);
+                    });
+            }
+        }));
+        btns.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Cancel",
+            onClick: function () { overlay.remove(); }
+        }));
+        modal.appendChild(btns);
+        overlay.appendChild(modal);
+        overlay.addEventListener("click", function (e) {
+            if (e.target === overlay) overlay.remove();
+        });
+        document.body.appendChild(overlay);
     }
 
     function moveToCategory(tabName, style) {
-        var newCat = prompt("New category name (prefix before _):", style.category || "");
-        if (!newCat) return;
-        var oldName = style.name;
-        var rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
-        var newName = newCat.toUpperCase() + "_" + rest;
-        // Delete old, save new
-        apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(function () {
-            return apiPost("/style_grid/style/save", { name: newName, prompt: style.prompt, negative_prompt: style.negative_prompt, source: style.source });
-        }).then(function () { refreshPanel(tabName); });
+        const overlay = el("div", { className: "sg-editor-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
+
+        modal.appendChild(el("h3", {
+            className: "sg-editor-title",
+            textContent: "Move to category"
+        }));
+        modal.appendChild(el("label", {
+            className: "sg-editor-label",
+            textContent: "New category name"
+        }));
+        const input = el("input", {
+            className: "sg-editor-input",
+            type: "text",
+            value: style.category || "",
+            placeholder: "New category name"
+        });
+        modal.appendChild(input);
+
+        const btns = el("div", { className: "sg-editor-btns" });
+        btns.appendChild(el("button", {
+            className: "sg-btn sg-btn-primary",
+            textContent: "Move",
+            onClick: function () {
+                const newCat = (input.value || "").trim();
+                if (!newCat) { input.style.borderColor = "#f87171"; return; }
+                const oldName = style.name;
+                const rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
+                const newName = newCat.toUpperCase() + "_" + rest;
+                apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(function () {
+                    return apiPost("/style_grid/style/save", {
+                        name: newName,
+                        prompt: style.prompt,
+                        negative_prompt: style.negative_prompt,
+                        source: style.source
+                    });
+                }).then(function () {
+                    overlay.remove();
+                    refreshPanel(tabName);
+                }).catch(function (err) {
+                    console.error("[Style Grid] API error:", err);
+                    showStatusMessage(tabName, "Move failed", true);
+                });
+            }
+        }));
+        btns.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Cancel",
+            onClick: function () { overlay.remove(); }
+        }));
+
+        modal.appendChild(btns);
+        overlay.appendChild(modal);
+        overlay.addEventListener("click", function (e) {
+            if (e.target === overlay) overlay.remove();
+        });
+        document.body.appendChild(overlay);
     }
 
     // -----------------------------------------------------------------------
     // Presets UI
     // -----------------------------------------------------------------------
     function showPresetsMenu(tabName) {
-        var old = qs(".sg-presets-overlay");
+        const old = qs(".sg-presets-overlay");
         if (old) old.remove();
 
-        var overlay = el("div", { className: "sg-editor-overlay sg-presets-overlay" });
-        var modal = el("div", { className: "sg-editor-modal" });
+        const overlay = el("div", { className: "sg-editor-overlay sg-presets-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
         modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📦 Style Presets" }));
 
         // Save current as preset
-        var saveRow = el("div", { className: "sg-presets-save-row" });
-        var nameIn = el("input", { className: "sg-editor-input", type: "text", placeholder: "Preset name..." });
-        var saveBtn = el("button", {
+        const saveRow = el("div", { className: "sg-presets-save-row" });
+        const nameIn = el("input", { className: "sg-editor-input", type: "text", placeholder: "Preset name..." });
+        const saveBtn = el("button", {
             className: "sg-btn sg-btn-primary", textContent: "💾 Save current",
             onClick: function () {
-                var name = nameIn.value.trim();
+                const name = nameIn.value.trim();
                 if (!name) return;
                 apiPost("/style_grid/presets/save", { name: name, styles: [...state[tabName].selected] }).then(function (r) {
                     state[tabName].presets = r.presets || {};
                     renderPresetsList();
                     nameIn.value = "";
+                }).catch(function (err) {
+                    console.error("[Style Grid] API error:", err);
                 });
             }
         });
@@ -452,22 +655,22 @@
         saveRow.appendChild(saveBtn);
         modal.appendChild(saveRow);
 
-        var list = el("div", { className: "sg-presets-list" });
+        const list = el("div", { className: "sg-presets-list" });
         modal.appendChild(list);
 
         function renderPresetsList() {
             list.innerHTML = "";
-            var presets = state[tabName].presets || {};
+            const presets = state[tabName].presets || {};
             Object.keys(presets).forEach(function (name) {
-                var p = presets[name];
-                var row = el("div", { className: "sg-preset-row" });
+                const p = presets[name];
+                const row = el("div", { className: "sg-preset-row" });
                 row.appendChild(el("span", { className: "sg-preset-name", textContent: name + " (" + (p.styles || []).length + " styles)" }));
                 row.appendChild(el("button", {
                     className: "sg-btn sg-btn-secondary", textContent: "Load",
                     onClick: function () {
                         // Clear current and load preset
                         clearAll(tabName);
-                        var presetStyles = p.styles || [];
+                        const presetStyles = p.styles || [];
                         presetStyles.forEach(function (sn) {
                             state[tabName].selected.add(sn);
                             state[tabName].selectedOrder.push(sn);
@@ -484,6 +687,8 @@
                         apiPost("/style_grid/presets/delete", { name: name }).then(function (r) {
                             state[tabName].presets = r.presets || {};
                             renderPresetsList();
+                        }).catch(function (err) {
+                            console.error("[Style Grid] API error:", err);
                         });
                     }
                 }));
@@ -495,7 +700,7 @@
         }
         renderPresetsList();
 
-        var closeBtn = el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } });
+        const closeBtn = el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } });
         modal.appendChild(closeBtn);
         overlay.appendChild(modal);
         overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
@@ -506,36 +711,40 @@
     // Import/Export
     // -----------------------------------------------------------------------
     function showExportImport(tabName) {
-        var overlay = el("div", { className: "sg-editor-overlay" });
-        var modal = el("div", { className: "sg-editor-modal" });
+        const overlay = el("div", { className: "sg-editor-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
         modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📥 Import / Export" }));
 
-        var btnExport = el("button", {
+        const btnExport = el("button", {
             className: "sg-btn sg-btn-primary", textContent: "⬇️ Export all (JSON)",
             onClick: function () {
                 apiGet("/style_grid/export").then(function (data) {
-                    var blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                    var a = document.createElement("a");
+                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+                    const a = document.createElement("a");
                     a.href = URL.createObjectURL(blob);
                     a.download = "style_grid_export_" + new Date().toISOString().slice(0, 10) + ".json";
                     a.click();
+                }).catch(function (err) {
+                    console.error("[Style Grid] API error:", err);
                 });
             }
         });
         modal.appendChild(btnExport);
 
-        var importLabel = el("label", { className: "sg-editor-label", textContent: "Import JSON file:" });
-        var importInput = el("input", { type: "file", accept: ".json" });
+        const importLabel = el("label", { className: "sg-editor-label", textContent: "Import JSON file:" });
+        const importInput = el("input", { type: "file", accept: ".json" });
         importInput.addEventListener("change", function () {
-            var file = importInput.files[0];
+            const file = importInput.files[0];
             if (!file) return;
-            var reader = new FileReader();
+            const reader = new FileReader();
             reader.onload = function () {
                 try {
-                    var data = JSON.parse(reader.result);
+                    const data = JSON.parse(reader.result);
                     apiPost("/style_grid/import", data).then(function () {
                         overlay.remove();
                         refreshPanel(tabName);
+                    }).catch(function (err) {
+                        console.error("[Style Grid] API error:", err);
                     });
                 } catch (e) { alert("Invalid JSON file"); }
             };
@@ -555,14 +764,14 @@
     // -----------------------------------------------------------------------
     function refreshPanel(tabName) {
         apiGet("/style_grid/styles").then(function (data) {
-            var dataEl = qs("#style_grid_data_" + tabName + " textarea");
+            const dataEl = qs("#style_grid_data_" + tabName + " textarea");
             if (dataEl) {
-                var full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
+                const full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
                 setPromptValue(dataEl, JSON.stringify(full));
             }
             // Save state before rebuild
-            var savedSelection = new Set(state[tabName].selected);
-            var wasVisible = state[tabName].panel && state[tabName].panel.classList.contains("sg-visible");
+            const savedSelection = new Set(state[tabName].selected);
+            const wasVisible = state[tabName].panel && state[tabName].panel.classList.contains("sg-visible");
             if (state[tabName].panel) {
                 state[tabName].panel.remove();
                 state[tabName].panel = null;
@@ -583,13 +792,16 @@
             if (wasVisible) {
                 state[tabName].panel.classList.add("sg-visible");
             }
+        }).catch(function (err) {
+            console.error("[Style Grid] API error:", err);
+            showStatusMessage(tabName, "Refresh failed", true);
         });
     }
 
     // -----------------------------------------------------------------------
     // Dynamic polling for file changes
     // -----------------------------------------------------------------------
-    var _pollInterval = null;
+    let _pollInterval = null;
     function startPolling() {
         if (_pollInterval) return;
         _pollInterval = setInterval(function () {
@@ -600,61 +812,65 @@
                         if (state[t].panel) refreshPanel(t);
                     });
                 }
-            }).catch(function () {});
+            }).catch(function (err) {
+                console.error("[Style Grid] API error:", err);
+            });
         }, 5000);
     }
 
-    // -----------------------------------------------------------------------
+    // ════════════════════════════════════════════════════
+    // PANEL & UI
+    // ════════════════════════════════════════════════════
     // Build the Grid Panel
     // -----------------------------------------------------------------------
     function buildPanel(tabName) {
-        var categories = loadStyles(tabName);
+        const categories = loadStyles(tabName);
         state[tabName].categories = categories;
         state[tabName].silentMode = getSilentMode(tabName);
-        var catOrder = getCategoryOrder(tabName);
+        const catOrder = getCategoryOrder(tabName);
 
-        var catKeys = Object.keys(categories);
-        var sortedCats = [];
+        const catKeys = Object.keys(categories);
+        const sortedCats = [];
         catOrder.forEach(function (c) { if (catKeys.includes(c)) sortedCats.push(c); });
         catKeys.forEach(function (c) { if (!sortedCats.includes(c)) sortedCats.push(c); });
 
         // Overlay
-        var overlay = el("div", { className: "sg-overlay", id: "sg_overlay_" + tabName });
-        var overlayMouseDownTarget = null;
+        const overlay = el("div", { className: "sg-overlay", id: "sg_overlay_" + tabName });
+        let overlayMouseDownTarget = null;
         overlay.addEventListener("mousedown", function (e) { overlayMouseDownTarget = e.target; }, true);
         overlay.addEventListener("click", function (e) { if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false); overlayMouseDownTarget = null; });
 
-        var panel = el("div", { className: "sg-panel" });
+        const panel = el("div", { className: "sg-panel" });
 
         // ---- Header ----
-        var header = el("div", { className: "sg-header" });
-        var titleRow = el("div", { className: "sg-title-row" });
+        const header = el("div", { className: "sg-header" });
+        const titleRow = el("div", { className: "sg-title-row" });
         titleRow.appendChild(el("span", { className: "sg-title", textContent: "🎨 Style Grid" }));
 
         // Conflict warning area
-        var conflictBadge = el("span", { className: "sg-conflict-badge", id: "sg_conflict_" + tabName });
+        const conflictBadge = el("span", { className: "sg-conflict-badge", id: "sg_conflict_" + tabName });
         conflictBadge.style.display = "none";
         titleRow.appendChild(conflictBadge);
 
-        var selectedCount = el("span", { className: "sg-selected-count", id: "sg_count_" + tabName, textContent: "0 selected" });
+        const selectedCount = el("span", { className: "sg-selected-count", id: "sg_count_" + tabName, textContent: "0 selected" });
         titleRow.appendChild(selectedCount);
         header.appendChild(titleRow);
 
         // Search row
-        var searchRow = el("div", { className: "sg-search-row" });
+        const searchRow = el("div", { className: "sg-search-row" });
 
         // Source dropdown
         state[tabName].selectedSource = getStoredSource(tabName);
-        var sources = getUniqueSources(tabName);
-        var currentSource = state[tabName].selectedSource;
+        const sources = getUniqueSources(tabName);
+        let currentSource = state[tabName].selectedSource;
         if (sources.indexOf(currentSource) === -1) currentSource = "All";
         state[tabName].selectedSource = currentSource;
 
-        var srcWrap = el("div", { className: "sg-source-dropdown-wrap" });
-        var srcBtn = el("button", { type: "button", className: "sg-source-select lg secondary gradio-button", id: "sg_source_" + tabName, title: "Filter by source", textContent: currentSource === "All" ? "All Sources" : currentSource });
-        var srcList = el("div", { className: "sg-source-dropdown-list" });
+        const srcWrap = el("div", { className: "sg-source-dropdown-wrap" });
+        const srcBtn = el("button", { type: "button", className: "sg-source-select lg secondary gradio-button", id: "sg_source_" + tabName, title: "Filter by source", textContent: currentSource === "All" ? "All Sources" : currentSource });
+        const srcList = el("div", { className: "sg-source-dropdown-list" });
         [{ value: "All", label: "All Sources" }].concat(sources.map(function (s) { return { value: s, label: s }; })).forEach(function (opt) {
-            var item = el("div", { className: "sg-source-dropdown-item" + (opt.value === currentSource ? " sg-active" : ""), "data-value": opt.value, textContent: opt.label });
+            const item = el("div", { className: "sg-source-dropdown-item" + (opt.value === currentSource ? " sg-active" : ""), "data-value": opt.value, textContent: opt.label });
             item.addEventListener("click", function (e) {
                 e.stopPropagation();
                 state[tabName].selectedSource = opt.value;
@@ -668,9 +884,9 @@
         });
         srcBtn.addEventListener("click", function (e) {
             e.stopPropagation();
-            srcList.classList.toggle("sg-open");
+                srcList.classList.toggle("sg-open");
             if (srcList.classList.contains("sg-open")) {
-                var close = function (e2) { if (!srcWrap.contains(e2.target)) { srcList.classList.remove("sg-open"); document.removeEventListener("click", close); } };
+                    const close = function (e2) { if (!srcWrap.contains(e2.target)) { srcList.classList.remove("sg-open"); document.removeEventListener("click", close); } };
                 setTimeout(function () { document.addEventListener("click", close); }, 0);
             }
         });
@@ -679,16 +895,16 @@
         searchRow.appendChild(srcWrap);
 
         // Search
-        var searchInput = el("input", { className: "sg-search", type: "text", placeholder: "Search styles...", id: "sg_search_" + tabName, maxlength: "200" });
-        var searchWrapper = el("div", { className: "sg-search-wrapper" });
-        var clearBtn = el("span", { className: "sg-search-clear", textContent: "×" });
+        const searchInput = el("input", { className: "sg-search", type: "text", placeholder: "Search styles...", id: "sg_search_" + tabName, maxlength: "200" });
+        const searchWrapper = el("div", { className: "sg-search-wrapper" });
+        const clearBtn = el("span", { className: "sg-search-clear", textContent: "×" });
         clearBtn.addEventListener("click", function () {
             searchInput.value = "";
             clearBtn.classList.remove("sg-visible");
             filterStyles(tabName);
         });
 
-        var acDropdown = el("div", { className: "sg-ac-dropdown" });
+        const acDropdown = el("div", { className: "sg-ac-dropdown" });
         acDropdown.style.display = "none";
         searchWrapper.style.position = "relative";
         searchWrapper.appendChild(searchInput);
@@ -696,11 +912,11 @@
         searchWrapper.appendChild(acDropdown);
         searchRow.appendChild(searchWrapper);
 
-        var suggestions = buildSuggestions(tabName);
-        var acSuppressNext = false;
+        const suggestions = buildSuggestions(tabName);
+        let acSuppressNext = false;
 
         searchInput.addEventListener("input", function () {
-            var val = this.value;
+            const val = this.value;
             clearBtn.classList.toggle("sg-visible", val.length > 0);
 
             if (acSuppressNext) {
@@ -713,10 +929,10 @@
             if (!val.trim()) {
                 acDropdown.style.display = "none";
             } else {
-                var tokens = val.split(/\s+/);
-                var lastToken = tokens[tokens.length - 1] || "";
+                const tokens = val.split(/\s+/);
+                const lastToken = tokens[tokens.length - 1] || "";
 
-                var matches = suggestions.filter(function (s) {
+                const matches = suggestions.filter(function (s) {
                     return acMatches(s, lastToken);
                 }).slice(0, 8);
 
@@ -725,15 +941,15 @@
                 } else {
                     acDropdown.innerHTML = "";
                     matches.forEach(function (match) {
-                        var item = el("div", {
+                        const item = el("div", {
                             className: "sg-ac-item",
                             textContent: match
                         });
                         item.addEventListener("mousedown", function (e) {
                             e.preventDefault();
-                            var tokensInner = val.split(/\s+/);
+                            const tokensInner = val.split(/\s+/);
                             tokensInner[tokensInner.length - 1] = match;
-                            var needsValue = match.lastIndexOf(":") === match.length - 1;
+                            const needsValue = match.lastIndexOf(":") === match.length - 1;
                             searchInput.value = tokensInner.join(" ") + (needsValue ? "" : " ");
                             acSuppressNext = true;
                             acDropdown.style.display = "none";
@@ -761,19 +977,19 @@
         });
 
         searchInput.addEventListener("keydown", function (e) {
-            var items = Array.prototype.slice.call(qsa(".sg-ac-item", acDropdown));
+            const items = Array.prototype.slice.call(qsa(".sg-ac-item", acDropdown));
             if (!items.length || acDropdown.style.display === "none") return;
-            var active = qs(".sg-ac-item.sg-ac-active", acDropdown);
-            var idx = items.indexOf(active);
+            const active = qs(".sg-ac-item.sg-ac-active", acDropdown);
+            const idx = items.indexOf(active);
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 if (active) active.classList.remove("sg-ac-active");
-                var next = items[idx + 1 < items.length ? idx + 1 : 0];
+                const next = items[idx + 1 < items.length ? idx + 1 : 0];
                 if (next) next.classList.add("sg-ac-active");
             } else if (e.key === "ArrowUp") {
                 e.preventDefault();
                 if (active) active.classList.remove("sg-ac-active");
-                var prev = items[idx - 1 >= 0 ? idx - 1 : items.length - 1];
+                const prev = items[idx - 1 >= 0 ? idx - 1 : items.length - 1];
                 if (prev) prev.classList.add("sg-ac-active");
             } else if ((e.key === "Enter" || e.key === "Tab") && active) {
                 e.preventDefault();
@@ -784,7 +1000,7 @@
         });
 
         // Silent mode toggle
-        var silentBtn = el("button", {
+        const silentBtn = el("button", {
             className: "sg-btn sg-btn-secondary" + (state[tabName].silentMode ? " sg-active" : ""),
             textContent: "👁 Silent",
             title: "Silent mode: styles won't appear in prompt fields but will be applied during generation",
@@ -798,18 +1014,18 @@
         searchRow.appendChild(silentBtn);
 
         // Random style
-        var btnRandom = el("button", {
+        const btnRandom = el("button", {
             className: "sg-btn sg-btn-secondary", textContent: "🎲", title: "Random style (use at your own risk!)",
             onClick: function () {
-                var allStyles = [];
-                var src = state[tabName].selectedSource;
+                const allStyles = [];
+                const src = state[tabName].selectedSource;
                 Object.values(state[tabName].categories).forEach(function (arr) {
                     arr.forEach(function (s) {
                         if (src === "All" || s.source === src) allStyles.push(s);
                     });
                 });
                 if (allStyles.length === 0) return;
-                var rand = allStyles[Math.floor(Math.random() * allStyles.length)];
+                const rand = allStyles[Math.floor(Math.random() * allStyles.length)];
                 if (!state[tabName].selected.has(rand.name)) {
                     state[tabName].selected.add(rand.name);
                     if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
@@ -828,17 +1044,17 @@
         searchRow.appendChild(el("button", {
             className: "sg-btn sg-btn-secondary", textContent: "↕", title: "Collapse all",
             onClick: function () {
-                var allCollapsed = qsa(".sg-category:not(.sg-collapsed)", panel).length === 0;
+                const allCollapsed = qsa(".sg-category:not(.sg-collapsed)", panel).length === 0;
                 qsa(".sg-category", panel).forEach(function (sec) {
-                    if (allCollapsed) { sec.classList.remove("sg-collapsed"); var a = sec.querySelector(".sg-cat-arrow"); if (a) a.textContent = "▾"; }
-                    else { sec.classList.add("sg-collapsed"); var a = sec.querySelector(".sg-cat-arrow"); if (a) a.textContent = "▸"; }
+                    if (allCollapsed) { sec.classList.remove("sg-collapsed"); const a = sec.querySelector(".sg-cat-arrow"); if (a) a.textContent = "▾"; }
+                    else { sec.classList.add("sg-collapsed"); const a = sec.querySelector(".sg-cat-arrow"); if (a) a.textContent = "▸"; }
                 });
             }
         }));
 
         // Compact
-        var compactMode = localStorage.getItem("sg_compact") === "1";
-        var btnCompact = el("button", {
+        let compactMode = localStorage.getItem("sg_compact") === "1";
+        const btnCompact = el("button", {
             className: "sg-btn sg-btn-secondary" + (compactMode ? " sg-active" : ""), textContent: "▪", title: "Compact mode",
             onClick: function () { compactMode = !compactMode; localStorage.setItem("sg_compact", compactMode ? "1" : "0"); panel.classList.toggle("sg-compact", compactMode); btnCompact.classList.toggle("sg-active", compactMode); }
         });
@@ -862,6 +1078,9 @@
                 apiPost("/style_grid/backup").then(function (r) {
                     if (r && r.ok) alert("Backup saved successfully!");
                     else alert("Nothing to backup or backup failed.");
+                }).catch(function (err) {
+                    console.error("[Style Grid] API error:", err);
+                    showStatusMessage(tabName, "Backup failed", true);
                 });
             }
         }));
@@ -876,14 +1095,14 @@
         panel.appendChild(header);
 
         // ---- Body ----
-        var body = el("div", { className: "sg-body" });
-        var main = el("div", { className: "sg-main", id: "sg_main_" + tabName });
-        var showSidebar = sortedCats.length > 5;
-        var favSet = getFavorites(tabName);
+        const body = el("div", { className: "sg-body" });
+        const main = el("div", { className: "sg-main", id: "sg_main_" + tabName });
+        const showSidebar = sortedCats.length > 5;
+        const favSet = getFavorites(tabName);
 
         function showOnlyCategory(catId) {
             qsa(".sg-category", main).forEach(function (sec) {
-                var vis = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+                const vis = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
                 if (vis === 0) { sec.style.display = "none"; return; }
                 if (catId === null) { sec.style.display = ""; }
                 else { sec.style.display = (sec.getAttribute("data-category") === catId) ? "" : "none"; }
@@ -891,9 +1110,9 @@
         }
 
         if (showSidebar) {
-            var sidebar = el("div", { className: "sg-sidebar" });
+            const sidebar = el("div", { className: "sg-sidebar" });
             sidebar.appendChild(el("div", { className: "sg-sidebar-label", textContent: "Categories" }));
-            var btnAll = el("button", { type: "button", className: "sg-sidebar-btn sg-sidebar-btn-all sg-active", textContent: "All", onClick: function () { showOnlyCategory(null); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); btnAll.classList.add("sg-active"); } });
+            const btnAll = el("button", { type: "button", className: "sg-sidebar-btn sg-sidebar-btn-all sg-active", textContent: "All", onClick: function () { showOnlyCategory(null); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); btnAll.classList.add("sg-active"); } });
             sidebar.appendChild(btnAll);
             sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "★ Favorites", onClick: function () { showOnlyCategory("FAVORITES"); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
             sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "🕑 Recent", onClick: function () { showOnlyCategory("RECENT"); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
@@ -902,26 +1121,26 @@
             });
             body.appendChild(sidebar);
         } else {
-            var filterBar = el("div", { className: "sg-filter-bar" });
-            var fAll = el("button", { type: "button", className: "sg-filter-btn sg-active", textContent: "All", onClick: function () { showOnlyCategory(null); fAll.classList.add("sg-active"); fFav.classList.remove("sg-active"); } });
-            var fFav = el("button", { type: "button", className: "sg-filter-btn", textContent: "★ Favorites", onClick: function () { showOnlyCategory("FAVORITES"); fFav.classList.add("sg-active"); fAll.classList.remove("sg-active"); } });
+            const filterBar = el("div", { className: "sg-filter-bar" });
+            const fAll = el("button", { type: "button", className: "sg-filter-btn sg-active", textContent: "All", onClick: function () { showOnlyCategory(null); fAll.classList.add("sg-active"); fFav.classList.remove("sg-active"); } });
+            const fFav = el("button", { type: "button", className: "sg-filter-btn", textContent: "★ Favorites", onClick: function () { showOnlyCategory("FAVORITES"); fFav.classList.add("sg-active"); fAll.classList.remove("sg-active"); } });
             filterBar.appendChild(fAll);
             filterBar.appendChild(fFav);
             body.appendChild(filterBar);
         }
 
         // Build favorites section
-        var favStyles = [];
+        const favStyles = [];
         sortedCats.forEach(function (catName) {
             (categories[catName] || []).forEach(function (s) { if (favSet.has(s.name)) favStyles.push(s); });
         });
         appendCategorySection(main, "★ " + FAV_CAT, favStyles, "#eab308", true, tabName);
 
         // Build recent section
-        var recentHistory = getRecentHistory(tabName);
-        var recentStyles = [];
+        const recentHistory = getRecentHistory(tabName);
+        const recentStyles = [];
         recentHistory.slice(0, 10).forEach(function (n) {
-            var s = findStyleByName(tabName, n);
+            const s = findStyleByName(tabName, n);
             if (s) recentStyles.push(s);
         });
         if (recentStyles.length > 0) {
@@ -930,7 +1149,7 @@
 
         // Build category sections
         sortedCats.forEach(function (catName) {
-            var styles = categories[catName];
+            const styles = categories[catName];
             if (!styles || styles.length === 0) return;
             appendCategorySection(main, catName, styles, getCategoryColor(catName), false, tabName);
         });
@@ -939,7 +1158,7 @@
         panel.appendChild(body);
 
         // Footer
-        var footer = el("div", { className: "sg-footer", id: "sg_footer_" + tabName });
+        const footer = el("div", { className: "sg-footer", id: "sg_footer_" + tabName });
         footer.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
         footer.appendChild(el("div", { className: "sg-footer-tags", id: "sg_tags_" + tabName }));
         panel.appendChild(footer);
@@ -952,12 +1171,12 @@
     }
 
     function rebuildGridCards(tabName) {
-      var wasVisible =
+      const wasVisible =
         state[tabName].panel &&
         state[tabName].panel.classList.contains("sg-visible");
-      var savedSelection = new Set(state[tabName].selected);
-      var savedOrder = (state[tabName].selectedOrder || []).slice();
-      var savedApplied = new Map(state[tabName].applied);
+      const savedSelection = new Set(state[tabName].selected);
+      const savedOrder = (state[tabName].selectedOrder || []).slice();
+      const savedApplied = new Map(state[tabName].applied);
       if (state[tabName].panel) {
         state[tabName].panel.remove();
         state[tabName].panel = null;
@@ -984,18 +1203,18 @@
     // Build a category section
     // -----------------------------------------------------------------------
     function appendCategorySection(container, catName, styles, color, isFav, tabName, overrideCatId) {
-        var catId = overrideCatId || (isFav ? "FAVORITES" : catName);
-        var section = el("div", { className: "sg-category", "data-category": catId });
+        const catId = overrideCatId || (isFav ? "FAVORITES" : catName);
+        const section = el("div", { className: "sg-category", "data-category": catId });
         section.id = "sg-cat-" + catId.replace(/\s/g, "_");
 
-        var catHeader = el("div", { className: "sg-cat-header" });
+        const catHeader = el("div", { className: "sg-cat-header" });
         catHeader.style.borderLeftColor = color;
-        var catTitle = el("span", { className: "sg-cat-title" });
-        var catBadge = el("span", { className: "sg-cat-badge" }); catBadge.style.backgroundColor = color; catBadge.textContent = catName;
+        const catTitle = el("span", { className: "sg-cat-title" });
+        const catBadge = el("span", { className: "sg-cat-badge" }); catBadge.style.backgroundColor = color; catBadge.textContent = catName;
         catTitle.appendChild(catBadge);
         catTitle.appendChild(document.createTextNode(" (" + styles.length + ")"));
-        var catArrow = el("span", { className: "sg-cat-arrow", textContent: "▾" });
-        var catSelectAll = el("button", {
+        const catArrow = el("span", { className: "sg-cat-arrow", textContent: "▾" });
+        const catSelectAll = el("button", {
             className: "sg-cat-select-all", textContent: "Select All",
             onClick: function (e) { e.stopPropagation(); toggleCategoryAll(tabName, catId); }
         });
@@ -1009,18 +1228,18 @@
         catHeader.addEventListener("contextmenu", function (e) {
             e.preventDefault();
             e.stopPropagation();
-            var old = qs(".sg-context-menu"); if (old) old.remove();
-            var menu = el("div", { className: "sg-context-menu" });
+            const old = qs(".sg-context-menu"); if (old) old.remove();
+            const menu = el("div", { className: "sg-context-menu" });
             menu.style.left = e.clientX + "px"; menu.style.top = e.clientY + "px";
-            var item = el("div", {
+            const item = el("div", {
                 className: "sg-ctx-item",
                 textContent: "🎲 Add category as wildcard",
                 onClick: function () {
                     menu.remove();
-                    var wcTag = "__" + catId.toLowerCase() + "__";
-                    var promptEl = qs("#" + tabName + "_prompt textarea");
+                    const wcTag = "__" + catId.toLowerCase() + "__";
+                    const promptEl = qs("#" + tabName + "_prompt textarea");
                     if (promptEl) {
-                        var sep = promptEl.value.trim() ? ", " : "";
+                        const sep = promptEl.value.trim() ? ", " : "";
                         setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
                     }
                 }
@@ -1028,15 +1247,15 @@
             menu.appendChild(item);
             document.body.appendChild(menu);
             setTimeout(function () {
-                var close = function () { menu.remove(); document.removeEventListener("click", close); };
+                const close = function () { menu.remove(); document.removeEventListener("click", close); };
                 document.addEventListener("click", close);
             }, 0);
         });
         section.appendChild(catHeader);
 
-        var grid = el("div", { className: "sg-grid" });
+        const grid = el("div", { className: "sg-grid" });
         styles.forEach(function (style) {
-            var card = el("div", {
+            const card = el("div", {
                 className: "sg-card" + (style.has_placeholder ? " sg-has-placeholder" : ""),
                 "data-style-name": style.name,
                 "data-category": catId,
@@ -1047,10 +1266,10 @@
             card.style.setProperty("--cat-color", color);
             if (state[tabName].selected.has(style.name)) { card.classList.add("sg-selected"); card.classList.add("sg-applied"); }
 
-            var icons = el("div", { className: "sg-card-icons" });
-            var check = el("span", { className: "sg-card-check", textContent: "✓" });
+            const icons = el("div", { className: "sg-card-icons" });
+            const check = el("span", { className: "sg-card-check", textContent: "✓" });
             icons.appendChild(check);
-            var star = el("span", {
+            const star = el("span", {
                 className: "sg-card-star" + (getFavorites(tabName).has(style.name) ? " sg-fav" : ""),
                 title: "Toggle favorite", textContent: "★",
                 onClick: function (e) {
@@ -1062,10 +1281,10 @@
             icons.appendChild(star);
             card.appendChild(icons);
 
-            var usage = state[tabName].usage || {};
-            var uCount = (usage[style.name] || {}).count || 0;
+            const usage = state[tabName].usage || {};
+            const uCount = (usage[style.name] || {}).count || 0;
             if (uCount > 0) {
-                var uBadge = el("span", { className: "sg-card-usage", textContent: uCount.toString(), title: "Used " + uCount + " times" });
+                const uBadge = el("span", { className: "sg-card-usage", textContent: uCount.toString(), title: "Used " + uCount + " times" });
                 card.appendChild(uBadge);
             }
 
@@ -1088,9 +1307,9 @@
     // Search autocomplete suggestions
     // -----------------------------------------------------------------------
     function buildSuggestions(tabName) {
-        var sugg = new Set();
-        var usage = state[tabName].usage || {};
-        var allStyles = [];
+        const sugg = new Set();
+        const usage = state[tabName].usage || {};
+        const allStyles = [];
         Object.values(state[tabName].categories || {}).forEach(function (arr) {
             arr.forEach(function (s) { allStyles.push(s); });
         });
@@ -1106,16 +1325,16 @@
     // Structured search query parsing
     // -----------------------------------------------------------------------
     function parseSearchQuery(rawQuery) {
-        var filters = {
+        const filters = {
             text: [], tag: [], neg: [], cat: null,
             fav: false, hasPlaceholder: false, usedMin: null
         };
-        var tokenRegex = /(\w+):("[^"]*"|\S+)/g;
-        var match;
-        var remaining = rawQuery;
+        const tokenRegex = /(\w+):("[^"]*"|\S+)/g;
+        let match;
+        let remaining = rawQuery;
         while ((match = tokenRegex.exec(rawQuery)) !== null) {
-            var key = match[1].toLowerCase();
-            var val = match[2].replace(/^"|"$/g, "").toLowerCase();
+            const key = match[1].toLowerCase();
+            const val = match[2].replace(/^"|"$/g, "").toLowerCase();
             remaining = remaining.replace(match[0], "").trim();
             if (key === "tag")      filters.tag.push(val);
             else if (key === "neg") filters.neg.push(val);
@@ -1123,7 +1342,7 @@
             else if (key === "fav" && val === "yes")          filters.fav = true;
             else if (key === "has" && val === "placeholder")  filters.hasPlaceholder = true;
             else if (key === "used") {
-                var m = val.match(/^>(\d+)$/);
+                const m = val.match(/^>(\d+)$/);
                 if (m) filters.usedMin = parseInt(m[1], 10);
             }
         }
@@ -1184,10 +1403,10 @@
     }
 
     function toggleCategoryAll(tabName, catName) {
-        var cards = qsa('.sg-category[data-category="' + catName + '"] .sg-card', state[tabName].panel);
-        var allSelected = Array.from(cards).every(function (c) { return c.classList.contains("sg-selected"); });
+        const cards = qsa('.sg-category[data-category="' + catName + '"] .sg-card', state[tabName].panel);
+        const allSelected = Array.from(cards).every(function (c) { return c.classList.contains("sg-selected"); });
         cards.forEach(function (c) {
-            var name = c.getAttribute("data-style-name");
+            const name = c.getAttribute("data-style-name");
             if (allSelected) {
                 unapplyStyle(tabName, name);
                 state[tabName].selected.delete(name);
@@ -1209,19 +1428,19 @@
     }
 
     function filterStyles(tabName) {
-        var panel = state[tabName].panel;
+        const panel = state[tabName].panel;
         if (!panel) return;
-        var searchEl = qs("#sg_search_" + tabName, panel);
-        var rawQuery = searchEl ? normalizeSearchText(searchEl.value) : "";
-        var selectedSource = state[tabName].selectedSource || "All";
-        var filters = parseSearchQuery(rawQuery);
+        const searchEl = qs("#sg_search_" + tabName, panel);
+        const rawQuery = searchEl ? normalizeSearchText(searchEl.value) : "";
+        const selectedSource = state[tabName].selectedSource || "All";
+        const filters = parseSearchQuery(rawQuery);
 
         function sourceFilter(src) {
             return selectedSource === "All" || src === selectedSource;
         }
 
         function cardPasses(card) {
-            var style = card._styleRef;
+            const style = card._styleRef;
             if (!sourceFilter(card.getAttribute("data-source") || "")) return false;
             if (filters.fav &&
                 !getFavorites(tabName).has(card.getAttribute("data-style-name")))
@@ -1234,22 +1453,22 @@
                 return false;
             if (filters.usedMin !== null) {
                 console.log("[SG debug] usedMin filter:", filters.usedMin);
-                var styleName = card.getAttribute("data-style-name");
-                var usageData = state[tabName].usage || {};
-                var count = (usageData[styleName] || {}).count || 0;
+                const styleName = card.getAttribute("data-style-name");
+                const usageData = state[tabName].usage || {};
+                const count = (usageData[styleName] || {}).count || 0;
                 if (count <= filters.usedMin) return false;
             }
             if (filters.tag.length && style) {
-                var prompt = (style.prompt || "").toLowerCase();
+                const prompt = (style.prompt || "").toLowerCase();
                 if (!filters.tag.every(function (t) { return prompt.indexOf(t) !== -1; })) return false;
             }
             if (filters.neg.length && style) {
-                var neg = (style.negative_prompt || "").toLowerCase();
+                const neg = (style.negative_prompt || "").toLowerCase();
                 if (!filters.neg.every(function (t) { return neg.indexOf(t) !== -1; })) return false;
             }
             if (filters.text.length) {
-                var searchName = card.getAttribute("data-search-name") || "";
-                var desc = (style && style.description || "").toLowerCase();
+                const searchName = card.getAttribute("data-search-name") || "";
+                const desc = (style && style.description || "").toLowerCase();
                 if (!filters.text.every(function (t) {
                     return searchName.indexOf(t) !== -1 || desc.indexOf(t) !== -1;
                 })) return false;
@@ -1263,17 +1482,17 @@
             });
 
             qsa(".sg-category", panel).forEach(function (sec) {
-                var visible = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
-                var ct = sec.querySelector(".sg-cat-title");
+                const visible = sec.querySelectorAll(".sg-card:not(.sg-card-hidden)").length;
+                const ct = sec.querySelector(".sg-cat-title");
                 if (ct && ct.childNodes.length >= 2)
                     ct.childNodes[1].textContent = " (" + visible + ")";
                 sec.style.display = visible > 0 ? "" : "none";
             });
 
-            var sidebar = panel.querySelector(".sg-sidebar");
+            const sidebar = panel.querySelector(".sg-sidebar");
             if (sidebar) {
                 qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (btn) {
-                    var sec = panel.querySelector(
+                    const sec = panel.querySelector(
                         "#sg-cat-" +
                         (btn.getAttribute("data-category") || "").replace(/\s/g, "_")
                     );
@@ -1290,47 +1509,47 @@
             setSilentGradio(tabName);
             return;
         }
-        var promptEl = qs("#" + tabName + "_prompt textarea");
-        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        const promptEl = qs("#" + tabName + "_prompt textarea");
+        const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
-        var order = state[tabName].selectedOrder || [];
-        var orderedApplied = order.filter(function (n) { return state[tabName].applied.has(n); });
-        var prompts = orderedApplied.map(function (n) {
-            var r = state[tabName].applied.get(n);
+        const order = state[tabName].selectedOrder || [];
+        const orderedApplied = order.filter(function (n) { return state[tabName].applied.has(n); });
+        const prompts = orderedApplied.map(function (n) {
+            const r = state[tabName].applied.get(n);
             return r && r.prompt ? r.prompt : null;
         }).filter(Boolean);
-        var negs = orderedApplied.map(function (n) {
-            var r = state[tabName].applied.get(n);
+        const negs = orderedApplied.map(function (n) {
+            const r = state[tabName].applied.get(n);
             return r && r.negative ? r.negative : null;
         }).filter(Boolean);
-        var base = (state[tabName].userPromptBase || "").trim();
-        var newPrompt = base + (prompts.length ? (base ? ", " : "") + prompts.join(", ") : "");
-        var baseNeg = (state[tabName].userPromptBaseNeg || "").trim();
-        var newNeg = baseNeg + (negs.length ? (baseNeg ? ", " : "") + negs.join(", ") : "");
+        const base = (state[tabName].userPromptBase || "").trim();
+        const newPrompt = base + (prompts.length ? (base ? ", " : "") + prompts.join(", ") : "");
+        const baseNeg = (state[tabName].userPromptBaseNeg || "").trim();
+        const newNeg = baseNeg + (negs.length ? (baseNeg ? ", " : "") + negs.join(", ") : "");
         setPromptValue(promptEl, newPrompt);
         setPromptValue(negEl, newNeg);
     }
 
     function updateSelectedUI(tabName) {
-        var count = state[tabName].selected.size;
-        var countEl = qs("#sg_count_" + tabName);
+        const count = state[tabName].selected.size;
+        const countEl = qs("#sg_count_" + tabName);
         if (countEl) countEl.textContent = count + " selected";
 
-        var order = state[tabName].selectedOrder || [];
+        let order = state[tabName].selectedOrder || [];
         order = order.filter(function (n) { return state[tabName].selected.has(n); });
         state[tabName].selected.forEach(function (n) {
             if (order.indexOf(n) === -1) order.push(n);
         });
         state[tabName].selectedOrder = order;
 
-        var tagsEl = qs("#sg_tags_" + tabName);
+        const tagsEl = qs("#sg_tags_" + tabName);
         if (tagsEl) {
             tagsEl.innerHTML = "";
             order.forEach(function (name) {
-                var tag = el("span", { className: "sg-tag", draggable: "true", "data-style-name": name });
-                var displayName = name;
-                for (var styles of Object.values(state[tabName].categories)) {
-                    var f = styles.find(function (s) { return s.name === name; });
+                const tag = el("span", { className: "sg-tag", draggable: "true", "data-style-name": name });
+                let displayName = name;
+                for (const styles of Object.values(state[tabName].categories)) {
+                    const f = styles.find(function (s) { return s.name === name; });
                     if (f) { displayName = f.display_name; break; }
                 }
                 tag.textContent = displayName;
@@ -1360,8 +1579,8 @@
                 tag.addEventListener("dragover", function (e) {
                     e.preventDefault();
                     e.dataTransfer.dropEffect = "move";
-                    var rect = this.getBoundingClientRect();
-                    var midX = rect.left + rect.width / 2;
+                    const rect = this.getBoundingClientRect();
+                    const midX = rect.left + rect.width / 2;
                     qsa(".sg-tag", tagsEl).forEach(function (t) {
                         t.classList.remove("sg-drag-over-left", "sg-drag-over-right");
                     });
@@ -1376,18 +1595,18 @@
                 });
                 tag.addEventListener("drop", function (e) {
                     e.preventDefault();
-                    var rect = this.getBoundingClientRect();
-                    var midX = rect.left + rect.width / 2;
+                    const rect = this.getBoundingClientRect();
+                    const midX = rect.left + rect.width / 2;
                     qsa(".sg-tag", tagsEl).forEach(function (t) {
                         t.classList.remove("sg-drag-over-left", "sg-drag-over-right");
                     });
-                    var fromName = e.dataTransfer.getData("text/plain");
+                    const fromName = e.dataTransfer.getData("text/plain");
                     if (!fromName || fromName === name) return;
-                    var ord = state[tabName].selectedOrder.slice();
-                    var fromIdx = ord.indexOf(fromName);
-                    var toIdx = ord.indexOf(name);
+                    const ord = state[tabName].selectedOrder.slice();
+                    const fromIdx = ord.indexOf(fromName);
+                    const toIdx = ord.indexOf(name);
                     if (fromIdx === -1 || toIdx === -1) return;
-                    var insertIdx = e.clientX < midX ? toIdx : toIdx + 1;
+                    let insertIdx = e.clientX < midX ? toIdx : toIdx + 1;
                     ord.splice(fromIdx, 1);
                     if (fromIdx < insertIdx) insertIdx--;
                     ord.splice(insertIdx, 0, fromName);
@@ -1400,13 +1619,13 @@
             });
         }
 
-        var badge = qs("#sg_btn_badge_" + tabName);
+        const badge = qs("#sg_btn_badge_" + tabName);
         if (badge) { badge.textContent = count > 0 ? count : ""; badge.style.display = count > 0 ? "flex" : "none"; }
     }
 
     function updateConflicts(tabName) {
-        var conflicts = checkConflictsLocal(tabName);
-        var badge = qs("#sg_conflict_" + tabName);
+        const conflicts = checkConflictsLocal(tabName);
+        const badge = qs("#sg_conflict_" + tabName);
         if (!badge) return;
         if (conflicts.length > 0) {
             badge.style.display = "inline-flex";
@@ -1421,13 +1640,13 @@
     // Toggle panel visibility
     // -----------------------------------------------------------------------
     function togglePanel(tabName, show) {
-        var panel = state[tabName].panel;
+        const panel = state[tabName].panel;
         if (!panel) panel = buildPanel(tabName);
         if (typeof show === "undefined") show = !panel.classList.contains("sg-visible");
         if (show) {
             panel.classList.add("sg-visible");
             filterStyles(tabName);
-            setTimeout(function () { var s = qs("#sg_search_" + tabName, panel); if (s) s.focus(); }, 100);
+            setTimeout(function () { const s = qs("#sg_search_" + tabName, panel); if (s) s.focus(); }, 100);
         } else {
             panel.classList.remove("sg-visible");
         }
@@ -1437,8 +1656,8 @@
     // Trigger button
     // -----------------------------------------------------------------------
     function createTriggerButton(tabName) {
-        var ns = "http://www.w3.org/2000/svg";
-        var svg = document.createElementNS(ns, "svg");
+        const ns = "http://www.w3.org/2000/svg";
+        const svg = document.createElementNS(ns, "svg");
         svg.setAttributeNS(null, "viewBox", "0 0 24 24");
         svg.setAttributeNS(null, "fill", "none");
         svg.setAttributeNS(null, "stroke", "currentColor");
@@ -1448,19 +1667,19 @@
         svg.setAttributeNS(null, "width", "16");
         svg.setAttributeNS(null, "height", "16");
         [[3, 3, 7, 7], [14, 3, 7, 7], [3, 14, 7, 7], [14, 14, 7, 7]].forEach(function (xywh) {
-            var rect = document.createElementNS(ns, "rect");
+            const rect = document.createElementNS(ns, "rect");
             rect.setAttributeNS(null, "x", String(xywh[0]));
             rect.setAttributeNS(null, "y", String(xywh[1]));
             rect.setAttributeNS(null, "width", String(xywh[2]));
             rect.setAttributeNS(null, "height", String(xywh[3]));
             svg.appendChild(rect);
         });
-        var btn = el("button", {
+        const btn = el("button", {
             className: "sg-trigger-btn lg secondary gradio-button tool svelte-cmf5ev",
             id: "sg_trigger_" + tabName, title: "Open Style Grid",
         });
         btn.appendChild(svg);
-        var badge = el("span", { className: "sg-btn-badge", id: "sg_btn_badge_" + tabName });
+        const badge = el("span", { className: "sg-btn-badge", id: "sg_btn_badge_" + tabName });
         badge.style.display = "none";
         btn.appendChild(badge);
         btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); togglePanel(tabName); });
@@ -1468,24 +1687,24 @@
     }
 
     function injectButton(tabName) {
-        var selectors = [
+        const selectors = [
             "#" + tabName + "_tools",
             "#" + tabName + "_styles_row",
             "#" + tabName + "_actions_column .style_create_row",
             "#" + tabName + "_actions_column",
         ];
-        var target = null;
-        for (var i = 0; i < selectors.length; i++) { target = qs(selectors[i]); if (target) break; }
+        let target = null;
+        for (let i = 0; i < selectors.length; i++) { target = qs(selectors[i]); if (target) break; }
         if (!target) {
-            var dd = qs("#" + tabName + "_styles_row") || qs("#" + tabName + "_styles");
+            const dd = qs("#" + tabName + "_styles_row") || qs("#" + tabName + "_styles");
             if (dd) target = dd.parentElement;
         }
         if (!target) {
-            var tab = qs("#tab_" + tabName);
-            if (tab) { var btns = tab.querySelectorAll(".tool"); if (btns.length > 0) target = btns[btns.length - 1].parentElement; }
+            const tab = qs("#tab_" + tabName);
+            if (tab) { const btns = tab.querySelectorAll(".tool"); if (btns.length > 0) target = btns[btns.length - 1].parentElement; }
         }
         if (!target) return false;
-        var btn = createTriggerButton(tabName);
+        const btn = createTriggerButton(tabName);
         if (target.id && target.id.includes("tools")) target.appendChild(btn);
         else if (target.classList.contains("style_create_row")) target.appendChild(btn);
         else target.parentNode.insertBefore(btn, target.nextSibling);
@@ -1507,23 +1726,23 @@
     // Init with MutationObserver re-injection guard
     // -----------------------------------------------------------------------
     function ensureButtons() {
-        var t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
-        var t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
+        const t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
+        const t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
         if (t1) console.log("[Style Grid] txt2img trigger OK");
         if (t2) console.log("[Style Grid] img2img trigger OK");
         return t1 && t2;
     }
 
     function init() {
-        var observer = null;
+        let observer = null;
 
         function stopObserver() {
             if (observer) { observer.disconnect(); observer = null; }
         }
 
         function tryInject() {
-            var t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
-            var t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
+            const t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
+            const t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
             if (t1 && t2) {
                 stopObserver(); // ← kill observer once both buttons are alive
                 startPolling();
@@ -1541,7 +1760,7 @@
                     observer._timer = setTimeout(tryInject, 400);
                 }
             });
-            var root = qs("#gradio-app") || qs(".gradio-container") || document.body;
+            const root = qs("#gradio-app") || qs(".gradio-container") || document.body;
             observer.observe(root, { childList: true, subtree: true });
         }
 

@@ -587,3 +587,18 @@
 .gradio-container.light .sg-editor-modal, .light .sg-editor-modal { background: #fff; }
 .gradio-container.light .sg-editor-input, .light .sg-editor-input { background: #fff; border-color: #d1d5db; color: #111827; }
 .gradio-container.light .sg-editor-textarea, .light .sg-editor-textarea { background: #fff; border-color: #d1d5db; color: #111827; }
+
+.sg-status-msg {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+    animation: sg-fade-in 0.15s ease;
+}
+.sg-status-msg.sg-status-error {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3);
+    color: #fca5a5;
+}

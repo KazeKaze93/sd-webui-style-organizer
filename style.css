@@ -602,3 +602,97 @@
     border-color: rgba(239, 68, 68, 0.3);
     color: #fca5a5;
 }
+
+/* Popup container */
+.sg-thumb-popup {
+    position: fixed;
+    z-index: 10010;
+    width: 220px;
+    background: var(--body-background-fill, #0b0f19);
+    border: 1px solid var(--border-color-primary, #374151);
+    border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6);
+    padding: 0;
+    overflow: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.95) translateY(4px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.sg-thumb-popup.sg-thumb-popup-visible {
+    opacity: 1;
+    pointer-events: none;
+    transform: scale(1) translateY(0);
+}
+
+/* Thumbnail image */
+.sg-thumb-img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    display: block;
+}
+
+/* Info section */
+.sg-thumb-info {
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.sg-thumb-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--body-text-color, #f3f4f6);
+}
+.sg-thumb-prompt {
+    font-size: 11px;
+    color: var(--body-text-color-subdued, #9ca3af);
+    line-height: 1.4;
+    font-family: monospace;
+}
+.sg-thumb-hint {
+    font-size: 10px;
+    color: var(--body-text-color-subdued, #6b7280);
+    font-style: italic;
+    margin-top: 2px;
+}
+
+/* Progress ring spinner */
+.sg-thumb-progress {
+    display: block;
+    width: 36px;
+    height: 36px;
+    margin: 20px auto 8px;
+}
+.sg-thumb-progress-ring {
+    fill: none;
+    stroke: var(--color-accent, #6366f1);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 94.2;
+    stroke-dashoffset: 94.2;
+    transform-origin: 18px 18px;
+    animation: sg-ring-spin 0.7s linear forwards;
+}
+@keyframes sg-ring-spin {
+    from { stroke-dashoffset: 94.2; }
+    to   { stroke-dashoffset: 0; }
+}
+
+/* Subtle indicator on cards that have a thumbnail */
+.sg-card.sg-has-thumb::before {
+    opacity: 0.8;
+    width: 4px;
+}
+
+/* Loading pulse on card while hover timer runs */
+.sg-card.sg-thumb-loading {
+    outline: 1px solid var(--color-accent, #6366f1);
+    outline-offset: -1px;
+    animation: sg-thumb-pulse 0.7s linear;
+}
+@keyframes sg-thumb-pulse {
+    from { outline-color: transparent; }
+    to   { outline-color: var(--color-accent, #6366f1); }
+}

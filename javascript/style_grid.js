@@ -23,6 +23,7 @@
             silentMode: false,
             userPromptBase: "",
             userPromptBaseNeg: "",
+            hasThumbnail: new Set(),
         },
         img2img: {
             selected: new Set(),
@@ -36,8 +37,13 @@
             silentMode: false,
             userPromptBase: "",
             userPromptBaseNeg: "",
+            hasThumbnail: new Set(),
         },
     };
+
+    var _thumbPopup = null;      // single shared popup element
+    var _thumbHoverTimer = null; // pending hover timer
+    var _thumbProgressTimer = null;
 
     const SOURCE_STORAGE_KEY = "sg_source";
     function getStoredSource(t) {
@@ -240,6 +246,25 @@
     }
     function apiGet(endpoint) {
         return fetch(endpoint).then(function (r) { return r.json(); });
+    }
+
+    function loadThumbnailList(tabName) {
+        apiGet("/style_grid/thumbnails/list")
+            .then(function (data) {
+                state[tabName].hasThumbnail = new Set(data.has_thumbnail || []);
+                var panel = state[tabName].panel;
+                if (!panel) return;
+                qsa(".sg-card", panel).forEach(function (card) {
+                    var name = card.getAttribute("data-style-name");
+                    card.classList.toggle(
+                        "sg-has-thumb",
+                        state[tabName].hasThumbnail.has(name)
+                    );
+                });
+            })
+            .catch(function (err) {
+                console.error("[Style Grid] Thumbnail list error:", err);
+            });
     }
 
     function showStatusMessage(tabName, text, isError = false) {
@@ -461,6 +486,101 @@
     // -----------------------------------------------------------------------
     // Context menu
     // -----------------------------------------------------------------------
+    function generateThumbnail(tabName, styleName) {
+        showStatusMessage(tabName, "🎨 Generating preview for " +
+            styleName.split("_").slice(1).join(" ") + "...");
+
+        apiPost("/style_grid/thumbnail/generate", { name: styleName })
+            .then(function (r) {
+                if (r.error) {
+                    showStatusMessage(tabName, "Generation failed: " + r.error, true);
+                    return;
+                }
+                pollGenerationStatus(tabName, styleName, 0);
+            })
+            .catch(function () {
+                showStatusMessage(tabName, "Generation failed", true);
+            });
+    }
+
+    function pollGenerationStatus(tabName, styleName, attempts) {
+        if (attempts > 60) {
+            showStatusMessage(tabName, "Generation timed out", true);
+            return;
+        }
+        apiGet("/style_grid/thumbnail/gen_status?name=" +
+            encodeURIComponent(styleName))
+            .then(function (r) {
+                // r could be a FastAPI 404 JSON like {"detail": "Not Found"}
+                if (!r || r.detail === "Not Found" || r.status === undefined) {
+                    showStatusMessage(tabName, "Generation endpoint not found", true);
+                    return;
+                }
+                if (r.status === "done") {
+                    state[tabName].hasThumbnail.add(styleName);
+                    qsa('.sg-card[data-style-name="' +
+                        CSS.escape(styleName) + '"]',
+                        state[tabName].panel)
+                        .forEach(function (c) {
+                            c.classList.add("sg-has-thumb");
+                        });
+                    showStatusMessage(tabName, "✓ Preview ready!");
+                } else if (r.status === "error") {
+                    showStatusMessage(tabName,
+                        "Generation failed: " + (r.message || "unknown"), true);
+                } else if (r.status === "running" || r.status === "idle") {
+                    setTimeout(function () {
+                        pollGenerationStatus(tabName, styleName, attempts + 1);
+                    }, 2000);
+                } else {
+                    showStatusMessage(tabName, "Unknown generation status: " + r.status, true);
+                }
+            })
+            .catch(function (err) {
+                // Only retry on actual network errors, not HTTP error responses
+                // HTTP errors (404, 500) mean something is structurally wrong — stop
+                console.error("[Style Grid] Poll error:", err);
+                showStatusMessage(tabName, "Generation status unavailable", true);
+            });
+    }
+
+    function uploadThumbnail(tabName, styleName) {
+        var input = document.createElement("input");
+        input.type = "file";
+        input.accept = "image/*";
+        input.addEventListener("change", function () {
+            var file = input.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function () {
+                apiPost("/style_grid/thumbnail/upload", {
+                    name: styleName,
+                    image: reader.result
+                })
+                    .then(function (r) {
+                        if (r.ok) {
+                            state[tabName].hasThumbnail.add(styleName);
+                            qsa('.sg-card[data-style-name="' +
+                                CSS.escape(styleName) + '"]',
+                                state[tabName].panel)
+                                .forEach(function (c) {
+                                    c.classList.add("sg-has-thumb");
+                                });
+                            showStatusMessage(tabName, "Preview saved ✓");
+                        } else {
+                            showStatusMessage(tabName,
+                                "Upload failed: " + (r.error || "?"), true);
+                        }
+                    })
+                    .catch(function () {
+                        showStatusMessage(tabName, "Upload failed", true);
+                    });
+            };
+            reader.readAsDataURL(file);
+        });
+        input.click();
+    }
+
     function showContextMenu(e, tabName, styleName, style) {
         e.preventDefault();
         // Remove existing
@@ -478,6 +598,37 @@
             { label: "📂 Move to category...", action: function () { moveToCategory(tabName, style); } },
             { label: "📎 Copy prompt", action: function () { navigator.clipboard.writeText(style.prompt || ""); } },
         ];
+
+        items.push({
+            label: "🎨 Generate preview (SD)",
+            action: function () { generateThumbnail(tabName, styleName); }
+        });
+
+        items.push({
+            label: "🖼️ Upload preview image",
+            action: function () { uploadThumbnail(tabName, styleName); }
+        });
+
+        if (state[tabName].hasThumbnail.has(styleName)) {
+            items.push({
+                label: "🗑️ Remove preview image",
+                action: function () {
+                    fetch("/style_grid/thumbnail?name=" +
+                        encodeURIComponent(styleName),
+                        { method: "DELETE" }
+                    ).then(function () {
+                        state[tabName].hasThumbnail.delete(styleName);
+                        qsa('.sg-card[data-style-name="' +
+                            CSS.escape(styleName) + '"]',
+                            state[tabName].panel)
+                            .forEach(function (c) {
+                                c.classList.remove("sg-has-thumb");
+                            });
+                        showStatusMessage(tabName, "Preview removed");
+                    });
+                }
+            });
+        }
         items.forEach(function (item) {
             const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
             menu.appendChild(btn);
@@ -1201,6 +1352,7 @@
         document.body.appendChild(overlay);
         state[tabName].panel = overlay;
         filterStyles(tabName);
+        loadThumbnailList(tabName);
         return overlay;
     }
 
@@ -1324,17 +1476,138 @@
 
             card.appendChild(el("div", { className: "sg-card-name", textContent: style.display_name || style.name }));
 
-            if (style.prompt) {
-                card.title = (style.prompt.length > 120 ? style.prompt.substring(0, 120) + "…" : style.prompt);
-            }
-
             card.addEventListener("click", function () { toggleStyle(tabName, style.name, card); });
             card.addEventListener("contextmenu", function (e) { showContextMenu(e, tabName, style.name, style); });
+
+            card.addEventListener("mouseenter", function () {
+                var name = card.getAttribute("data-style-name");
+                var displayName = (card.querySelector(".sg-card-name") || {}).textContent
+                    || name;
+                var styleRef = card._styleRef;
+                var promptText = styleRef ? (styleRef.prompt || "") : "";
+
+                clearTimeout(_thumbHoverTimer);
+                _thumbHoverTimer = setTimeout(function () {
+                    showThumbPopup(card, name, tabName, displayName, promptText);
+                }, 700);
+
+                if (state[tabName].hasThumbnail && state[tabName].hasThumbnail.has(name)) {
+                    card.classList.add("sg-thumb-loading");
+                    _thumbProgressTimer = setTimeout(function () {
+                        card.classList.remove("sg-thumb-loading");
+                    }, 700);
+                }
+            });
+
+            card.addEventListener("mouseleave", function () {
+                clearTimeout(_thumbHoverTimer);
+                clearTimeout(_thumbProgressTimer);
+                card.classList.remove("sg-thumb-loading");
+                hideThumbPopup();
+            });
 
             grid.appendChild(card);
         });
         section.appendChild(grid);
         container.appendChild(section);
+    }
+
+    function createThumbPopup() {
+        if (_thumbPopup) return _thumbPopup;
+        var popup = el("div", { className: "sg-thumb-popup" });
+
+        var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "sg-thumb-progress");
+        svg.setAttribute("viewBox", "0 0 36 36");
+        var circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("class", "sg-thumb-progress-ring");
+        circle.setAttribute("cx", "18");
+        circle.setAttribute("cy", "18");
+        circle.setAttribute("r", "15");
+        svg.appendChild(circle);
+        popup.appendChild(svg);
+
+        var img = el("img", { className: "sg-thumb-img" });
+        img.style.display = "none";
+        popup.appendChild(img);
+
+        var info = el("div", { className: "sg-thumb-info" });
+        popup.appendChild(info);
+
+        document.body.appendChild(popup);
+        _thumbPopup = popup;
+        return popup;
+    }
+
+    function showThumbPopup(card, styleName, tabName, displayName, promptText) {
+        var popup = createThumbPopup();
+        var hasThumbnail = state[tabName].hasThumbnail.has(styleName);
+
+        var rect = card.getBoundingClientRect();
+        var popupW = 220;
+        var left = rect.right + 10;
+        if (left + popupW > window.innerWidth - 20) {
+            left = rect.left - popupW - 10;
+        }
+        var top = Math.max(10, Math.min(
+            rect.top,
+            window.innerHeight - 300
+        ));
+        popup.style.left = left + "px";
+        popup.style.top = top + "px";
+
+        var img = popup.querySelector(".sg-thumb-img");
+        var info = popup.querySelector(".sg-thumb-info");
+        var svg = popup.querySelector(".sg-thumb-progress");
+        img.style.display = "none";
+        svg.style.display = "block";
+        popup.classList.add("sg-thumb-popup-visible");
+
+        info.innerHTML = "";
+        info.appendChild(el("div", {
+            className: "sg-thumb-name",
+            textContent: displayName
+        }));
+        if (promptText) {
+            info.appendChild(el("div", {
+                className: "sg-thumb-prompt",
+                textContent: promptText.length > 100
+                    ? promptText.slice(0, 100) + "…"
+                    : promptText
+            }));
+        }
+        if (!hasThumbnail) {
+            info.appendChild(el("div", {
+                className: "sg-thumb-hint",
+                textContent: "Right-click → Upload preview image"
+            }));
+            svg.style.display = "none";
+            return;
+        }
+
+        var url = "/style_grid/thumbnail?name=" +
+            encodeURIComponent(styleName) + "&t=" +
+            (Math.floor(Date.now() / 86400000));
+        img.onload = function () {
+            svg.style.display = "none";
+            img.style.display = "block";
+        };
+        img.onerror = function () {
+            svg.style.display = "none";
+            img.style.display = "none";
+        };
+        img.src = url;
+    }
+
+    function hideThumbPopup() {
+        clearTimeout(_thumbHoverTimer);
+        clearTimeout(_thumbProgressTimer);
+        _thumbHoverTimer = null;
+        if (_thumbPopup) {
+            _thumbPopup.classList.remove("sg-thumb-popup-visible");
+            var img = _thumbPopup.querySelector(".sg-thumb-img");
+            if (img) { img.src = ""; img.style.display = "none"; }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -1791,16 +2064,45 @@
     // Toggle panel visibility
     // -----------------------------------------------------------------------
     function togglePanel(tabName, show) {
-        const panel = state[tabName].panel;
-        if (!panel) panel = buildPanel(tabName);
-        if (typeof show === "undefined") show = !panel.classList.contains("sg-visible");
-        if (show) {
-            panel.classList.add("sg-visible");
-            filterStyles(tabName);
-            setTimeout(function () { const s = qs("#sg_search_" + tabName, panel); if (s) s.focus(); }, 100);
-        } else {
-            panel.classList.remove("sg-visible");
+        var panel = state[tabName].panel;
+        if (typeof show === "undefined")
+            show = !panel || !panel.classList.contains("sg-visible");
+
+        if (!show) {
+            if (panel) panel.classList.remove("sg-visible");
+            return;
         }
+
+        var hasData = Object.keys(state[tabName].categories || {}).length > 0;
+        if (!panel || !hasData) {
+            if (!panel) panel = buildPanel(tabName);
+            if (!hasData) {
+                apiGet("/style_grid/styles").then(function (data) {
+                    state[tabName].categories = data.categories || {};
+                    state[tabName].usage = data.usage || {};
+                    if (state[tabName].panel) {
+                        state[tabName].panel.remove();
+                        state[tabName].panel = null;
+                    }
+                    buildPanel(tabName);
+                    state[tabName].panel.classList.add("sg-visible");
+                    filterStyles(tabName);
+                    var s = qs("#sg_search_" + tabName, state[tabName].panel);
+                    if (s) setTimeout(function () { s.focus(); }, 100);
+                    loadThumbnailList(tabName);
+                }).catch(function (err) {
+                    console.error("[Style Grid] Failed to load styles:", err);
+                });
+                return;
+            }
+        }
+
+        panel.classList.add("sg-visible");
+        filterStyles(tabName);
+        setTimeout(function () {
+            var s = qs("#sg_search_" + tabName, panel);
+            if (s) s.focus();
+        }, 100);
     }
 
     // -----------------------------------------------------------------------

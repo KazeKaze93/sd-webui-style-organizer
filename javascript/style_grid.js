@@ -271,19 +271,50 @@
             const s = findStyleByName(tabName, name);
             if (!s) return;
             tokenMap[name] = { pos: new Set(), neg: new Set() };
-            (s.prompt || "").split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t && t !== "{prompt}") tokenMap[name].pos.add(t); });
-            (s.negative_prompt || "").split(",").forEach(function (t) { t = t.trim().toLowerCase(); if (t && t !== "{prompt}") tokenMap[name].neg.add(t); });
+            (s.prompt || "").split(",").forEach(function (t) {
+                t = t.trim().toLowerCase();
+                if (t && t !== "{prompt}") tokenMap[name].pos.add(t);
+            });
+            (s.negative_prompt || "").split(",").forEach(function (t) {
+                t = t.trim().toLowerCase();
+                if (t && t !== "{prompt}") tokenMap[name].neg.add(t);
+            });
         });
         const names = Object.keys(tokenMap);
         for (let i = 0; i < names.length; i++) {
             for (let j = i + 1; j < names.length; j++) {
-                const a = names[i], b = names[j];
+                const a = names[i];
+                const b = names[j];
+
+                // A adds what B negates
+                const overlap1 = new Set();
                 tokenMap[a].pos.forEach(function (t) {
-                    if (tokenMap[b].neg.has(t)) conflicts.push("'" + a + "' adds '" + t + "' but '" + b + "' negates it");
+                    if (tokenMap[b].neg.has(t)) overlap1.add(t);
                 });
+                if (overlap1.size > 0) {
+                    conflicts.push({
+                        styleA: a,
+                        styleB: b,
+                        tokens: [...overlap1].slice(0, 5),
+                        suggestion: "drop_b",
+                        suggestionText: "Remove \"" + b + "\" (negates tokens from \"" + a + "\")"
+                    });
+                }
+
+                // B adds what A negates
+                const overlap2 = new Set();
                 tokenMap[b].pos.forEach(function (t) {
-                    if (tokenMap[a].neg.has(t)) conflicts.push("'" + b + "' adds '" + t + "' but '" + a + "' negates it");
+                    if (tokenMap[a].neg.has(t)) overlap2.add(t);
                 });
+                if (overlap2.size > 0) {
+                    conflicts.push({
+                        styleA: b,
+                        styleB: a,
+                        tokens: [...overlap2].slice(0, 5),
+                        suggestion: "drop_b",
+                        suggestionText: "Remove \"" + a + "\" (negates tokens from \"" + b + "\")"
+                    });
+                }
             }
         }
         return conflicts;
@@ -850,6 +881,9 @@
         // Conflict warning area
         const conflictBadge = el("span", { className: "sg-conflict-badge", id: "sg_conflict_" + tabName });
         conflictBadge.style.display = "none";
+        conflictBadge.addEventListener("click", function () {
+            showConflictResolver(tabName, conflictBadge._conflicts || []);
+        });
         titleRow.appendChild(conflictBadge);
 
         const selectedCount = el("span", { className: "sg-selected-count", id: "sg_count_" + tabName, textContent: "0 selected" });
@@ -1627,13 +1661,130 @@
         const conflicts = checkConflictsLocal(tabName);
         const badge = qs("#sg_conflict_" + tabName);
         if (!badge) return;
+        // Store conflicts on badge for resolver to read
+        badge._conflicts = conflicts;
         if (conflicts.length > 0) {
             badge.style.display = "inline-flex";
-            badge.textContent = "⚠ " + conflicts.length + " conflict" + (conflicts.length > 1 ? "s" : "");
-            badge.title = conflicts.join("\n");
+            badge.style.cursor = "pointer";
+            badge.textContent = "⚠ " + conflicts.length +
+                " conflict" + (conflicts.length > 1 ? "s" : "");
+            badge.title = "Click to resolve";
         } else {
             badge.style.display = "none";
+            badge._conflicts = [];
         }
+    }
+
+    function showConflictResolver(tabName, initialConflicts) {
+        const overlay = el("div", { className: "sg-editor-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
+        let conflicts = initialConflicts || [];
+
+        function render() {
+            modal.innerHTML = "";
+            modal.appendChild(el("h3", {
+                className: "sg-editor-title",
+                textContent: "⚠ Style Conflicts (" + conflicts.length + ")"
+            }));
+
+            if (conflicts.length === 0) {
+                modal.appendChild(el("div", {
+                    className: "sg-preset-empty",
+                    textContent: "✓ All conflicts resolved!"
+                }));
+                modal.appendChild(el("button", {
+                    className: "sg-btn sg-btn-secondary",
+                    textContent: "Close",
+                    onClick: function () { overlay.remove(); }
+                }));
+                return;
+            }
+
+            // Auto-fix all button
+            const autoFixable = conflicts.filter(function (c) { return c.suggestion === "drop_b"; });
+            if (autoFixable.length > 0) {
+                modal.appendChild(el("button", {
+                    className: "sg-btn sg-btn-primary",
+                    textContent: "⚡ Auto-fix all (" + autoFixable.length + ")",
+                    style: "margin-bottom: 10px;",
+                    onClick: function () {
+                        const toRemove = new Set(
+                            autoFixable.map(function (c) { return c.styleB; })
+                        );
+                        toRemove.forEach(function (name) { removeStyleForConflict(tabName, name); });
+                        conflicts = checkConflictsLocal(tabName);
+                        render();
+                    }
+                }));
+            }
+
+            // Per-conflict rows
+            conflicts.forEach(function (conflict) {
+                const row = el("div", {
+                    style: "padding:10px; margin-bottom:8px; border-radius:6px; " +
+                        "border:1px solid rgba(239,68,68,0.3); " +
+                        "background:rgba(239,68,68,0.05);"
+                });
+                row.appendChild(el("div", {
+                    textContent: "⚡ " + conflict.tokens.join(", "),
+                    style: "font-size:11px; color:#fca5a5; margin-bottom:6px;"
+                }));
+                row.appendChild(el("div", {
+                    textContent: conflict.suggestionText,
+                    style: "font-size:12px; color:var(--body-text-color,#d1d5db); " +
+                        "margin-bottom:8px;"
+                }));
+                const btns = el("div", { className: "sg-editor-btns" });
+                btns.appendChild(el("button", {
+                    className: "sg-btn",
+                    style: "background:#dc2626; border-color:#dc2626; color:#fff;",
+                    textContent: "Remove \"" + conflict.styleB + "\"",
+                    onClick: function () {
+                        removeStyleForConflict(tabName, conflict.styleB);
+                        conflicts = checkConflictsLocal(tabName);
+                        render();
+                    }
+                }));
+                btns.appendChild(el("button", {
+                    className: "sg-btn sg-btn-secondary",
+                    textContent: "Ignore",
+                    onClick: function () {
+                        conflicts = conflicts.filter(function (c) { return c !== conflict; });
+                        render();
+                    }
+                }));
+                row.appendChild(btns);
+                modal.appendChild(row);
+            });
+
+            modal.appendChild(el("button", {
+                className: "sg-btn sg-btn-secondary",
+                textContent: "Close",
+                onClick: function () { overlay.remove(); }
+            }));
+        }
+
+        render();
+        overlay.appendChild(modal);
+        overlay.addEventListener("click", function (e) {
+            if (e.target === overlay) overlay.remove();
+        });
+        document.body.appendChild(overlay);
+    }
+
+    function removeStyleForConflict(tabName, name) {
+        unapplyStyle(tabName, name);
+        state[tabName].selected.delete(name);
+        state[tabName].selectedOrder =
+            state[tabName].selectedOrder.filter(function (n) { return n !== name; });
+        qsa('.sg-card[data-style-name="' + CSS.escape(name) + '"]',
+            state[tabName].panel
+        ).forEach(function (c) {
+            c.classList.remove("sg-selected", "sg-applied");
+            c.setAttribute("aria-checked", "false");
+        });
+        updateSelectedUI(tabName);
+        updateConflicts(tabName);
     }
 
     // -----------------------------------------------------------------------

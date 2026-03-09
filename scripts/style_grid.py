@@ -332,7 +332,7 @@ def _sanitize_csv_cell(value):
     return value
 
 
-def save_style_to_csv(name, prompt, negative_prompt, source_file=None):
+def save_style_to_csv(name, prompt, negative_prompt, description="", source_file=None):
     if source_file:
         source_file = os.path.basename(source_file)
         if not source_file.lower().endswith('.csv'):
@@ -360,23 +360,26 @@ def save_style_to_csv(name, prompt, negative_prompt, source_file=None):
                     continue
                 rows.append(row)
     if not header:
-        header = ["name", "prompt", "negative_prompt"]
+        header = ["name", "prompt", "negative_prompt", "description", "category"]
+    def make_row(existing_row=None):
+        # Preserve category if it exists in the original row
+        existing_cat = existing_row[4].strip() if (
+            existing_row and len(existing_row) > 4) else ""
+        return [
+            _sanitize_csv_cell(name),
+            _sanitize_csv_cell(prompt),
+            _sanitize_csv_cell(negative_prompt),
+            _sanitize_csv_cell(description),
+            existing_cat
+        ]
     found = False
     for i, row in enumerate(rows):
         if row and row[0].strip() == name:
-            rows[i] = [
-                _sanitize_csv_cell(name),
-                _sanitize_csv_cell(prompt),
-                _sanitize_csv_cell(negative_prompt)
-            ]
+            rows[i] = make_row(rows[i])
             found = True
             break
     if not found:
-        rows.append([
-            _sanitize_csv_cell(name),
-            _sanitize_csv_cell(prompt),
-            _sanitize_csv_cell(negative_prompt)
-        ])
+        rows.append(make_row())
     with open(target_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)
@@ -498,7 +501,13 @@ def register_api(demo, app):
         name = data.get("name", "").strip()
         if not name:
             return {"error": "Name required"}
-        save_style_to_csv(name, data.get("prompt", ""), data.get("negative_prompt", ""), data.get("source"))
+        save_style_to_csv(
+            name,
+            data.get("prompt", ""),
+            data.get("negative_prompt", ""),
+            data.get("description", ""),
+            data.get("source"),
+        )
         return {"ok": True}
 
     @app.post("/style_grid/style/delete")

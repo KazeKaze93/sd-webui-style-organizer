@@ -9,9 +9,9 @@ import json
 import time
 import shutil
 import hashlib
-import gradio as gr
-from modules import scripts, shared, script_callbacks
-from modules.processing import StableDiffusionProcessing
+import gradio as gr  # type: ignore[reportMissingImports]
+from modules import scripts, shared, script_callbacks  # type: ignore[reportMissingImports]
+from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -91,11 +91,15 @@ def parse_styles_csv(filepath):
                 name = row[0].strip() if len(row) > 0 else ""
                 prompt = row[1].strip() if len(row) > 1 else ""
                 negative = row[2].strip() if len(row) > 2 else ""
+                description = row[3].strip() if len(row) > 3 else ""
+                category_explicit = row[4].strip() if len(row) > 4 else ""
                 if name:
                     styles.append({
                         "name": name,
                         "prompt": prompt,
                         "negative_prompt": negative,
+                        "description": description,
+                        "category_explicit": category_explicit,
                         "source": os.path.basename(filepath),
                     })
     except Exception as e:
@@ -141,7 +145,11 @@ def categorize_styles(styles):
     for s in styles:
         name = s["name"]
         source = s.get("source") or ""
-        if "_" in name:
+        explicit_cat = s.get("category_explicit", "").strip()
+        if explicit_cat:
+            cat = explicit_cat
+            display = name.split("_", 1)[1].replace("_", " ") if "_" in name else name
+        elif "_" in name:
             before, rest = name.split("_", 1)
             cat = before.upper()
             display = rest.replace("_", " ")

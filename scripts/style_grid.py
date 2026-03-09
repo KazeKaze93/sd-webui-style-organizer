@@ -285,6 +285,10 @@ def detect_conflicts(style_names):
 # Style CRUD
 # ---------------------------------------------------------------------------
 def save_style_to_csv(name, prompt, negative_prompt, source_file=None):
+    if source_file:
+        source_file = os.path.basename(source_file)
+        if not source_file.lower().endswith('.csv'):
+            source_file = source_file + '.csv'
     if not source_file:
         source_file = "styles.csv"
     target_path = None
@@ -332,6 +336,10 @@ def delete_style_from_csv(name, source_file=None):
                 break
     if not source_file:
         return False
+    if source_file:
+        source_file = os.path.basename(source_file)
+        if not source_file.lower().endswith('.csv'):
+            source_file = source_file + '.csv'
     target_path = None
     for d in get_styles_dirs():
         fp = os.path.join(d, source_file)

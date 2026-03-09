@@ -631,7 +631,7 @@
         searchRow.appendChild(srcWrap);
 
         // Search
-        var searchInput = el("input", { className: "sg-search", type: "text", placeholder: "Search styles...", id: "sg_search_" + tabName });
+        var searchInput = el("input", { className: "sg-search", type: "text", placeholder: "Search styles...", id: "sg_search_" + tabName, maxlength: "200" });
         var searchWrapper = el("div", { className: "sg-search-wrapper" });
         var clearBtn = el("span", { className: "sg-search-clear", textContent: "×" });
         clearBtn.addEventListener("click", function () {
@@ -642,6 +642,10 @@
         (function () {
             var timer = null;
             searchInput.addEventListener("input", function () {
+                // Cap input length to prevent O(n*m) degradation on adversarial strings
+                if (this.value.length > 200) {
+                    this.value = this.value.slice(0, 200);
+                }
                 clearBtn.classList.toggle("sg-visible", searchInput.value.length > 0);
                 if (timer) clearTimeout(timer);
                 timer = setTimeout(function () { filterStyles(tabName); }, 200);

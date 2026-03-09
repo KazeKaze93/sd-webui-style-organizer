@@ -254,6 +254,32 @@ def backup_csv_files():
                 shutil.rmtree(old_path, ignore_errors=True)
     return backed_up
 
+
+THUMBNAILS_DIR = os.path.join(DATA_DIR, "thumbnails")
+os.makedirs(THUMBNAILS_DIR, exist_ok=True)
+
+
+def get_thumbnail_path(style_name):
+    safe = hashlib.md5(style_name.encode("utf-8")).hexdigest()
+    return os.path.join(THUMBNAILS_DIR, safe + ".webp")
+
+
+def list_thumbnails():
+    if not os.path.isdir(THUMBNAILS_DIR):
+        return set()
+    hashes = {
+        os.path.splitext(f)[0]
+        for f in os.listdir(THUMBNAILS_DIR)
+        if f.endswith(".webp")
+    }
+    result = set()
+    for s in get_cached_styles():
+        h = hashlib.md5(s["name"].encode("utf-8")).hexdigest()
+        if h in hashes:
+            result.add(s["name"])
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Conflict detection
 # ---------------------------------------------------------------------------
@@ -403,7 +429,8 @@ def delete_style_from_csv(name, source_file=None):
 # ---------------------------------------------------------------------------
 def register_api(demo, app):
     from fastapi import Request
-    from fastapi.responses import JSONResponse, Response
+    from fastapi.responses import JSONResponse, Response, FileResponse
+    import base64
 
     @app.get("/style_grid/styles")
     async def get_styles(request: Request):
@@ -505,6 +532,130 @@ def register_api(demo, app):
                 w.writerow(["name", "prompt", "negative_prompt"])
                 for s in data["styles"]:
                     w.writerow([s.get("name", ""), s.get("prompt", ""), s.get("negative_prompt", "")])
+        return {"ok": True}
+
+    @app.get("/style_grid/thumbnails/list")
+    async def api_list_thumbnails():
+        return {"has_thumbnail": list(list_thumbnails())}
+
+    @app.get("/style_grid/thumbnail")
+    async def api_get_thumbnail(name: str = ""):
+        path = get_thumbnail_path(name)
+        if not os.path.isfile(path):
+            return Response(status_code=404)
+        return FileResponse(
+            path,
+            media_type="image/webp",
+            headers={"Cache-Control": "max-age=86400"}
+        )
+
+    @app.post("/style_grid/thumbnail/upload")
+    async def api_upload_thumbnail(data: dict):
+        style_name = data.get("name", "").strip()
+        image_data = data.get("image", "")
+        if not style_name or not image_data:
+            return {"error": "name and image required"}
+        try:
+            if "," in image_data:
+                image_data = image_data.split(",", 1)[1]
+            raw = base64.b64decode(image_data)
+            if len(raw) > 2 * 1024 * 1024:
+                return {"error": "Image too large (max 2MB)"}
+            path = get_thumbnail_path(style_name)
+            with open(path, "wb") as f:
+                f.write(raw)
+            return {"ok": True}
+        except Exception as e:
+            return {"error": str(e)}
+
+    import threading
+
+    # Track ongoing generations: style_name → status
+    _gen_status = {}
+    _gen_lock = threading.Lock()
+
+    @app.get("/style_grid/thumbnail/gen_status")
+    async def api_gen_status(name: str = ""):
+        style_name = name
+        with _gen_lock:
+            status = _gen_status.get(style_name, {"status": "idle"})
+        return status
+
+    @app.post("/style_grid/thumbnail/generate")
+    async def api_generate_thumbnail(data: dict):
+        style_name = data.get("name", "").strip()
+        if not style_name:
+            return {"error": "name required"}
+
+        with _gen_lock:
+            if _gen_status.get(style_name, {}).get("status") == "running":
+                return {"error": "already generating"}
+            _gen_status[style_name] = {"status": "running"}
+
+        def run_generation():
+            try:
+                # Find style
+                style_map = {s["name"]: s for s in get_cached_styles()}
+                style = style_map.get(style_name)
+                if not style:
+                    with _gen_lock:
+                        _gen_status[style_name] = {
+                            "status": "error", "message": "Style not found"
+                        }
+                    return
+
+                prompt = style.get("prompt", "")
+                # Replace {prompt} placeholder with a neutral base
+                prompt = prompt.replace("{prompt}", "1girl, solo")
+                negative = style.get("negative_prompt", "")
+
+                from modules import processing
+                from modules.processing import StableDiffusionProcessingTxt2Img
+                from modules.shared import sd_model
+
+                p = StableDiffusionProcessingTxt2Img(
+                    sd_model=sd_model,
+                    prompt=prompt,
+                    negative_prompt=negative,
+                    seed=42,
+                    steps=20,
+                    cfg_scale=7,
+                    width=384,
+                    height=512,
+                    batch_size=1,
+                    n_iter=1,
+                    do_not_save_samples=True,
+                    do_not_save_grid=True,
+                )
+                processed = processing.process_images(p)
+                p.close()
+
+                if not processed.images:
+                    raise ValueError("No images returned")
+
+                img_path = get_thumbnail_path(style_name)
+                processed.images[0].save(img_path, "WEBP", quality=85)
+
+                with _gen_lock:
+                    _gen_status[style_name] = {"status": "done"}
+
+            except Exception as e:
+                print(f"[Style Grid] Thumbnail generation failed: {e}")
+                with _gen_lock:
+                    _gen_status[style_name] = {
+                        "status": "error", "message": str(e)
+                    }
+
+        # Run in background thread — don't block the API response
+        t = threading.Thread(target=run_generation, daemon=True)
+        t.start()
+        return {"ok": True, "status": "running"}
+
+    @app.delete("/style_grid/thumbnail")
+    async def api_delete_thumbnail(name: str = ""):
+        path = get_thumbnail_path(name)
+        if os.path.isfile(path):
+            os.remove(path)
         return {"ok": True}
 
 script_callbacks.on_app_started(register_api)

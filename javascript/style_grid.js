@@ -738,7 +738,7 @@
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Clear", title: "Clear all selections", onClick: function () { clearAll(tabName); } }));
 
         // Close
-        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-close", innerHTML: "✕", title: "Close", onClick: function () { togglePanel(tabName, false); } }));
+        searchRow.appendChild(el("button", { className: "sg-btn sg-btn-close", textContent: "✕", title: "Close", onClick: function () { togglePanel(tabName, false); } }));
 
         header.appendChild(searchRow);
         panel.appendChild(header);
@@ -918,13 +918,13 @@
             var icons = el("div", { className: "sg-card-icons" });
 
             // Check icon (shows when selected)
-            var check = el("span", { className: "sg-card-check", innerHTML: "✓" });
+            var check = el("span", { className: "sg-card-check", textContent: "✓" });
             icons.appendChild(check);
 
             // Star icon
             var star = el("span", {
                 className: "sg-card-star" + (getFavorites(tabName).has(style.name) ? " sg-fav" : ""),
-                title: "Toggle favorite", innerHTML: "★",
+                title: "Toggle favorite", textContent: "★",
                 onClick: function (e) {
                     e.stopPropagation();
                     toggleFavorite(tabName, style.name);
@@ -1225,11 +1225,29 @@
     // Trigger button
     // -----------------------------------------------------------------------
     function createTriggerButton(tabName) {
+        var ns = "http://www.w3.org/2000/svg";
+        var svg = document.createElementNS(ns, "svg");
+        svg.setAttributeNS(null, "viewBox", "0 0 24 24");
+        svg.setAttributeNS(null, "fill", "none");
+        svg.setAttributeNS(null, "stroke", "currentColor");
+        svg.setAttributeNS(null, "stroke-width", "2");
+        svg.setAttributeNS(null, "stroke-linecap", "round");
+        svg.setAttributeNS(null, "stroke-linejoin", "round");
+        svg.setAttributeNS(null, "width", "16");
+        svg.setAttributeNS(null, "height", "16");
+        [[3, 3, 7, 7], [14, 3, 7, 7], [3, 14, 7, 7], [14, 14, 7, 7]].forEach(function (xywh) {
+            var rect = document.createElementNS(ns, "rect");
+            rect.setAttributeNS(null, "x", String(xywh[0]));
+            rect.setAttributeNS(null, "y", String(xywh[1]));
+            rect.setAttributeNS(null, "width", String(xywh[2]));
+            rect.setAttributeNS(null, "height", String(xywh[3]));
+            svg.appendChild(rect);
+        });
         var btn = el("button", {
             className: "sg-trigger-btn lg secondary gradio-button tool svelte-cmf5ev",
             id: "sg_trigger_" + tabName, title: "Open Style Grid",
-            innerHTML: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>',
         });
+        btn.appendChild(svg);
         var badge = el("span", { className: "sg-btn-badge", id: "sg_btn_badge_" + tabName });
         badge.style.display = "none";
         btn.appendChild(badge);

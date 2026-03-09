@@ -299,6 +299,13 @@ def detect_conflicts(style_names):
 # ---------------------------------------------------------------------------
 # Style CRUD
 # ---------------------------------------------------------------------------
+def _sanitize_csv_cell(value):
+    """Prevent CSV injection when opening in spreadsheet apps."""
+    if isinstance(value, str) and value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
+
+
 def save_style_to_csv(name, prompt, negative_prompt, source_file=None):
     if source_file:
         source_file = os.path.basename(source_file)
@@ -331,11 +338,19 @@ def save_style_to_csv(name, prompt, negative_prompt, source_file=None):
     found = False
     for i, row in enumerate(rows):
         if row and row[0].strip() == name:
-            rows[i] = [name, prompt, negative_prompt]
+            rows[i] = [
+                _sanitize_csv_cell(name),
+                _sanitize_csv_cell(prompt),
+                _sanitize_csv_cell(negative_prompt)
+            ]
             found = True
             break
     if not found:
-        rows.append([name, prompt, negative_prompt])
+        rows.append([
+            _sanitize_csv_cell(name),
+            _sanitize_csv_cell(prompt),
+            _sanitize_csv_cell(negative_prompt)
+        ])
     with open(target_path, "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)

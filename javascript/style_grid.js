@@ -710,6 +710,14 @@
         });
 
         document.body.appendChild(menu);
+        // Flip up if clipped at bottom
+        var menuRect = menu.getBoundingClientRect();
+        if (menuRect.bottom > window.innerHeight) {
+            menu.style.top = Math.max(0, e.clientY - menuRect.height) + "px";
+        }
+        if (menuRect.right > window.innerWidth) {
+            menu.style.left = Math.max(0, e.clientX - menuRect.width) + "px";
+        }
         // Auto-close
         setTimeout(function () {
             const close = function () { menu.remove(); document.removeEventListener("click", close); };
@@ -1547,6 +1555,14 @@
             });
             menu.appendChild(item);
             document.body.appendChild(menu);
+            // Flip up if clipped at bottom
+            var menuRect = menu.getBoundingClientRect();
+            if (menuRect.bottom > window.innerHeight) {
+                menu.style.top = Math.max(0, e.clientY - menuRect.height) + "px";
+            }
+            if (menuRect.right > window.innerWidth) {
+                menu.style.left = Math.max(0, e.clientX - menuRect.width) + "px";
+            }
             setTimeout(function () {
                 const close = function () { menu.remove(); document.removeEventListener("click", close); };
                 document.addEventListener("click", close);
@@ -1665,14 +1681,14 @@
         var hasThumbnail = state[tabName].hasThumbnail.has(styleName);
 
         var rect = card.getBoundingClientRect();
-        var popupW = 253;
+        var popupW = 360;
         var left = rect.right + 10;
         if (left + popupW > window.innerWidth - 20) {
             left = rect.left - popupW - 10;
         }
         var top = Math.max(10, Math.min(
             rect.top,
-            window.innerHeight - 300
+            window.innerHeight - 400
         ));
         popup.style.left = left + "px";
         popup.style.top = top + "px";

@@ -555,7 +555,7 @@ def register_api(demo, app):
         return FileResponse(
             path,
             media_type="image/webp",
-            headers={"Cache-Control": "max-age=86400"}
+            headers={"Cache-Control": "no-cache, must-revalidate"}
         )
 
     @app.post("/style_grid/thumbnail/upload")

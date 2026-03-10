@@ -43,7 +43,14 @@
 
     var _thumbPopup = null;      // single shared popup element
     var _thumbHoverTimer = null; // pending hover timer
-    var _thumbVersions = {};     // style_name → timestamp, for cache-busting
+    var _thumbVersions = (function () {
+        try { return JSON.parse(localStorage.getItem("sg_thumb_versions") || "{}"); }
+        catch (_) { return {}; }
+    })();
+    function _saveThumbVersions() {
+        try { localStorage.setItem("sg_thumb_versions", JSON.stringify(_thumbVersions)); }
+        catch (_) { }
+    }
     var _thumbProgressTimer = null;
 
     const SOURCE_STORAGE_KEY = "sg_source";
@@ -568,6 +575,7 @@
                 }
                 pollGenerationStatus(tabName, styleName, 0);
                 _thumbVersions[styleName] = Date.now();
+                _saveThumbVersions();
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -638,6 +646,7 @@
                                     c.classList.add("sg-has-thumb");
                                 });
                             _thumbVersions[styleName] = Date.now();
+                            _saveThumbVersions();
                             showStatusMessage(tabName, "Preview saved ✓");
                         } else {
                             showStatusMessage(tabName,
@@ -681,27 +690,6 @@
             action: function () { uploadThumbnail(tabName, styleName); }
         });
 
-        if (state[tabName].hasThumbnail.has(styleName)) {
-            items.push({
-                label: "🗑️ Remove preview image",
-                action: function () {
-                    fetch("/style_grid/thumbnail?name=" +
-                        encodeURIComponent(styleName),
-                        { method: "DELETE" }
-                    ).then(function () {
-                        delete _thumbVersions[styleName];
-                        state[tabName].hasThumbnail.delete(styleName);
-                        qsa('.sg-card[data-style-name="' +
-                            CSS.escape(styleName) + '"]',
-                            state[tabName].panel)
-                            .forEach(function (c) {
-                                c.classList.remove("sg-has-thumb");
-                            });
-                        showStatusMessage(tabName, "Preview removed");
-                    });
-                }
-            });
-        }
         items.forEach(function (item) {
             const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
             menu.appendChild(btn);
@@ -1645,7 +1633,7 @@
         var hasThumbnail = state[tabName].hasThumbnail.has(styleName);
 
         var rect = card.getBoundingClientRect();
-        var popupW = 220;
+        var popupW = 253;
         var left = rect.right + 10;
         if (left + popupW > window.innerWidth - 20) {
             left = rect.left - popupW - 10;
@@ -1688,7 +1676,7 @@
 
         var url = "/style_grid/thumbnail?name=" +
             encodeURIComponent(styleName) + "&t=" +
-            (_thumbVersions[styleName] || Math.floor(Date.now() / 86400000));
+            (_thumbVersions[styleName] || Date.now());
         img.onload = function () {
             svg.style.display = "none";
             img.style.display = "block";

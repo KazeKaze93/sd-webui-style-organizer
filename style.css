@@ -704,7 +704,7 @@
 .sg-thumb-popup {
     position: fixed;
     z-index: 10010;
-    width: 220px;
+    width: 253px;
     background: var(--body-background-fill, #0b0f19);
     border: 1px solid var(--border-color-primary, #374151);
     border-radius: 10px;
@@ -725,7 +725,7 @@
 /* Thumbnail image */
 .sg-thumb-img {
     width: 100%;
-    height: 160px;
+    height: 184px;
     object-fit: cover;
     display: block;
 }

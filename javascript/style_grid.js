@@ -2,10 +2,11 @@
  * Style Grid - Visual grid/gallery style selector for Forge WebUI
  * v2.0 — Full-featured: silent mode, dynamic apply, presets,
  * conflict detection, context menu, inline editor, etc.
+ * v2.0.1 — thumb cache (localStorage), popup 253x184, no remove-preview in menu
  */
-
 (function () {
     "use strict";
+    if (typeof window !== "undefined") { window.__SG_THUMB_VERSION = "2.0.1"; }
 
     // ════════════════════════════════════════════════════
     // STATE & STORAGE
@@ -574,8 +575,6 @@
                     return;
                 }
                 pollGenerationStatus(tabName, styleName, 0);
-                _thumbVersions[styleName] = Date.now();
-                _saveThumbVersions();
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -597,6 +596,8 @@
                 }
                 if (r.status === "done") {
                     state[tabName].hasThumbnail.add(styleName);
+                    _thumbVersions[styleName] = Date.now();
+                    _saveThumbVersions();
                     qsa('.sg-card[data-style-name="' +
                         CSS.escape(styleName) + '"]',
                         state[tabName].panel)
@@ -1634,6 +1635,9 @@
 
         var rect = card.getBoundingClientRect();
         var popupW = 253;
+        popup.style.width = "253px";
+        var thumbImg = popup.querySelector(".sg-thumb-img");
+        if (thumbImg) thumbImg.style.height = "184px";
         var left = rect.right + 10;
         if (left + popupW > window.innerWidth - 20) {
             left = rect.left - popupW - 10;

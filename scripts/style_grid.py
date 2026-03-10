@@ -257,6 +257,7 @@ def backup_csv_files():
 
 THUMBNAILS_DIR = os.path.join(DATA_DIR, "thumbnails")
 os.makedirs(THUMBNAILS_DIR, exist_ok=True)
+print(f"[Style Grid] Thumbnails dir: {os.path.abspath(THUMBNAILS_DIR)}")
 
 
 def get_thumbnail_path(style_name):
@@ -555,7 +556,7 @@ def register_api(demo, app):
         return FileResponse(
             path,
             media_type="image/webp",
-            headers={"Cache-Control": "no-cache, must-revalidate"}
+            headers={"Cache-Control": "no-store"}
         )
 
     @app.post("/style_grid/thumbnail/upload")
@@ -586,6 +587,7 @@ def register_api(demo, app):
             path = get_thumbnail_path(style_name)
             with open(path, "wb") as f:
                 f.write(raw)
+            print(f"[Style Grid] Thumbnail uploaded: {path}")
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}
@@ -664,6 +666,7 @@ def register_api(demo, app):
 
                 img_path = get_thumbnail_path(style_name)
                 processed.images[0].save(img_path, "WEBP", quality=85)
+                print(f"[Style Grid] Thumbnail saved: {img_path}")
 
                 with _gen_lock:
                     _gen_status[style_name] = {"status": "done"}

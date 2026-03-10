@@ -279,8 +279,21 @@
     }
     function setPromptValue(el, value) {
         if (!el) return;
-        el.value = value;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
+        // Use native setter to bypass framework interception
+        var nativeSet = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, "value"
+        );
+        if (nativeSet && nativeSet.set) {
+            nativeSet.set.call(el, value);
+        } else {
+            el.value = value;
+        }
+        el.dispatchEvent(new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: value
+        }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
     }
     function setSilentGradio(tabName) {
         // Update the hidden Gradio textbox with silent mode style names
@@ -595,9 +608,9 @@
                     return;
                 }
                 if (r.status === "done") {
-                    state[tabName].hasThumbnail.add(styleName);
                     _thumbVersions[styleName] = Date.now();
                     _saveThumbVersions();
+                    state[tabName].hasThumbnail.add(styleName);
                     qsa('.sg-card[data-style-name="' +
                         CSS.escape(styleName) + '"]',
                         state[tabName].panel)

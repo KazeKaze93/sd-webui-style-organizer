@@ -635,6 +635,14 @@ def register_api(demo, app):
                         }
                     return
 
+                # Delete old thumbnail first so cache/stale serve is avoided
+                img_path = get_thumbnail_path(style_name)
+                if os.path.isfile(img_path):
+                    try:
+                        os.remove(img_path)
+                    except OSError:
+                        pass
+
                 prompt = style.get("prompt", "")
                 # Replace {prompt} placeholder with a neutral base
                 prompt = prompt.replace("{prompt}", "1girl, solo")
@@ -664,7 +672,6 @@ def register_api(demo, app):
                 if not processed.images:
                     raise ValueError("No images returned")
 
-                img_path = get_thumbnail_path(style_name)
                 processed.images[0].save(img_path, "WEBP", quality=85)
                 print(f"[Style Grid] Thumbnail saved: {img_path}")
 

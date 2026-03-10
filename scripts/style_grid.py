@@ -257,6 +257,7 @@ def backup_csv_files():
 
 THUMBNAILS_DIR = os.path.join(DATA_DIR, "thumbnails")
 os.makedirs(THUMBNAILS_DIR, exist_ok=True)
+print(f"[Style Grid] Thumbnails dir: {os.path.abspath(THUMBNAILS_DIR)}")
 
 
 def get_thumbnail_path(style_name):
@@ -550,12 +551,14 @@ def register_api(demo, app):
     @app.get("/style_grid/thumbnail")
     async def api_get_thumbnail(name: str = ""):
         path = get_thumbnail_path(name)
-        if not os.path.isfile(path):
+        exists = os.path.isfile(path)
+        print(f"[Style Grid] GET thumbnail: name={name!r}, path={path}, exists={exists}")
+        if not exists:
             return Response(status_code=404)
         return FileResponse(
             path,
             media_type="image/webp",
-            headers={"Cache-Control": "no-cache, must-revalidate"}
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
         )
 
     @app.post("/style_grid/thumbnail/upload")
@@ -586,6 +589,7 @@ def register_api(demo, app):
             path = get_thumbnail_path(style_name)
             with open(path, "wb") as f:
                 f.write(raw)
+            print(f"[Style Grid] Thumbnail uploaded: {path}")
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}
@@ -612,9 +616,9 @@ def register_api(demo, app):
         try:
             from modules.shared import state as forge_state
             if getattr(forge_state, 'job', None):
-                return {"error": "SD is busy generating, try again after it finishes"}
+                return {"error": "SD is busy, try again after current generation finishes"}
         except Exception:
-            pass  # если state недоступен — не блокируем
+            pass
 
         with _gen_lock:
             if _gen_status.get(style_name, {}).get("status") == "running":
@@ -623,7 +627,6 @@ def register_api(demo, app):
 
         def run_generation():
             try:
-                # Find style
                 style_map = {s["name"]: s for s in get_cached_styles()}
                 style = style_map.get(style_name)
                 if not style:
@@ -633,8 +636,20 @@ def register_api(demo, app):
                         }
                     return
 
+                # Delete old thumbnail BEFORE generating new one
+                old_path = get_thumbnail_path(style_name)
+                if os.path.isfile(old_path):
+                    os.remove(old_path)
+                    print(f"[Style Grid] Deleted old thumbnail: {old_path}")
+
+                img_path = get_thumbnail_path(style_name)
+                # ── Save to TEMP file first, replace AFTER success ──
+                tmp_path = img_path + ".tmp"
+                print(f"[Style Grid] Generating thumbnail for: {style_name}")
+                print(f"[Style Grid] Target path: {img_path}")
+                print(f"[Style Grid] Old file exists: {os.path.isfile(img_path)}")
+
                 prompt = style.get("prompt", "")
-                # Replace {prompt} placeholder with a neutral base
                 prompt = prompt.replace("{prompt}", "1girl, solo")
                 negative = style.get("negative_prompt", "")
 
@@ -646,7 +661,7 @@ def register_api(demo, app):
                     sd_model=sd_model,
                     prompt=prompt,
                     negative_prompt=negative,
-                    seed=42,
+                    seed=-1,
                     steps=20,
                     cfg_scale=7,
                     width=384,
@@ -656,26 +671,42 @@ def register_api(demo, app):
                     do_not_save_samples=True,
                     do_not_save_grid=True,
                 )
-                processed = processing.process_images(p)
-                p.close()
+
+                try:
+                    processed = processing.process_images(p)
+                finally:
+                    p.close()
 
                 if not processed.images:
                     raise ValueError("No images returned")
 
-                img_path = get_thumbnail_path(style_name)
-                processed.images[0].save(img_path, "WEBP", quality=85)
+                # Save to temp first
+                processed.images[0].save(tmp_path, "WEBP", quality=85)
+                # Atomic replace: delete old, rename temp → final
+                if os.path.isfile(img_path):
+                    os.remove(img_path)
+                os.rename(tmp_path, img_path)
+                print(f"[Style Grid] Thumbnail saved: {img_path} ({os.path.getsize(img_path)} bytes)")
 
                 with _gen_lock:
                     _gen_status[style_name] = {"status": "done"}
 
             except Exception as e:
-                print(f"[Style Grid] Thumbnail generation failed: {e}")
+                print(f"[Style Grid] Thumbnail generation FAILED: {e}")
+                import traceback
+                traceback.print_exc()
+                # Clean up temp file if it exists
+                try:
+                    tmp_path = get_thumbnail_path(style_name) + ".tmp"
+                    if os.path.isfile(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
                 with _gen_lock:
                     _gen_status[style_name] = {
                         "status": "error", "message": str(e)
                     }
 
-        # Run in background thread — don't block the API response
         t = threading.Thread(target=run_generation, daemon=True)
         t.start()
         return {"ok": True, "status": "running"}
@@ -686,6 +717,31 @@ def register_api(demo, app):
         if os.path.isfile(path):
             os.remove(path)
         return {"ok": True}
+
+    @app.post("/style_grid/thumbnails/cleanup")
+    async def api_cleanup_thumbnails():
+        """Remove thumbnails for styles that no longer exist in any CSV."""
+        if not os.path.isdir(THUMBNAILS_DIR):
+            return {"removed": 0}
+        # Build set of valid hashes from current styles
+        valid_hashes = set()
+        for s in get_cached_styles():
+            h = hashlib.md5(s["name"].encode("utf-8")).hexdigest()
+            valid_hashes.add(h)
+        # Scan thumbnails dir and remove orphans
+        removed = 0
+        for fname in os.listdir(THUMBNAILS_DIR):
+            if not fname.endswith(".webp"):
+                continue
+            h = os.path.splitext(fname)[0]
+            if h not in valid_hashes:
+                try:
+                    os.remove(os.path.join(THUMBNAILS_DIR, fname))
+                    removed += 1
+                except Exception:
+                    pass
+        print(f"[Style Grid] Thumbnail cleanup: removed {removed} orphaned files")
+        return {"removed": removed}
 
 script_callbacks.on_app_started(register_api)
 

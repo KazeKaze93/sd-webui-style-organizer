@@ -2,10 +2,11 @@
  * Style Grid - Visual grid/gallery style selector for Forge WebUI
  * v2.0 — Full-featured: silent mode, dynamic apply, presets,
  * conflict detection, context menu, inline editor, etc.
+ * v2.0.1 — thumb cache (localStorage), popup 253x184, no remove-preview in menu
  */
-
 (function () {
     "use strict";
+    if (typeof window !== "undefined") { window.__SG_THUMB_VERSION = "2.0.1"; }
 
     // ════════════════════════════════════════════════════
     // STATE & STORAGE
@@ -43,7 +44,14 @@
 
     var _thumbPopup = null;      // single shared popup element
     var _thumbHoverTimer = null; // pending hover timer
-    var _thumbVersions = {};     // style_name → timestamp, for cache-busting
+    var _thumbVersions = (function () {
+        try { return JSON.parse(localStorage.getItem("sg_thumb_versions") || "{}"); }
+        catch (_) { return {}; }
+    })();
+    function _saveThumbVersions() {
+        try { localStorage.setItem("sg_thumb_versions", JSON.stringify(_thumbVersions)); }
+        catch (_) { }
+    }
     var _thumbProgressTimer = null;
 
     const SOURCE_STORAGE_KEY = "sg_source";
@@ -271,8 +279,21 @@
     }
     function setPromptValue(el, value) {
         if (!el) return;
-        el.value = value;
-        el.dispatchEvent(new Event("input", { bubbles: true }));
+        // Use native setter to bypass framework interception
+        var nativeSet = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, "value"
+        );
+        if (nativeSet && nativeSet.set) {
+            nativeSet.set.call(el, value);
+        } else {
+            el.value = value;
+        }
+        el.dispatchEvent(new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: value
+        }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
     }
     function setSilentGradio(tabName) {
         // Update the hidden Gradio textbox with silent mode style names
@@ -567,7 +588,6 @@
                     return;
                 }
                 pollGenerationStatus(tabName, styleName, 0);
-                _thumbVersions[styleName] = Date.now();
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -589,6 +609,8 @@
                 }
                 if (r.status === "done") {
                     state[tabName].hasThumbnail.add(styleName);
+                    _thumbVersions[styleName] = Date.now();
+                    _saveThumbVersions();
                     qsa('.sg-card[data-style-name="' +
                         CSS.escape(styleName) + '"]',
                         state[tabName].panel)
@@ -638,6 +660,7 @@
                                     c.classList.add("sg-has-thumb");
                                 });
                             _thumbVersions[styleName] = Date.now();
+                            _saveThumbVersions();
                             showStatusMessage(tabName, "Preview saved ✓");
                         } else {
                             showStatusMessage(tabName,
@@ -681,27 +704,6 @@
             action: function () { uploadThumbnail(tabName, styleName); }
         });
 
-        if (state[tabName].hasThumbnail.has(styleName)) {
-            items.push({
-                label: "🗑️ Remove preview image",
-                action: function () {
-                    fetch("/style_grid/thumbnail?name=" +
-                        encodeURIComponent(styleName),
-                        { method: "DELETE" }
-                    ).then(function () {
-                        delete _thumbVersions[styleName];
-                        state[tabName].hasThumbnail.delete(styleName);
-                        qsa('.sg-card[data-style-name="' +
-                            CSS.escape(styleName) + '"]',
-                            state[tabName].panel)
-                            .forEach(function (c) {
-                                c.classList.remove("sg-has-thumb");
-                            });
-                        showStatusMessage(tabName, "Preview removed");
-                    });
-                }
-            });
-        }
         items.forEach(function (item) {
             const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
             menu.appendChild(btn);
@@ -1359,6 +1361,24 @@
             }
         }));
 
+        // Thumbnail cleanup — remove orphaned previews
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "🧹",
+            title: "Clean up orphaned thumbnail previews. Removes preview images for styles that no longer exist in any CSV.",
+            onClick: function () {
+                if (!confirm("Remove preview images for styles that no longer exist in any CSV?")) return;
+                apiPost("/style_grid/thumbnails/cleanup").then(function (r) {
+                    if (r && r.removed !== undefined) {
+                        alert("Cleaned up " + r.removed + " orphaned thumbnail(s).");
+                    } else {
+                        alert("Cleanup failed.");
+                    }
+                }).catch(function () {
+                    showStatusMessage(tabName, "Cleanup failed", true);
+                });
+            }
+        }));
+
         // Clear
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Clear", title: "Clear all selections", onClick: function () { clearAll(tabName); } }));
 
@@ -1645,7 +1665,7 @@
         var hasThumbnail = state[tabName].hasThumbnail.has(styleName);
 
         var rect = card.getBoundingClientRect();
-        var popupW = 220;
+        var popupW = 253;
         var left = rect.right + 10;
         if (left + popupW > window.innerWidth - 20) {
             left = rect.left - popupW - 10;
@@ -1688,7 +1708,7 @@
 
         var url = "/style_grid/thumbnail?name=" +
             encodeURIComponent(styleName) + "&t=" +
-            (_thumbVersions[styleName] || Math.floor(Date.now() / 86400000));
+            (_thumbVersions[styleName] || Date.now());
         img.onload = function () {
             svg.style.display = "none";
             img.style.display = "block";

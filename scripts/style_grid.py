@@ -661,7 +661,7 @@ def register_api(demo, app):
                     sd_model=sd_model,
                     prompt=prompt,
                     negative_prompt=negative,
-                    seed=42,
+                    seed=-1,
                     steps=20,
                     cfg_scale=7,
                     width=384,
@@ -717,6 +717,31 @@ def register_api(demo, app):
         if os.path.isfile(path):
             os.remove(path)
         return {"ok": True}
+
+    @app.post("/style_grid/thumbnails/cleanup")
+    async def api_cleanup_thumbnails():
+        """Remove thumbnails for styles that no longer exist in any CSV."""
+        if not os.path.isdir(THUMBNAILS_DIR):
+            return {"removed": 0}
+        # Build set of valid hashes from current styles
+        valid_hashes = set()
+        for s in get_cached_styles():
+            h = hashlib.md5(s["name"].encode("utf-8")).hexdigest()
+            valid_hashes.add(h)
+        # Scan thumbnails dir and remove orphans
+        removed = 0
+        for fname in os.listdir(THUMBNAILS_DIR):
+            if not fname.endswith(".webp"):
+                continue
+            h = os.path.splitext(fname)[0]
+            if h not in valid_hashes:
+                try:
+                    os.remove(os.path.join(THUMBNAILS_DIR, fname))
+                    removed += 1
+                except Exception:
+                    pass
+        print(f"[Style Grid] Thumbnail cleanup: removed {removed} orphaned files")
+        return {"removed": removed}
 
 script_callbacks.on_app_started(register_api)
 

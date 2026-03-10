@@ -1361,6 +1361,24 @@
             }
         }));
 
+        // Thumbnail cleanup — remove orphaned previews
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary", textContent: "🧹",
+            title: "Clean up orphaned thumbnail previews. Removes preview images for styles that no longer exist in any CSV.",
+            onClick: function () {
+                if (!confirm("Remove preview images for styles that no longer exist in any CSV?")) return;
+                apiPost("/style_grid/thumbnails/cleanup").then(function (r) {
+                    if (r && r.removed !== undefined) {
+                        alert("Cleaned up " + r.removed + " orphaned thumbnail(s).");
+                    } else {
+                        alert("Cleanup failed.");
+                    }
+                }).catch(function () {
+                    showStatusMessage(tabName, "Cleanup failed", true);
+                });
+            }
+        }));
+
         // Clear
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Clear", title: "Clear all selections", onClick: function () { clearAll(tabName); } }));
 

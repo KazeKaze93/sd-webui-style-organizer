@@ -614,9 +614,9 @@ def register_api(demo, app):
         try:
             from modules.shared import state as forge_state
             if getattr(forge_state, 'job', None):
-                return {"error": "SD is busy generating, try again after it finishes"}
+                return {"error": "SD is busy, try again after current generation finishes"}
         except Exception:
-            pass  # если state недоступен — не блокируем
+            pass
 
         with _gen_lock:
             if _gen_status.get(style_name, {}).get("status") == "running":
@@ -625,7 +625,6 @@ def register_api(demo, app):
 
         def run_generation():
             try:
-                # Find style
                 style_map = {s["name"]: s for s in get_cached_styles()}
                 style = style_map.get(style_name)
                 if not style:
@@ -635,22 +634,22 @@ def register_api(demo, app):
                         }
                     return
 
-                # Delete old thumbnail first so cache/stale serve is avoided
+                # ── DELETE old thumbnail BEFORE generating ──
                 img_path = get_thumbnail_path(style_name)
+                print(f"[Style Grid] Generating thumbnail for: {style_name}")
+                print(f"[Style Grid] Target path: {img_path}")
                 if os.path.isfile(img_path):
-                    try:
-                        os.remove(img_path)
-                    except OSError:
-                        pass
+                    os.remove(img_path)
+                    print(f"[Style Grid] Deleted old thumbnail: {img_path}")
 
                 prompt = style.get("prompt", "")
-                # Replace {prompt} placeholder with a neutral base
                 prompt = prompt.replace("{prompt}", "1girl, solo")
                 negative = style.get("negative_prompt", "")
 
                 from modules import processing
                 from modules.processing import StableDiffusionProcessingTxt2Img
                 from modules.shared import sd_model
+                from modules.shared import state as forge_state
 
                 p = StableDiffusionProcessingTxt2Img(
                     sd_model=sd_model,
@@ -666,26 +665,32 @@ def register_api(demo, app):
                     do_not_save_samples=True,
                     do_not_save_grid=True,
                 )
-                processed = processing.process_images(p)
-                p.close()
+
+                forge_state.job = "style_grid_thumbnail"
+                try:
+                    processed = processing.process_images(p)
+                finally:
+                    forge_state.job = ""
+                    p.close()
 
                 if not processed.images:
                     raise ValueError("No images returned")
 
                 processed.images[0].save(img_path, "WEBP", quality=85)
-                print(f"[Style Grid] Thumbnail saved: {img_path}")
+                print(f"[Style Grid] Thumbnail saved: {img_path} ({os.path.getsize(img_path)} bytes)")
 
                 with _gen_lock:
                     _gen_status[style_name] = {"status": "done"}
 
             except Exception as e:
                 print(f"[Style Grid] Thumbnail generation failed: {e}")
+                import traceback
+                traceback.print_exc()
                 with _gen_lock:
                     _gen_status[style_name] = {
                         "status": "error", "message": str(e)
                     }
 
-        # Run in background thread — don't block the API response
         t = threading.Thread(target=run_generation, daemon=True)
         t.start()
         return {"ok": True, "status": "running"}

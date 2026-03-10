@@ -551,7 +551,9 @@ def register_api(demo, app):
     @app.get("/style_grid/thumbnail")
     async def api_get_thumbnail(name: str = ""):
         path = get_thumbnail_path(name)
-        if not os.path.isfile(path):
+        exists = os.path.isfile(path)
+        print(f"[Style Grid] GET thumbnail: name={name!r}, path={path}, exists={exists}")
+        if not exists:
             return Response(status_code=404)
         return FileResponse(
             path,
@@ -634,13 +636,12 @@ def register_api(demo, app):
                         }
                     return
 
-                # ── DELETE old thumbnail BEFORE generating ──
                 img_path = get_thumbnail_path(style_name)
+                # ── Save to TEMP file first, replace AFTER success ──
+                tmp_path = img_path + ".tmp"
                 print(f"[Style Grid] Generating thumbnail for: {style_name}")
                 print(f"[Style Grid] Target path: {img_path}")
-                if os.path.isfile(img_path):
-                    os.remove(img_path)
-                    print(f"[Style Grid] Deleted old thumbnail: {img_path}")
+                print(f"[Style Grid] Old file exists: {os.path.isfile(img_path)}")
 
                 prompt = style.get("prompt", "")
                 prompt = prompt.replace("{prompt}", "1girl, solo")
@@ -649,7 +650,6 @@ def register_api(demo, app):
                 from modules import processing
                 from modules.processing import StableDiffusionProcessingTxt2Img
                 from modules.shared import sd_model
-                from modules.shared import state as forge_state
 
                 p = StableDiffusionProcessingTxt2Img(
                     sd_model=sd_model,
@@ -666,26 +666,36 @@ def register_api(demo, app):
                     do_not_save_grid=True,
                 )
 
-                forge_state.job = "style_grid_thumbnail"
                 try:
                     processed = processing.process_images(p)
                 finally:
-                    forge_state.job = ""
                     p.close()
 
                 if not processed.images:
                     raise ValueError("No images returned")
 
-                processed.images[0].save(img_path, "WEBP", quality=85)
+                # Save to temp first
+                processed.images[0].save(tmp_path, "WEBP", quality=85)
+                # Atomic replace: delete old, rename temp → final
+                if os.path.isfile(img_path):
+                    os.remove(img_path)
+                os.rename(tmp_path, img_path)
                 print(f"[Style Grid] Thumbnail saved: {img_path} ({os.path.getsize(img_path)} bytes)")
 
                 with _gen_lock:
                     _gen_status[style_name] = {"status": "done"}
 
             except Exception as e:
-                print(f"[Style Grid] Thumbnail generation failed: {e}")
+                print(f"[Style Grid] Thumbnail generation FAILED: {e}")
                 import traceback
                 traceback.print_exc()
+                # Clean up temp file if it exists
+                try:
+                    tmp_path = get_thumbnail_path(style_name) + ".tmp"
+                    if os.path.isfile(tmp_path):
+                        os.remove(tmp_path)
+                except Exception:
+                    pass
                 with _gen_lock:
                     _gen_status[style_name] = {
                         "status": "error", "message": str(e)

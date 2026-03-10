@@ -608,9 +608,9 @@
                     return;
                 }
                 if (r.status === "done") {
+                    state[tabName].hasThumbnail.add(styleName);
                     _thumbVersions[styleName] = Date.now();
                     _saveThumbVersions();
-                    state[tabName].hasThumbnail.add(styleName);
                     qsa('.sg-card[data-style-name="' +
                         CSS.escape(styleName) + '"]',
                         state[tabName].panel)

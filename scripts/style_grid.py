@@ -558,7 +558,7 @@ def register_api(demo, app):
         return FileResponse(
             path,
             media_type="image/webp",
-            headers={"Cache-Control": "no-store"}
+            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
         )
 
     @app.post("/style_grid/thumbnail/upload")
@@ -635,6 +635,12 @@ def register_api(demo, app):
                             "status": "error", "message": "Style not found"
                         }
                     return
+
+                # Delete old thumbnail BEFORE generating new one
+                old_path = get_thumbnail_path(style_name)
+                if os.path.isfile(old_path):
+                    os.remove(old_path)
+                    print(f"[Style Grid] Deleted old thumbnail: {old_path}")
 
                 img_path = get_thumbnail_path(style_name)
                 # ── Save to TEMP file first, replace AFTER success ──

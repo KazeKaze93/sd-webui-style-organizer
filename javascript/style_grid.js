@@ -43,6 +43,7 @@
 
     var _thumbPopup = null;      // single shared popup element
     var _thumbHoverTimer = null; // pending hover timer
+    var _thumbVersions = {};     // style_name → timestamp, for cache-busting
     var _thumbProgressTimer = null;
 
     const SOURCE_STORAGE_KEY = "sg_source";
@@ -566,6 +567,7 @@
                     return;
                 }
                 pollGenerationStatus(tabName, styleName, 0);
+                _thumbVersions[styleName] = Date.now();
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -635,6 +637,7 @@
                                 .forEach(function (c) {
                                     c.classList.add("sg-has-thumb");
                                 });
+                            _thumbVersions[styleName] = Date.now();
                             showStatusMessage(tabName, "Preview saved ✓");
                         } else {
                             showStatusMessage(tabName,
@@ -686,6 +689,7 @@
                         encodeURIComponent(styleName),
                         { method: "DELETE" }
                     ).then(function () {
+                        delete _thumbVersions[styleName];
                         state[tabName].hasThumbnail.delete(styleName);
                         qsa('.sg-card[data-style-name="' +
                             CSS.escape(styleName) + '"]',
@@ -1684,7 +1688,7 @@
 
         var url = "/style_grid/thumbnail?name=" +
             encodeURIComponent(styleName) + "&t=" +
-            (Math.floor(Date.now() / 86400000));
+            (_thumbVersions[styleName] || Math.floor(Date.now() / 86400000));
         img.onload = function () {
             svg.style.display = "none";
             img.style.display = "block";

@@ -142,7 +142,6 @@
             const k = kv[0], v = kv[1];
             if (k === "className") e.className = v;
             else if (k === "textContent") e.textContent = v;
-            else if (k === "innerHTML") e.innerHTML = v;
             else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
             else e.setAttribute(k, v);
         });

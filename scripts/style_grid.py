@@ -570,6 +570,19 @@ def register_api(demo, app):
             raw = base64.b64decode(image_data)
             if len(raw) > 2 * 1024 * 1024:
                 return {"error": "Image too large (max 2MB)"}
+            ALLOWED_MAGIC = [
+                b'\xff\xd8\xff',        # JPEG
+                b'\x89PNG\r\n\x1a\n',   # PNG
+                b'RIFF',                 # WEBP (проверим дальше)
+                b'GIF87a',               # GIF
+                b'GIF89a',               # GIF
+            ]
+            is_valid_image = any(raw.startswith(m) for m in ALLOWED_MAGIC)
+            # WEBP: bytes 0-3 = RIFF, bytes 8-12 = WEBP
+            if raw.startswith(b'RIFF') and raw[8:12] != b'WEBP':
+                is_valid_image = False
+            if not is_valid_image:
+                return {"error": "Invalid image format. Allowed: JPEG, PNG, WEBP, GIF"}
             path = get_thumbnail_path(style_name)
             with open(path, "wb") as f:
                 f.write(raw)
@@ -595,6 +608,13 @@ def register_api(demo, app):
         style_name = data.get("name", "").strip()
         if not style_name:
             return {"error": "name required"}
+
+        try:
+            from modules.shared import state as forge_state
+            if getattr(forge_state, 'job', None):
+                return {"error": "SD is busy generating, try again after it finishes"}
+        except Exception:
+            pass  # если state недоступен — не блокируем
 
         with _gen_lock:
             if _gen_status.get(style_name, {}).get("status") == "running":

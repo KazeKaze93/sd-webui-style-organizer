@@ -505,22 +505,22 @@
     transition: all 0.12s;
 }
 
-/* Clickable style chip */
+/* Clickable style chip (blue/cyan — distinct from category orange) */
 .sg-combo-chip-style {
-    background: rgba(99, 102, 241, 0.1);
-    border-color: rgba(99, 102, 241, 0.3);
-    color: #a5b4fc;
+    background: rgba(14, 165, 233, 0.1);
+    border-color: rgba(14, 165, 233, 0.35);
+    color: #7dd3fc;
     cursor: pointer;
 }
 .sg-combo-chip-style:hover {
-    background: rgba(99, 102, 241, 0.25);
-    border-color: #6366f1;
+    background: rgba(14, 165, 233, 0.25);
+    border-color: #0ea5e9;
     color: #fff;
 }
 /* Already applied */
 .sg-combo-chip-active {
-    background: rgba(99, 102, 241, 0.25);
-    border-color: #6366f1;
+    background: rgba(14, 165, 233, 0.25);
+    border-color: #0ea5e9;
     color: #fff;
     cursor: default;
 }

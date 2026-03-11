@@ -261,6 +261,30 @@
 
         return result;
     }
+    function findStyleByToken(token, loadedStyles) {
+        var list = loadedStyles || [];
+        var found = list.find(function (s) { return s.name === token; });
+        if (found) return found;
+
+        var parts = token.split("_");
+        if (parts.length >= 2) {
+            var swapped = [parts[1], parts[0]].concat(parts.slice(2)).join("_");
+            found = list.find(function (s) { return s.name === swapped; });
+            if (found) return found;
+        }
+
+        var lower = token.toLowerCase();
+        found = list.find(function (s) { return (s.name || "").toLowerCase() === lower; });
+        if (found) return found;
+
+        if (parts.length >= 2) {
+            var swappedLower = [parts[1], parts[0]].concat(parts.slice(2)).join("_").toLowerCase();
+            found = list.find(function (s) { return (s.name || "").toLowerCase() === swappedLower; });
+            if (found) return found;
+        }
+
+        return null;
+    }
     function resolveComboItem(tabName, comboStr, loadedStyles) {
         var token = (comboStr || "").trim();
         if (!token) return { type: "plain", label: comboStr || "" };
@@ -278,13 +302,13 @@
             };
         }
 
-        // Type 2: EXACT STYLE NAME
-        var exactMatch = list.find(function (s) { return s.name === token; });
-        if (exactMatch) {
+        // Type 2: EXACT STYLE NAME (with swap fallback for SUBJECT_CATEGORY vs CATEGORY_SUBJECT)
+        var styleMatch = findStyleByToken(token, list);
+        if (styleMatch) {
             return {
                 type: "style",
                 label: token,
-                styleName: exactMatch.name
+                styleName: styleMatch.name
             };
         }
 
@@ -736,6 +760,22 @@
         });
 
         document.body.appendChild(menu);
+        // Clamp position to viewport
+        const rect = menu.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        let x = parseFloat(menu.style.left) || e.clientX;
+        let y = parseFloat(menu.style.top) || e.clientY;
+
+        if (x + rect.width > vw) x = vw - rect.width - 8;
+        if (y + rect.height > vh) y = vh - rect.height - 8;
+        if (x < 8) x = 8;
+        if (y < 8) y = 8;
+
+        menu.style.left = x + "px";
+        menu.style.top = y + "px";
+
         // Auto-close
         setTimeout(function () {
             const close = function () { menu.remove(); document.removeEventListener("click", close); };
@@ -1868,27 +1908,10 @@
                     if (alreadySelected) chip.classList.add("sg-combo-chip-active");
                     chip.title = resolved.styleName;
                     chip.addEventListener("click", function () {
-                        // Inject name: filter into search
-                        var searchEl = qs("#sg_search_" + tabName, panel);
-                        if (searchEl) {
-                            searchEl.value = "name:" + resolved.styleName;
-                            searchEl.dispatchEvent(new Event("input", { bubbles: true }));
-                            searchEl.focus();
-                        }
-                        if (state[tabName].selected.has(resolved.styleName)) return;
-                        state[tabName].selected.add(resolved.styleName);
-                        if (state[tabName].selectedOrder.indexOf(resolved.styleName) === -1)
-                            state[tabName].selectedOrder.push(resolved.styleName);
-                        applyStyleImmediate(tabName, resolved.styleName);
-                        qsa('.sg-card[data-style-name="' +
-                            CSS.escape(resolved.styleName) + '"]', panel)
-                            .forEach(function (c) {
-                                c.classList.add("sg-selected", "sg-applied");
-                            });
-                        chip.classList.add("sg-combo-chip-active");
-                        updateSelectedUI(tabName);
-                        updateConflicts(tabName);
-                        updateCombosPanel(tabName, styleName);
+                        var cardEl = qs('.sg-card[data-style-name="' + CSS.escape(resolved.styleName) + '"]', panel);
+                        if (!cardEl) cardEl = { classList: { remove: function () {} } };
+                        toggleStyle(tabName, resolved.styleName, cardEl);
+                        chip.classList.toggle("sg-combo-chip-active", state[tabName].selected.has(resolved.styleName));
                     });
 
                 } else if (resolved.type === "wildcard") {

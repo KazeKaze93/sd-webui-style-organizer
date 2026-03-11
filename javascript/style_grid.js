@@ -194,18 +194,53 @@
         }
         return null;
     }
+    function findStyleByNameCaseInsensitive(t, nameStr) {
+        var key = (nameStr || "").trim().toLowerCase();
+        if (!key) return null;
+        for (var cs in state[t].categories) {
+            var styles = state[t].categories[cs];
+            for (var i = 0; i < styles.length; i++) {
+                if (styles[i].name && styles[i].name.trim().toLowerCase() === key)
+                    return styles[i];
+            }
+        }
+        return null;
+    }
+    function getLoadedStylesWithCategory(tabName) {
+        var out = [];
+        var cats = state[tabName].categories || {};
+        for (var catName in cats) {
+            (cats[catName] || []).forEach(function (s) {
+                out.push({
+                    name: s.name,
+                    display_name: s.display_name,
+                    category: catName
+                });
+            });
+        }
+        return out;
+    }
+
     function parseDescription(desc) {
         if (!desc) return { text: "", combos: [], conflicts: [] };
 
         var result = { text: "", combos: [], conflicts: [] };
 
-        // Extract Combos: section
+        // Extract Combos: section — after "Combos:" until end or first period
         var combosMatch = desc.match(/Combos:\s*([^.]+)/i);
         if (combosMatch) {
-            result.combos = combosMatch[1]
-                .split(";")
-                .map(function (s) { return s.trim(); })
-                .filter(Boolean);
+            var block = combosMatch[1].trim();
+            var rawTokens = block.split(/\s*;\s*|\s+or\s+/i).map(function (s) { return s.trim(); });
+            result.combos = rawTokens.map(function (token) {
+                token = token.replace(/\.\s*$/, "").trim();
+                var parts = token.split(/\s+/);
+                var out = [];
+                for (var i = 0; i < parts.length; i++) {
+                    if (/^[a-z]/.test(parts[i]) || parts[i].toLowerCase() === "for") break;
+                    out.push(parts[i]);
+                }
+                return out.join(" ").trim();
+            }).filter(Boolean);
         }
 
         // Extract Conflicts: section
@@ -226,43 +261,34 @@
 
         return result;
     }
-    function resolveComboItem(tabName, comboStr) {
-        var s = comboStr.trim();
+    function resolveComboItem(tabName, comboStr, loadedStyles) {
+        var token = (comboStr || "").trim();
+        if (!token) return { type: "plain", label: comboStr || "" };
 
-        // Wildcard: "SCENE_*" or "PALETTE styles" → category link
-        if (s.endsWith("_*") || s.toLowerCase().endsWith(" styles")) {
-            var cat = s.replace(/_\*$/, "").replace(/\s+styles$/i, "").toUpperCase();
-            return { type: "category", label: cat + " (any)", category: cat };
-        }
+        var list = loadedStyles || [];
 
-        // Exact style name match
-        var found = findStyleByName(tabName, s);
-        if (found) {
+        // Type 1: WILDCARD — ends with _*
+        if (token.endsWith("_*")) {
+            var prefixWithUnderscore = token.slice(0, -2).trim() + "_";
+            var chipLabel = prefixWithUnderscore.replace(/_$/, "") || token;
             return {
-                type: "style",
-                label: found.display_name || s,
-                styleName: s
+                type: "wildcard",
+                label: chipLabel,
+                searchPrefix: prefixWithUnderscore
             };
         }
 
-        // Partial match: "LIGHTING_Dramatic_Shadow" when display is "Dramatic Shadow"
-        // Try finding by scanning all categories
-        var cats = state[tabName].categories || {};
-        for (var catName in cats) {
-            var match = cats[catName].find(function (st) {
-                return st.name === s || st.display_name === s;
-            });
-            if (match) {
-                return {
-                    type: "style",
-                    label: match.display_name || match.name,
-                    styleName: match.name
-                };
-            }
+        // Type 2: EXACT STYLE NAME
+        var exactMatch = list.find(function (s) { return s.name === token; });
+        if (exactMatch) {
+            return {
+                type: "style",
+                label: token,
+                styleName: exactMatch.name
+            };
         }
 
-        // Unknown — show as plain text hint
-        return { type: "hint", label: s };
+        return { type: "plain", label: comboStr };
     }
 
     // ════════════════════════════════════════════════════
@@ -1752,7 +1778,7 @@
     // -----------------------------------------------------------------------
     function parseSearchQuery(rawQuery) {
         const filters = {
-            text: [], tag: [], neg: [], cat: null,
+            text: [], tag: [], neg: [], cat: null, name: null, prefix: null,
             fav: false, hasPlaceholder: false, usedMin: null
         };
         const tokenRegex = /(\w+):("[^"]*"|\S+)/g;
@@ -1760,11 +1786,14 @@
         let remaining = rawQuery;
         while ((match = tokenRegex.exec(rawQuery)) !== null) {
             const key = match[1].toLowerCase();
-            const val = match[2].replace(/^"|"$/g, "").toLowerCase();
+            const valRaw = match[2].replace(/^"|"$/g, "").trim();
+            const val = valRaw.toLowerCase();
             remaining = remaining.replace(match[0], "").trim();
             if (key === "tag")      filters.tag.push(val);
             else if (key === "neg") filters.neg.push(val);
             else if (key === "cat") filters.cat = val;
+            else if (key === "name") filters.name = valRaw;
+            else if (key === "prefix") filters.prefix = valRaw;
             else if (key === "fav" && val === "yes")          filters.fav = true;
             else if (key === "has" && val === "placeholder")  filters.hasPlaceholder = true;
             else if (key === "used") {
@@ -1827,8 +1856,9 @@
             });
             combosEl.appendChild(labelEl);
 
+            var loadedStyles = getLoadedStylesWithCategory(tabName);
             parsed.combos.forEach(function (comboStr) {
-                var resolved = resolveComboItem(tabName, comboStr);
+                var resolved = resolveComboItem(tabName, comboStr, loadedStyles);
                 var chip = el("span", { className: "sg-combo-chip" });
 
                 if (resolved.type === "style") {
@@ -1838,6 +1868,13 @@
                     if (alreadySelected) chip.classList.add("sg-combo-chip-active");
                     chip.title = resolved.styleName;
                     chip.addEventListener("click", function () {
+                        // Inject name: filter into search
+                        var searchEl = qs("#sg_search_" + tabName, panel);
+                        if (searchEl) {
+                            searchEl.value = "name:" + resolved.styleName;
+                            searchEl.dispatchEvent(new Event("input", { bubbles: true }));
+                            searchEl.focus();
+                        }
                         if (state[tabName].selected.has(resolved.styleName)) return;
                         state[tabName].selected.add(resolved.styleName);
                         if (state[tabName].selectedOrder.indexOf(resolved.styleName) === -1)
@@ -1854,22 +1891,20 @@
                         updateCombosPanel(tabName, styleName);
                     });
 
-                } else if (resolved.type === "category") {
+                } else if (resolved.type === "wildcard") {
                     chip.textContent = resolved.label;
                     chip.classList.add("sg-combo-chip-cat");
-                    chip.title = "Filter to " + resolved.category + " category";
+                    chip.title = "Filter styles by prefix " + (resolved.searchPrefix || resolved.label);
                     chip.addEventListener("click", function () {
-                        // Focus search with cat: filter
                         var searchEl = qs("#sg_search_" + tabName, panel);
-                        if (searchEl) {
-                            searchEl.value = "cat:" + resolved.category.toLowerCase();
+                        if (searchEl && resolved.searchPrefix) {
+                            searchEl.value = "prefix:" + resolved.searchPrefix;
                             searchEl.dispatchEvent(new Event("input", { bubbles: true }));
                             searchEl.focus();
                         }
                     });
-
                 } else {
-                    // Plain hint — not clickable
+                    // Plain text — not a valid category or style, gray non-clickable
                     chip.textContent = resolved.label;
                     chip.classList.add("sg-combo-chip-hint");
                 }
@@ -1996,6 +2031,13 @@
             if (filters.cat &&
                 (card.getAttribute("data-category") || "").toLowerCase() !== filters.cat)
                 return false;
+            if (filters.name &&
+                card.getAttribute("data-style-name") !== filters.name)
+                return false;
+            if (filters.prefix) {
+                var styleName = card.getAttribute("data-style-name") || "";
+                if (styleName.indexOf(filters.prefix) !== 0) return false;
+            }
             if (filters.usedMin !== null) {
                 console.log("[SG debug] usedMin filter:", filters.usedMin);
                 const styleName = card.getAttribute("data-style-name");

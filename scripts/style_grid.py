@@ -670,6 +670,7 @@ def register_api(demo, app):
                     n_iter=1,
                     do_not_save_samples=True,
                     do_not_save_grid=True,
+                    override_settings={"samples_filename_pattern": ""},
                 )
 
                 try:

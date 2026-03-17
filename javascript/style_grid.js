@@ -163,10 +163,6 @@
 
     function normalizeSearchText(s) { return (s || "").replace(/\s+/g, " ").trim().toLowerCase(); }
     function buildSearchText(style) { return normalizeSearchText([style.name, style.display_name].filter(Boolean).join(" ")); }
-    function nameMatchesQuery(text, query) {
-        const n = normalizeSearchText(query); if (!n) return true;
-        return n.split(/\s+/).filter(Boolean).every(function (t) { return text.includes(t); });
-    }
     function acMatches(candidate, query) {
         const normalized = normalizeSearchText(candidate);
         const q = normalizeSearchText(query);
@@ -191,18 +187,6 @@
         for (const styles of Object.values(state[t].categories)) {
             const f = styles.find(function (s) { return s.name === n; });
             if (f) return f;
-        }
-        return null;
-    }
-    function findStyleByNameCaseInsensitive(t, nameStr) {
-        var key = (nameStr || "").trim().toLowerCase();
-        if (!key) return null;
-        for (var cs in state[t].categories) {
-            var styles = state[t].categories[cs];
-            for (var i = 0; i < styles.length; i++) {
-                if (styles[i].name && styles[i].name.trim().toLowerCase() === key)
-                    return styles[i];
-            }
         }
         return null;
     }
@@ -2129,10 +2113,9 @@
                 return false;
             if (filters.prefix) {
                 var styleName = card.getAttribute("data-style-name") || "";
-                if (styleName.indexOf(filters.prefix) !== 0) return false;
+                if (styleName.toLowerCase().indexOf(filters.prefix.toLowerCase()) !== 0) return false;
             }
             if (filters.usedMin !== null) {
-                console.log("[SG debug] usedMin filter:", filters.usedMin);
                 const styleName = card.getAttribute("data-style-name");
                 const usageData = state[tabName].usage || {};
                 const count = (usageData[styleName] || {}).count || 0;

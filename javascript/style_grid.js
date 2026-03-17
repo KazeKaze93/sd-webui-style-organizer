@@ -2540,13 +2540,17 @@
                     e.dataTransfer.dropEffect = "move";
                     const rect = this.getBoundingClientRect();
                     const midX = rect.left + rect.width / 2;
-                    qsa(".sg-tag", tagsEl).forEach(function (t) {
-                        t.classList.remove("sg-drag-over-left", "sg-drag-over-right");
-                    });
-                    if (e.clientX < midX) {
-                        this.classList.add("sg-drag-over-left");
-                    } else {
-                        this.classList.add("sg-drag-over-right");
+                    const newClass = e.clientX < midX ? "sg-drag-over-left" : "sg-drag-over-right";
+                    const removeClass = newClass === "sg-drag-over-left" ? "sg-drag-over-right" : "sg-drag-over-left";
+                    // Only touch DOM if something actually changed
+                    if (!this.classList.contains(newClass)) {
+                        qsa(".sg-tag", tagsEl).forEach(function (t) {
+                            t.classList.remove("sg-drag-over-left", "sg-drag-over-right");
+                        });
+                        this.classList.add(newClass);
+                    } else if (this.classList.contains(removeClass)) {
+                        this.classList.remove(removeClass);
+                        this.classList.add(newClass);
                     }
                 });
                 tag.addEventListener("dragleave", function () {

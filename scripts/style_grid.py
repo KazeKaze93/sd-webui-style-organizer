@@ -766,10 +766,16 @@ class StyleGridScript(scripts.Script):
             "usage": load_usage(),
             "presets": load_presets(),
         }, ensure_ascii=False)
-        category_order = [
-            "BASE", "BODY", "GENITALS", "BREASTS", "THEME",
-            "RESTRAINTS", "POSE", "SCENE", "STYLE", "OTHER"
-        ]
+        # Category order: load user custom order, or default to alphabetical
+        order_file = os.path.join(DATA_DIR, "category_order.json")
+        if os.path.isfile(order_file):
+            try:
+                with open(order_file, "r", encoding="utf-8") as f:
+                    category_order = json.load(f)
+            except Exception:
+                category_order = sorted(categories.keys())
+        else:
+            category_order = sorted(categories.keys())
         with gr.Group(elem_id=f"style_grid_wrapper_{tab_prefix}", visible=False):
             styles_data = gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
             selected_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")

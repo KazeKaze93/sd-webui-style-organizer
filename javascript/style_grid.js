@@ -356,6 +356,23 @@
         try { return JSON.parse(el.value); } catch (_) { return []; }
     }
 
+    function getCollapsedCategories() {
+        try {
+            return JSON.parse(localStorage.getItem("sg_collapsed") || "[]");
+        } catch (_) { return []; }
+    }
+    function saveCollapsedCategories(tabName) {
+        var panel = state[tabName].panel;
+        if (!panel) return;
+        var collapsed = [];
+        qsa(".sg-category.sg-collapsed", panel).forEach(function (sec) {
+            var cat = sec.getAttribute("data-category");
+            if (cat) collapsed.push(cat);
+        });
+        try { localStorage.setItem("sg_collapsed", JSON.stringify(collapsed)); }
+        catch (_) { }
+    }
+
     // ════════════════════════════════════════════════════
     // API LAYER
     // ════════════════════════════════════════════════════
@@ -1575,6 +1592,7 @@
         catHeader.addEventListener("click", function () {
             section.classList.toggle("sg-collapsed");
             catArrow.textContent = section.classList.contains("sg-collapsed") ? "▸" : "▾";
+            saveCollapsedCategories(tabName);
         });
         catHeader.addEventListener("contextmenu", function (e) {
             e.preventDefault();
@@ -1603,6 +1621,13 @@
             }, 0);
         });
         section.appendChild(catHeader);
+
+        // Restore collapsed state from localStorage
+        var collapsedList = getCollapsedCategories();
+        if (collapsedList.indexOf(catId) !== -1) {
+            section.classList.add("sg-collapsed");
+            catArrow.textContent = "▸";
+        }
 
         const grid = el("div", { className: "sg-grid" });
         styles.forEach(function (style) {
@@ -2052,6 +2077,7 @@
         updateCombosPanel(tabName, state[tabName].selectedOrder.length > 0
             ? state[tabName].selectedOrder[state[tabName].selectedOrder.length - 1]
             : null);
+        saveCollapsedCategories(tabName);
     }
 
     function filterStyles(tabName) {

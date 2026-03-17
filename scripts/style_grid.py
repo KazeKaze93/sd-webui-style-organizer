@@ -539,9 +539,15 @@ def register_api(demo, app):
             target = os.path.join(ext_styles, f"imported_{time.strftime('%Y%m%d_%H%M%S')}.csv")
             with open(target, "w", encoding="utf-8", newline="") as f:
                 w = csv.writer(f)
-                w.writerow(["name", "prompt", "negative_prompt"])
+                w.writerow(["name", "prompt", "negative_prompt", "description", "category"])
                 for s in data["styles"]:
-                    w.writerow([s.get("name", ""), s.get("prompt", ""), s.get("negative_prompt", "")])
+                    w.writerow([
+                        s.get("name", ""),
+                        s.get("prompt", ""),
+                        s.get("negative_prompt", ""),
+                        s.get("description", ""),
+                        s.get("category", "") or s.get("category_explicit", ""),
+                    ])
         return {"ok": True}
 
     @app.get("/style_grid/thumbnails/list")

@@ -639,10 +639,175 @@
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
     }
 
-    // -----------------------------------------------------------------------
-    // Context menu
-    // -----------------------------------------------------------------------
-    function generateThumbnail(tabName, styleName) {
+   // -----------------------------------------------------------------------
+   // Context menu
+   // -----------------------------------------------------------------------
+   var _batchState = { running: false, cancelled: false, skipped: false };
+
+   function startBatchThumbnails(tabName, catName, styles) {
+       if (_batchState.running) {
+           showStatusMessage(tabName, "Batch generation already running", true);
+           return;
+       }
+
+       var queue = styles.filter(function (s) {
+           return !state[tabName].hasThumbnail.has(s.name);
+       });
+       if (queue.length === 0) {
+           showStatusMessage(tabName, "All styles already have previews");
+           return;
+       }
+
+       _batchState = { running: true, cancelled: false, skipped: false };
+       var total = queue.length;
+       var done = 0;
+       var failed = 0;
+       var skipped = 0;
+
+       // Build modal
+       var overlay = el("div", { className: "sg-editor-overlay sg-batch-overlay" });
+       var modal = el("div", { className: "sg-editor-modal" });
+       var titleEl = el("h3", {
+           className: "sg-editor-title",
+           textContent: "🎨 Generating previews — " + catName
+       });
+       var progressText = el("div", {
+           className: "sg-batch-progress-text",
+           textContent: "Starting..."
+       });
+       var progressBar = el("div", { className: "sg-batch-bar-wrap" });
+       var progressFill = el("div", { className: "sg-batch-bar-fill" });
+       progressBar.appendChild(progressFill);
+
+       var btnRow = el("div", { className: "sg-editor-btns" });
+       var skipBtn = el("button", {
+           className: "sg-btn sg-btn-secondary",
+           textContent: "⏭ Skip",
+           onClick: function () { _batchState.skipped = true; }
+       });
+       var cancelBtn = el("button", {
+           className: "sg-btn",
+           style: "background:#dc2626; border-color:#dc2626; color:#fff;",
+           textContent: "✕ Cancel",
+           onClick: function () {
+               _batchState.cancelled = true;
+               cancelBtn.textContent = "Cancelling...";
+               cancelBtn.disabled = true;
+           }
+       });
+       btnRow.appendChild(skipBtn);
+       btnRow.appendChild(cancelBtn);
+
+       modal.appendChild(titleEl);
+       modal.appendChild(progressText);
+       modal.appendChild(progressBar);
+       modal.appendChild(btnRow);
+       overlay.appendChild(modal);
+       // Do NOT close on overlay click — only Cancel
+       document.body.appendChild(overlay);
+
+       function updateProgress(current, styleName, status) {
+           var pct = Math.round((current / total) * 100);
+           progressFill.style.width = pct + "%";
+           progressText.textContent = current + " / " + total +
+               (styleName ? " — " + styleName.split("_").slice(1).join(" ") : "") +
+               (status ? " (" + status + ")" : "");
+       }
+
+       function processNext(index) {
+           if (_batchState.cancelled || index >= queue.length) {
+               // Finished
+               _batchState.running = false;
+               overlay.remove();
+               var msg = "Done: " + done + "/" + total + " generated";
+               if (failed > 0) msg += ", " + failed + " failed";
+               if (skipped > 0) msg += ", " + skipped + " skipped";
+               showStatusMessage(tabName, msg);
+               loadThumbnailList(tabName);
+               return;
+           }
+
+           var styleName = queue[index].name;
+           _batchState.skipped = false;
+           updateProgress(index + 1, styleName, "generating...");
+
+           apiPost("/style_grid/thumbnail/generate", { name: styleName })
+               .then(function (r) {
+                   if (r.error) {
+                       if (r.error.indexOf("busy") !== -1) {
+                           // SD busy — wait and retry same index
+                           updateProgress(index + 1, styleName, "SD busy, waiting...");
+                           setTimeout(function () { processNext(index); }, 5000);
+                           return;
+                       }
+                       failed++;
+                       processNext(index + 1);
+                       return;
+                   }
+                   pollBatchStatus(tabName, styleName, index, 0);
+               })
+               .catch(function () {
+                   failed++;
+                   processNext(index + 1);
+               });
+       }
+
+       function pollBatchStatus(tabName2, styleName, index, attempts) {
+           if (_batchState.cancelled) {
+               _batchState.running = false;
+               overlay.remove();
+               showStatusMessage(tabName2, "Cancelled. " + done + "/" + total + " completed.");
+               loadThumbnailList(tabName2);
+               return;
+           }
+           if (_batchState.skipped) {
+               skipped++;
+               processNext(index + 1);
+               return;
+           }
+           if (attempts > 60) {
+               failed++;
+               processNext(index + 1);
+               return;
+           }
+
+           apiGet("/style_grid/thumbnail/gen_status?name=" +
+               encodeURIComponent(styleName))
+               .then(function (r) {
+                   if (!r || r.detail === "Not Found" || r.status === undefined) {
+                       failed++;
+                       processNext(index + 1);
+                       return;
+                   }
+                   if (r.status === "done") {
+                       done++;
+                       state[tabName2].hasThumbnail.add(styleName);
+                       _thumbVersions[styleName] = Date.now();
+                       _saveThumbVersions();
+                       qsa('.sg-card[data-style-name="' +
+                           CSS.escape(styleName) + '"]', state[tabName2].panel)
+                           .forEach(function (c) { c.classList.add("sg-has-thumb"); });
+                       updateProgress(index + 1, styleName, "✓");
+                       setTimeout(function () { processNext(index + 1); }, 300);
+                   } else if (r.status === "error") {
+                       failed++;
+                       processNext(index + 1);
+                   } else {
+                       setTimeout(function () {
+                           pollBatchStatus(tabName2, styleName, index, attempts + 1);
+                       }, 2000);
+                   }
+               })
+               .catch(function () {
+                   failed++;
+                   processNext(index + 1);
+               });
+       }
+
+       processNext(0);
+   }
+
+   function generateThumbnail(tabName, styleName) {
         showStatusMessage(tabName, "🎨 Generating preview for " +
             styleName.split("_").slice(1).join(" ") + "...");
 
@@ -1684,32 +1849,51 @@
             catArrow.textContent = section.classList.contains("sg-collapsed") ? "▸" : "▾";
             saveCollapsedCategories(tabName);
         });
-        catHeader.addEventListener("contextmenu", function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            const old = qs(".sg-context-menu"); if (old) old.remove();
-            const menu = el("div", { className: "sg-context-menu" });
-            menu.style.left = e.clientX + "px"; menu.style.top = e.clientY + "px";
-            const item = el("div", {
-                className: "sg-ctx-item",
-                textContent: "🎲 Add category as wildcard",
-                onClick: function () {
-                    menu.remove();
-                    const wcTag = "__" + catId.toLowerCase() + "__";
-                    const promptEl = qs("#" + tabName + "_prompt textarea");
-                    if (promptEl) {
-                        const sep = promptEl.value.trim() ? ", " : "";
-                        setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
-                    }
-                }
-            });
-            menu.appendChild(item);
-            document.body.appendChild(menu);
-            setTimeout(function () {
-                const close = function () { menu.remove(); document.removeEventListener("click", close); };
-                document.addEventListener("click", close);
-            }, 0);
-        });
+       catHeader.addEventListener("contextmenu", function (e) {
+           e.preventDefault();
+           e.stopPropagation();
+           const old = qs(".sg-context-menu"); if (old) old.remove();
+           const menu = el("div", { className: "sg-context-menu" });
+           menu.style.left = e.clientX + "px"; menu.style.top = e.clientY + "px";
+           const item = el("div", {
+               className: "sg-ctx-item",
+               textContent: "🎲 Add category as wildcard",
+               onClick: function () {
+                   menu.remove();
+                   const wcTag = "__" + catId.toLowerCase() + "__";
+                   const promptEl = qs("#" + tabName + "_prompt textarea");
+                   if (promptEl) {
+                       const sep = promptEl.value.trim() ? ", " : "";
+                       setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
+                   }
+               }
+           });
+           menu.appendChild(item);
+
+           // Batch thumbnail generation for this category
+           var stylesInCat = styles || [];
+           var missingCount = 0;
+           stylesInCat.forEach(function (s) {
+               if (!state[tabName].hasThumbnail.has(s.name)) missingCount++;
+           });
+           if (missingCount > 0) {
+               var batchItem = el("div", {
+                   className: "sg-ctx-item",
+                   textContent: "🎨 Generate previews (" + missingCount + " missing)",
+                   onClick: function () {
+                       menu.remove();
+                       startBatchThumbnails(tabName, catId, stylesInCat);
+                   }
+               });
+               menu.appendChild(batchItem);
+           }
+
+           document.body.appendChild(menu);
+           setTimeout(function () {
+               const close = function () { menu.remove(); document.removeEventListener("click", close); };
+               document.addEventListener("click", close);
+           }, 0);
+       });
         section.appendChild(catHeader);
 
         // Restore collapsed state from localStorage

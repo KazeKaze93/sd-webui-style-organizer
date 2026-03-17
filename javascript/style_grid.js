@@ -1798,39 +1798,6 @@
     }
 
     // -----------------------------------------------------------------------
-    // Structured search query parsing
-    // -----------------------------------------------------------------------
-    function parseSearchQuery(rawQuery) {
-        const filters = {
-            text: [], tag: [], neg: [], cat: null, name: null, prefix: null,
-            fav: false, hasPlaceholder: false, usedMin: null
-        };
-        const tokenRegex = /(\w+):("[^"]*"|\S+)/g;
-        let match;
-        let remaining = rawQuery;
-        while ((match = tokenRegex.exec(rawQuery)) !== null) {
-            const key = match[1].toLowerCase();
-            const valRaw = match[2].replace(/^"|"$/g, "").trim();
-            const val = valRaw.toLowerCase();
-            remaining = remaining.replace(match[0], "").trim();
-            if (key === "tag")      filters.tag.push(val);
-            else if (key === "neg") filters.neg.push(val);
-            else if (key === "cat") filters.cat = val;
-            else if (key === "name") filters.name = valRaw;
-            else if (key === "prefix") filters.prefix = valRaw;
-            else if (key === "fav" && val === "yes")          filters.fav = true;
-            else if (key === "has" && val === "placeholder")  filters.hasPlaceholder = true;
-            else if (key === "used") {
-                const m = val.match(/^>(\d+)$/);
-                if (m) filters.usedMin = parseInt(m[1], 10);
-            }
-        }
-        if (remaining.trim())
-            filters.text.push.apply(filters.text, remaining.trim().split(/\s+/).filter(Boolean));
-        return filters;
-    }
-
-    // -----------------------------------------------------------------------
     // Interaction handlers
     // -----------------------------------------------------------------------
     function updateCombosPanel(tabName, styleName) {
@@ -1905,7 +1872,7 @@
                     chip.addEventListener("click", function () {
                         var searchEl = qs("#sg_search_" + tabName, panel);
                         if (searchEl && resolved.searchPrefix) {
-                            searchEl.value = "prefix:" + resolved.searchPrefix;
+                            searchEl.value = resolved.searchPrefix;
                             searchEl.dispatchEvent(new Event("input", { bubbles: true }));
                             searchEl.focus();
                         }
@@ -2093,53 +2060,23 @@
         const searchEl = qs("#sg_search_" + tabName, panel);
         const rawQuery = searchEl ? normalizeSearchText(searchEl.value) : "";
         const selectedSource = state[tabName].selectedSource || "All";
-        const filters = parseSearchQuery(rawQuery);
 
         function sourceFilter(src) {
             return selectedSource === "All" || src === selectedSource;
         }
 
         function cardPasses(card) {
-            const style = card._styleRef;
             if (!sourceFilter(card.getAttribute("data-source") || "")) return false;
-            if (filters.fav &&
-                !getFavorites(tabName).has(card.getAttribute("data-style-name")))
-                return false;
-            if (filters.hasPlaceholder &&
-                !card.classList.contains("sg-has-placeholder"))
-                return false;
-            if (filters.cat &&
-                (card.getAttribute("data-category") || "").toLowerCase() !== filters.cat)
-                return false;
-            if (filters.name &&
-                card.getAttribute("data-style-name") !== filters.name)
-                return false;
-            if (filters.prefix) {
-                var styleName = card.getAttribute("data-style-name") || "";
-                if (styleName.toLowerCase().indexOf(filters.prefix.toLowerCase()) !== 0) return false;
-            }
-            if (filters.usedMin !== null) {
-                const styleName = card.getAttribute("data-style-name");
-                const usageData = state[tabName].usage || {};
-                const count = (usageData[styleName] || {}).count || 0;
-                if (count <= filters.usedMin) return false;
-            }
-            if (filters.tag.length && style) {
-                const prompt = (style.prompt || "").toLowerCase();
-                if (!filters.tag.every(function (t) { return prompt.indexOf(t) !== -1; })) return false;
-            }
-            if (filters.neg.length && style) {
-                const neg = (style.negative_prompt || "").toLowerCase();
-                if (!filters.neg.every(function (t) { return neg.indexOf(t) !== -1; })) return false;
-            }
-            if (filters.text.length) {
-                const searchName = card.getAttribute("data-search-name") || "";
-                const desc = (style && style.description || "").toLowerCase();
-                if (!filters.text.every(function (t) {
-                    return searchName.indexOf(t) !== -1 || desc.indexOf(t) !== -1;
-                })) return false;
-            }
-            return true;
+
+            if (!rawQuery) return true;
+
+            var searchName = card.getAttribute("data-search-name") || "";
+            var style = card._styleRef;
+            var desc = (style && style.description || "").toLowerCase();
+
+            return rawQuery.split(/\s+/).filter(Boolean).every(function (t) {
+                return searchName.indexOf(t) !== -1 || desc.indexOf(t) !== -1;
+            });
         }
 
         requestAnimationFrame(function () {

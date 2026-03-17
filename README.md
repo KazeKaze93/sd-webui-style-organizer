@@ -1,4 +1,4 @@
-# Style Grid v2.0
+# Style Grid v2.1
 
 A visual style selector for Stable Diffusion WebUI Forge.
 Replaces the default dropdown with a searchable, categorized grid.
@@ -9,18 +9,46 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 
 ---
 
-## What's New in v2.0
+## What's New in v2.1
 
-### Smart Search with Autocomplete
-Start typing to search across all 800+ style names.
+### Smart Deduplication
+When viewing **All Sources**, styles that exist in multiple CSV files
+are collapsed into a single card. Clicking a deduplicated card opens a
+**source picker** showing each CSV variant with a prompt preview, so you
+choose exactly which version to apply.
+
+### Drag-and-Drop Category Ordering
+Drag categories in the sidebar to reorder them. Your custom order is
+saved automatically (browser + `data/category_order.json`) and persists
+across restarts. New categories from added CSVs appear alphabetically
+at the bottom.
+
+### Batch Thumbnail Generation
+Right-click any category header → **Generate previews (N missing)**.
+Processes styles sequentially with a progress modal. Supports **Skip**
+(jump to next style) and **Cancel** (stop after current finishes).
+No parallel generation — your GPU handles one at a time.
+
+### Persistent Category Collapse
+Collapsed/expanded state for each category is saved in the browser.
+Categories you collapse stay collapsed between sessions.
+
+### Simplified Search
+Search is now pure text matching against style names and descriptions.
+Multi-word queries use AND logic. The previous structured operators
+(`cat:`, `tag:`, `prefix:`, etc.) have been removed for simplicity.
+
+### Previous (v2.0)
+
+<details>
+<summary>v2.0 features (click to expand)</summary>
+
+#### Smart Search with Autocomplete
+Start typing to search across all style names.
 Autocomplete dropdown suggests matching styles as you type —
 searches anywhere in the name, case-insensitive.
 
-![Smart Search](docs/screenshots/smart_search.png)
-
----
-
-### Thumbnail Preview on Hover
+#### Thumbnail Preview on Hover
 Hover over any card for 700ms to see a preview popup with:
 - Thumbnail image (if uploaded or generated)
 - Style display name
@@ -32,42 +60,28 @@ Hover over any card for 700ms to see a preview popup with:
    your current model with the style's prompt, fixed seed 42, 384×512px
 
 Cards with thumbnails get a subtle left-border indicator.
-
-![Thumbnail Hover Preview](docs/screenshots/thumbnail_hover.png)
-![Generate Preview](docs/screenshots/thumbnail_generate.png)
-
 Thumbnails stored in `data/thumbnails/` inside the extension folder.
 
----
-
-### Recommended Combos
-Select any style → a row appears at the bottom of the panel showing
-what the style author recommends combining it with.
+#### Recommended Combos
+Select any style → a row appears at the bottom showing recommended
+combinations from the style's description field.
 
 - **Blue chips** = specific styles. Click to apply immediately.
-- **Yellow chips** = entire categories. Click to filter the grid.
+- **Orange chips** = category wildcards. Click to filter the grid.
 - **Red chips** = conflicts to avoid.
-- ✓ mark on chips that are already selected.
+- ✓ mark on chips already selected.
 
-Works automatically for all style packs that have description fields filled.
-
-![Recommended Combos](docs/screenshots/recommended_combos.png)
-![Recommended Combos Footer](docs/screenshots/recommended_combos_footer.png)
----
-
-### Performance
-- Grid renders instantly regardless of style count thanks to
-  `content-visibility: auto` — browser skips off-screen categories entirely
-- Server-side style cache with ETag — CSV files read once, not on every panel open
+#### Performance
+- `content-visibility: auto` for instant rendering regardless of style count
+- Server-side style cache with ETag
 - All API calls have error handling with visible status messages
 
----
+#### Style Editor Improvements
+- **Description & Combos field** for combo suggestions
+- Delete and Move dialogs are proper modals
+- Error feedback for failed operations
 
-### Style Editor Improvements
-- **Description & Combos field** — write combo suggestions when creating
-  custom styles. Format: `Your description. Combos: STYLE_X; CATEGORY_*`
-- Delete and Move dialogs are now proper modals instead of browser confirm()
-- Error feedback for failed save/delete operations
+</details>
 
 ---
 
@@ -199,7 +213,9 @@ The extension stores its data in the `data/` folder:
 |------|----------|
 | `data/presets.json` | Saved style presets |
 | `data/usage.json` | Per-style usage counters and timestamps |
+| `data/category_order.json` | Custom sidebar category ordering (auto-created on drag) |
 | `data/backups/` | Timestamped CSV backups (up to 20) |
+| `data/thumbnails/` | Style preview images (keyed by name hash) |
 
 These files are gitignored and created automatically.
 

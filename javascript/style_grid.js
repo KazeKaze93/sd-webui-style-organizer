@@ -2250,9 +2250,16 @@
         // Position near the card
         var rect = anchorCard.getBoundingClientRect();
         picker.style.position = "fixed";
-        picker.style.left = Math.min(rect.right + 8, window.innerWidth - 260) + "px";
-        picker.style.top = Math.max(8, rect.top) + "px";
         picker.style.zIndex = "10005";
+        if (rect.width > 0 && rect.height > 0) {
+            // Card is on-screen — position beside it
+            picker.style.left = Math.min(rect.right + 8, window.innerWidth - 260) + "px";
+            picker.style.top = Math.max(8, rect.top) + "px";
+        } else {
+            // Card is in a hidden/collapsed category — center the picker
+            picker.style.left = Math.max(8, Math.round((window.innerWidth - 260) / 2)) + "px";
+            picker.style.top = Math.max(8, Math.round((window.innerHeight - 200) / 2)) + "px";
+        }
 
         document.body.appendChild(picker);
 
@@ -2389,6 +2396,11 @@
             // Dedup: when "All Sources", show only first card per name per category
             var dedupEnabled = selectedSource === "All";
             var seenPerCat = {};
+
+            // Always reset variants first; will be re-populated below if dedupEnabled
+            qsa(".sg-card", panel).forEach(function (card) {
+                card._sourceVariants = [];
+            });
 
             qsa(".sg-card", panel).forEach(function (card) {
                 var visible = cardPasses(card);

@@ -281,6 +281,24 @@
 .sg-sidebar-btn:hover { background: var(--button-secondary-background-fill-hover, #374151); }
 .sg-sidebar-btn.sg-active { background: var(--button-secondary-background-fill, #1f2937); font-weight: 600; }
 
+/* ---- Sidebar drag-and-drop ---- */
+.sg-sidebar-btn[draggable="true"] { cursor: grab; }
+.sg-sidebar-btn[draggable="true"]:active { cursor: grabbing; }
+.sg-sidebar-btn.sg-sidebar-dragging {
+    opacity: 0.3;
+    transform: scale(0.95);
+}
+.sg-sidebar-btn.sg-drag-over-top {
+    border-top: 3px solid #818cf8;
+    padding-top: 3px;
+    box-shadow: 0 -4px 8px rgba(99, 102, 241, 0.5);
+}
+.sg-sidebar-btn.sg-drag-over-bottom {
+    border-bottom: 3px solid #818cf8;
+    padding-bottom: 3px;
+    box-shadow: 0 4px 8px rgba(99, 102, 241, 0.5);
+}
+
 .sg-filter-bar { display: flex; gap: 4px; padding: 6px 18px 0; flex-shrink: 0; }
 .sg-filter-btn { padding: 4px 10px; border: 1px solid var(--border-color, #374151); border-radius: 6px; background: transparent; color: var(--body-text-color, #d1d5db); font-size: 0.75rem; cursor: pointer; transition: background 0.15s; }
 .sg-filter-btn:hover { background: var(--button-secondary-background-fill-hover, #374151); }

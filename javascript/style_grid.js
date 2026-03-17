@@ -70,6 +70,20 @@
             localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d));
         } catch (_) { }
     }
+    function loadCategoryOrder() {
+        try {
+            return JSON.parse(localStorage.getItem("sg_cat_order") || "null");
+        } catch (_) {
+            return null;
+        }
+    }
+    function saveCategoryOrder(order) {
+        try {
+            localStorage.setItem("sg_cat_order", JSON.stringify(order));
+        } catch (_) { }
+        // Also persist to server for cross-browser persistence
+        apiPost("/style_grid/category_order/save", { order: order }).catch(function () { });
+    }
     function getSilentMode(t) {
         try {
             const d = JSON.parse(localStorage.getItem("sg_silent") || "{}");
@@ -1170,9 +1184,15 @@
         const catOrder = getCategoryOrder(tabName);
 
         const catKeys = Object.keys(categories);
+        var savedOrder = loadCategoryOrder();
         const sortedCats = [];
-        catOrder.forEach(function (c) { if (catKeys.includes(c)) sortedCats.push(c); });
-        catKeys.forEach(function (c) { if (!sortedCats.includes(c)) sortedCats.push(c); });
+        if (savedOrder && Array.isArray(savedOrder)) {
+            savedOrder.forEach(function (c) { if (catKeys.includes(c)) sortedCats.push(c); });
+            catKeys.sort().forEach(function (c) { if (!sortedCats.includes(c)) sortedCats.push(c); });
+        } else {
+            catOrder.forEach(function (c) { if (catKeys.includes(c)) sortedCats.push(c); });
+            catKeys.sort().forEach(function (c) { if (!sortedCats.includes(c)) sortedCats.push(c); });
+        }
 
         // Overlay
         const overlay = el("div", { className: "sg-overlay", id: "sg_overlay_" + tabName });
@@ -1478,7 +1498,77 @@
             sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "★ Favorites", onClick: function () { showOnlyCategory("FAVORITES"); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
             sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", textContent: "🕑 Recent", onClick: function () { showOnlyCategory("RECENT"); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
             sortedCats.forEach(function (catName) {
-                sidebar.appendChild(el("button", { type: "button", className: "sg-sidebar-btn", "data-category": catName, textContent: catName, onClick: function () { showOnlyCategory(catName); qsa(".sg-sidebar-btn", sidebar).forEach(function (b) { b.classList.remove("sg-active"); }); this.classList.add("sg-active"); } }));
+                var btn = el("button", {
+                    type: "button",
+                    className: "sg-sidebar-btn",
+                    "data-category": catName,
+                    textContent: catName,
+                    draggable: "true",
+                    onClick: function () {
+                        showOnlyCategory(catName);
+                        qsa(".sg-sidebar-btn", sidebar).forEach(function (b) {
+                            b.classList.remove("sg-active");
+                        });
+                        btn.classList.add("sg-active");
+                    }
+                });
+
+                btn.addEventListener("dragstart", function (e) {
+                    e.dataTransfer.setData("text/plain", catName);
+                    e.dataTransfer.effectAllowed = "move";
+                    btn.classList.add("sg-sidebar-dragging");
+                });
+                btn.addEventListener("dragend", function () {
+                    btn.classList.remove("sg-sidebar-dragging");
+                    qsa(".sg-sidebar-btn", sidebar).forEach(function (b) {
+                        b.classList.remove("sg-drag-over-top", "sg-drag-over-bottom");
+                    });
+                });
+                btn.addEventListener("dragover", function (e) {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "move";
+                    // Clear ALL sidebar buttons first — same pattern as footer tags
+                    qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (b) {
+                        b.classList.remove("sg-drag-over-top", "sg-drag-over-bottom");
+                    });
+                    var rect = btn.getBoundingClientRect();
+                    var midY = rect.top + rect.height / 2;
+                    if (e.clientY < midY) {
+                        btn.classList.add("sg-drag-over-top");
+                    } else {
+                        btn.classList.add("sg-drag-over-bottom");
+                    }
+                });
+                btn.addEventListener("dragleave", function () {
+                    btn.classList.remove("sg-drag-over-top", "sg-drag-over-bottom");
+                });
+                btn.addEventListener("drop", function (e) {
+                    e.preventDefault();
+                    qsa(".sg-sidebar-btn[data-category]", sidebar).forEach(function (b) {
+                        b.classList.remove("sg-drag-over-top", "sg-drag-over-bottom");
+                    });
+                    var fromCat = e.dataTransfer.getData("text/plain");
+                    if (!fromCat || fromCat === catName) return;
+
+                    // Reorder sortedCats in-place
+                    var fromIdx = sortedCats.indexOf(fromCat);
+                    var toIdx = sortedCats.indexOf(catName);
+                    if (fromIdx === -1 || toIdx === -1) return;
+
+                    var rect2 = btn.getBoundingClientRect();
+                    var insertIdx = e.clientY < (rect2.top + rect2.height / 2) ? toIdx : toIdx + 1;
+                    sortedCats.splice(fromIdx, 1);
+                    if (fromIdx < insertIdx) insertIdx--;
+                    sortedCats.splice(insertIdx, 0, fromCat);
+
+                    // Save custom order
+                    saveCategoryOrder(sortedCats);
+
+                    // Rebuild grid to match new order
+                    rebuildGridCards(tabName);
+                });
+
+                sidebar.appendChild(btn);
             });
             body.appendChild(sidebar);
         } else {

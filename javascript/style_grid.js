@@ -2082,6 +2082,9 @@
         });
         updateSelectedUI(tabName);
         updateConflicts(tabName);
+        updateCombosPanel(tabName, state[tabName].selectedOrder.length > 0
+            ? state[tabName].selectedOrder[state[tabName].selectedOrder.length - 1]
+            : null);
     }
 
     function filterStyles(tabName) {

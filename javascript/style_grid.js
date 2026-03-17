@@ -2087,8 +2087,25 @@
         }
 
         requestAnimationFrame(function () {
+            // Dedup: when "All Sources", show only first card per name per category
+            var dedupEnabled = selectedSource === "All";
+            var seenPerCat = {};
+
             qsa(".sg-card", panel).forEach(function (card) {
-                card.classList.toggle("sg-card-hidden", !cardPasses(card));
+                var visible = cardPasses(card);
+
+                if (visible && dedupEnabled) {
+                    var styleName = card.getAttribute("data-style-name");
+                    var cat = card.getAttribute("data-category") || "_";
+                    if (!seenPerCat[cat]) seenPerCat[cat] = {};
+                    if (seenPerCat[cat][styleName]) {
+                        visible = false;
+                    } else {
+                        seenPerCat[cat][styleName] = true;
+                    }
+                }
+
+                card.classList.toggle("sg-card-hidden", !visible);
             });
 
             qsa(".sg-category", panel).forEach(function (sec) {

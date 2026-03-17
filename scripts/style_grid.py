@@ -766,10 +766,32 @@ class StyleGridScript(scripts.Script):
             "usage": load_usage(),
             "presets": load_presets(),
         }, ensure_ascii=False)
-        category_order = [
-            "BASE", "BODY", "GENITALS", "BREASTS", "THEME",
-            "RESTRAINTS", "POSE", "SCENE", "STYLE", "OTHER"
-        ]
+        # Dynamic category order: load custom order or generate smart default
+        order_file = os.path.join(DATA_DIR, "category_order.json")
+        if os.path.isfile(order_file):
+            try:
+                with open(order_file, "r", encoding="utf-8") as f:
+                    category_order = json.load(f)
+            except Exception:
+                category_order = []
+        else:
+            priority = [
+                "BASE", "BODY", "POSE", "SCENE", "STYLE", "LIGHTING", "CAMERA",
+                "EXPRESSION", "HAIR", "OUTFIT", "CLOTHES", "ACCESSORY", "THEME",
+                "RACE", "GENITALS", "BREASTS", "FLUIDS", "STATE", "ACTION",
+                "GROUP", "ARCHETYPE", "MOOD", "EFFECTS", "PALETTE",
+            ]
+            all_cats = set()
+            for s in styles:
+                cat_exp = s.get("category_explicit", "").strip()
+                if cat_exp:
+                    all_cats.add(cat_exp)
+                elif "_" in s["name"]:
+                    all_cats.add(s["name"].split("_")[0].upper())
+                else:
+                    all_cats.add("OTHER")
+            category_order = [c for c in priority if c in all_cats]
+            category_order += sorted(c for c in all_cats if c not in category_order)
         with gr.Group(elem_id=f"style_grid_wrapper_{tab_prefix}", visible=False):
             styles_data = gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
             selected_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")

@@ -550,6 +550,16 @@ def register_api(demo, app):
                     ])
         return {"ok": True}
 
+    @app.post("/style_grid/category_order/save")
+    async def api_save_category_order(data: dict):
+        order = data.get("order", [])
+        if not isinstance(order, list):
+            return {"error": "order must be a list"}
+        order_file = os.path.join(DATA_DIR, "category_order.json")
+        with open(order_file, "w", encoding="utf-8") as f:
+            json.dump(order, f, indent=2, ensure_ascii=False)
+        return {"ok": True}
+
     @app.get("/style_grid/thumbnails/list")
     async def api_list_thumbnails():
         return {"has_thumbnail": list(list_thumbnails())}

@@ -2207,8 +2207,13 @@
         var old = qs(".sg-source-picker");
         if (old) old.remove();
 
+        var ownSource = anchorCard.getAttribute("data-source");
+        var ownStyle = anchorCard._styleRef;
         var variants = anchorCard._sourceVariants || [];
-        if (variants.length < 2) return;
+        var allVariants = (ownSource && ownStyle)
+            ? [{ source: ownSource, style: ownStyle }].concat(variants)
+            : variants;
+        if (allVariants.length < 2) return;
 
         var picker = el("div", { className: "sg-source-picker" });
         picker.appendChild(el("div", {
@@ -2216,7 +2221,7 @@
             textContent: "Source for \"" + (anchorCard.querySelector(".sg-card-name") || {}).textContent + "\":"
         }));
 
-        variants.forEach(function (v) {
+        allVariants.forEach(function (v) {
             var sourceLabel = v.source.replace(/\.csv$/i, "").replace(/^styles_?/i, "") || v.source;
             var row = el("div", { className: "sg-source-picker-row" });
             row.appendChild(el("span", {
@@ -2236,6 +2241,7 @@
                 // Temporarily swap card's styleRef to chosen source
                 anchorCard._styleRef = v.style;
                 anchorCard.setAttribute("data-source", v.source);
+                anchorCard._sourceVariants = [];
                 toggleStyle(tabName, styleName, anchorCard);
             });
             picker.appendChild(row);

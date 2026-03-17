@@ -1,4 +1,4 @@
-# Style Grid v2.1
+# Style Grid v5.0
 
 A visual style selector for Stable Diffusion WebUI Forge.
 Replaces the default dropdown with a searchable, categorized grid.
@@ -9,7 +9,7 @@ A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge]
 
 ---
 
-## What's New in v2.1
+## What's New in v5.0
 
 ### Smart Deduplication
 When viewing **All Sources**, styles that exist in multiple CSV files
@@ -38,10 +38,10 @@ Search is now pure text matching against style names and descriptions.
 Multi-word queries use AND logic. The previous structured operators
 (`cat:`, `tag:`, `prefix:`, etc.) have been removed for simplicity.
 
-### Previous (v2.0)
+### Previous (v4.0)
 
 <details>
-<summary>v2.0 features (click to expand)</summary>
+<summary>v4.0 features (click to expand)</summary>
 
 #### Smart Search with Autocomplete
 Start typing to search across all style names.

@@ -1952,7 +1952,77 @@
         }
     }
 
+    function showSourcePicker(tabName, styleName, anchorCard) {
+        // Remove any existing picker
+        var old = qs(".sg-source-picker");
+        if (old) old.remove();
+
+        var variants = anchorCard._sourceVariants || [];
+        if (variants.length < 2) return;
+
+        var picker = el("div", { className: "sg-source-picker" });
+        picker.appendChild(el("div", {
+            className: "sg-source-picker-title",
+            textContent: "Source for \"" + (anchorCard.querySelector(".sg-card-name") || {}).textContent + "\":"
+        }));
+
+        variants.forEach(function (v) {
+            var sourceLabel = v.source.replace(/\.csv$/i, "").replace(/^styles_?/i, "") || v.source;
+            var row = el("div", { className: "sg-source-picker-row" });
+            row.appendChild(el("span", {
+                className: "sg-source-picker-name",
+                textContent: sourceLabel
+            }));
+            // Show first few prompt tags as preview
+            var preview = (v.style.prompt || "").split(",").slice(0, 3).map(function (t) { return t.trim(); }).filter(Boolean).join(", ");
+            if (preview.length > 60) preview = preview.slice(0, 60) + "…";
+            row.appendChild(el("span", {
+                className: "sg-source-picker-preview",
+                textContent: preview
+            }));
+            row.addEventListener("click", function (e) {
+                e.stopPropagation();
+                picker.remove();
+                // Temporarily swap card's styleRef to chosen source
+                anchorCard._styleRef = v.style;
+                anchorCard.setAttribute("data-source", v.source);
+                toggleStyle(tabName, styleName, anchorCard);
+            });
+            picker.appendChild(row);
+        });
+
+        // Position near the card
+        var rect = anchorCard.getBoundingClientRect();
+        picker.style.position = "fixed";
+        picker.style.left = Math.min(rect.right + 8, window.innerWidth - 260) + "px";
+        picker.style.top = Math.max(8, rect.top) + "px";
+        picker.style.zIndex = "10005";
+
+        document.body.appendChild(picker);
+
+        // Auto-close on outside click
+        setTimeout(function () {
+            var close = function (e2) {
+                if (!picker.contains(e2.target)) {
+                    picker.remove();
+                    document.removeEventListener("click", close);
+                }
+            };
+            document.addEventListener("click", close);
+        }, 0);
+    }
+
     function toggleStyle(tabName, styleName, cardEl) {
+        // If card has multiple source variants and style is not yet selected,
+        // show source picker instead of immediately toggling
+        var cardElResolved = cardEl || qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]:not(.sg-card-hidden)', state[tabName].panel)[0];
+        if (cardElResolved && cardElResolved._sourceVariants && cardElResolved._sourceVariants.length > 1
+            && !state[tabName].selected.has(styleName)) {
+            showSourcePicker(tabName, styleName, cardElResolved);
+            return;
+        }
+        cardEl = cardElResolved || cardEl;
+
         if (state[tabName].selected.has(styleName)) {
             state[tabName].selected.delete(styleName);
             state[tabName].selectedOrder = state[tabName].selectedOrder.filter(function (n) { return n !== styleName; });
@@ -2099,9 +2169,30 @@
                     var cat = card.getAttribute("data-category") || "_";
                     if (!seenPerCat[cat]) seenPerCat[cat] = {};
                     if (seenPerCat[cat][styleName]) {
+                        // This is a duplicate — hide it, but record its source
+                        // on the first (visible) card
+                        var firstCard = seenPerCat[cat][styleName];
+                        if (!firstCard._sourceVariants) firstCard._sourceVariants = [];
+                        var dupSource = card.getAttribute("data-source") || "";
+                        var dupStyle = card._styleRef;
+                        if (dupSource && dupStyle) {
+                            firstCard._sourceVariants.push({
+                                source: dupSource,
+                                style: dupStyle
+                            });
+                        }
                         visible = false;
                     } else {
-                        seenPerCat[cat][styleName] = true;
+                        // First occurrence — store card ref, init variants with own source
+                        card._sourceVariants = [];
+                        var ownSource = card.getAttribute("data-source") || "";
+                        if (ownSource && card._styleRef) {
+                            card._sourceVariants.push({
+                                source: ownSource,
+                                style: card._styleRef
+                            });
+                        }
+                        seenPerCat[cat][styleName] = card;
                     }
                 }
 

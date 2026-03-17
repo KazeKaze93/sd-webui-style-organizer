@@ -793,3 +793,47 @@
     from { outline-color: transparent; }
     to   { outline-color: var(--color-accent, #6366f1); }
 }
+
+/* ---- Source Picker (dedup multi-source) ---- */
+.sg-source-picker {
+    background: var(--body-background-fill, #0b0f19);
+    border: 1px solid var(--border-color-primary, #374151);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+    min-width: 220px;
+    max-width: 320px;
+    padding: 6px 0;
+    animation: sg-fade-in 0.1s ease;
+}
+.sg-source-picker-title {
+    padding: 6px 12px 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--body-text-color-subdued, #9ca3af);
+    border-bottom: 1px solid var(--border-color-primary, #374151);
+    margin-bottom: 2px;
+}
+.sg-source-picker-row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 7px 12px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.sg-source-picker-row:hover {
+    background: var(--button-secondary-background-fill-hover, #374151);
+}
+.sg-source-picker-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--body-text-color, #d1d5db);
+}
+.sg-source-picker-preview {
+    font-size: 10px;
+    color: var(--body-text-color-subdued, #6b7280);
+    font-family: monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

@@ -6,6 +6,8 @@ Replaces the clunky dropdown with a visual grid organized by categories.
 import os
 import csv
 import json
+import re
+import random
 import time
 import shutil
 import hashlib
@@ -322,6 +324,19 @@ def detect_conflicts(style_names):
                     "message": f"'{b}' adds tokens that '{a}' negates: {', '.join(list(overlap2)[:3])}"
                 })
     return conflicts
+
+
+def resolve_sg_wildcards(prompt, styles_by_category):
+    """Replace __category__ tokens with a random style's prompt from that category."""
+    def replacer(m):
+        token = m.group(1).lower()
+        candidates = styles_by_category.get(token)
+        if not candidates:
+            return m.group(0)  # no match — leave unchanged
+        style = random.choice(candidates)
+        return style.get("prompt", "") or m.group(0)
+    return re.sub(r"__([a-zA-Z0-9_ ]+)__", replacer, prompt)
+
 
 # ---------------------------------------------------------------------------
 # Style CRUD
@@ -803,6 +818,16 @@ class StyleGridScript(scripts.Script):
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Silent mode: inject styles into prompt at generation time."""
+        # Built-in wildcard resolution: __CATEGORY__ → random style from that category
+        all_styles = load_all_styles()
+        styles_by_cat = {}
+        for s in all_styles:
+            key = (s.get("category") or "").lower()
+            styles_by_cat.setdefault(key, []).append(s)
+        for i in range(len(p.all_prompts)):
+            p.all_prompts[i] = resolve_sg_wildcards(p.all_prompts[i], styles_by_cat)
+        for i in range(len(p.all_negative_prompts)):
+            p.all_negative_prompts[i] = resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat)
         if len(args) < 3:
             return
         silent_json = args[2]

@@ -815,7 +815,8 @@ class StyleGridScript(scripts.Script):
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Silent mode: inject styles into prompt at generation time."""
-        all_styles = load_all_styles()
+        all_styles = list(get_cached_styles())
+        categorize_styles(all_styles)
         styles_by_cat = {}
         for s in all_styles:
             key = (s.get("category") or "").lower()

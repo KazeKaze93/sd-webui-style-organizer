@@ -397,8 +397,36 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data || {}),
         }).then(function (r) {
-            return r.json();
+            return r.text().then(function (text) {
+                var body = {};
+                if (text) {
+                    try {
+                        body = JSON.parse(text);
+                    } catch (e) {
+                        if (!r.ok) {
+                            return Promise.reject(new Error("HTTP " + r.status));
+                        }
+                        return Promise.reject(new Error("Invalid JSON in response"));
+                    }
+                }
+                if (!r.ok) {
+                    var msg = (body && body.error) || (typeof body.detail === "string" ? body.detail : null);
+                    if (!msg && body && Array.isArray(body.detail)) {
+                        msg = body.detail.map(function (d) { return (d && d.msg) ? d.msg : ""; }).filter(Boolean).join("; ");
+                    }
+                    return Promise.reject(new Error(msg || ("HTTP " + r.status)));
+                }
+                return body;
+            });
         });
+    }
+
+    /** Reject when API returns HTTP 200 with { error: "..." } (style routes, etc.). Thumbnail generate keeps soft errors in .then handlers. */
+    function assertNoApiError(result) {
+        if (result && result.error) {
+            return Promise.reject(new Error(result.error));
+        }
+        return result;
     }
     function apiGet(endpoint) {
         return fetch(endpoint).then(function (r) { return r.json(); });
@@ -1036,7 +1064,7 @@
                     negative_prompt: negInput.value,
                     description: descInput.value,
                     source: existingStyle ? existingStyle.source : null,
-                }).then(function () {
+                }).then(assertNoApiError).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
                 }).catch(function (err) {
@@ -1056,11 +1084,447 @@
         nameInput.focus();
     }
 
+    var CSV_TABLE_FIELDS = ["name", "prompt", "negative_prompt", "description", "category"];
+
+    function openCsvTableEditor(tabName) {
+        var selectedSource = state[tabName].selectedSource || "All";
+        if (selectedSource === "All") {
+            alert("Choose a single CSV in the source filter (not “All Sources”) to edit that file as a table.");
+            return;
+        }
+        var rows = [];
+        Object.values(state[tabName].categories || {}).forEach(function (arr) {
+            arr.forEach(function (s) {
+                if (s.source === selectedSource) {
+                    rows.push({
+                        name: s.name || "",
+                        prompt: s.prompt || "",
+                        negative_prompt: s.negative_prompt || "",
+                        description: s.description || "",
+                        category: (s.category_explicit != null && String(s.category_explicit).trim() !== "")
+                            ? String(s.category_explicit).trim()
+                            : (s.category || ""),
+                        source: s.source || selectedSource,
+                    });
+                }
+            });
+        });
+        rows.sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }); });
+
+        var baselineRows = rows.map(function (r) {
+            var o = {};
+            CSV_TABLE_FIELDS.forEach(function (f) { o[f] = r[f] != null ? String(r[f]) : ""; });
+            o.source = r.source;
+            return o;
+        });
+        var rowModels = baselineRows.map(function (r) {
+            var o = {};
+            CSV_TABLE_FIELDS.forEach(function (f) { o[f] = r[f]; });
+            o.source = r.source;
+            return o;
+        });
+        var dirty = {};
+
+        function hasTableUnsavedChanges() {
+            recomputeDirty();
+            return Object.keys(dirty).length > 0;
+        }
+
+        function closeCsvEditorOverlay() {
+            overlay.remove();
+        }
+
+        function requestCloseCsvEditor() {
+            if (hasTableUnsavedChanges()) {
+                if (!confirm("Close the table editor? Unsaved changes will be lost.")) return;
+            }
+            closeCsvEditorOverlay();
+        }
+
+        function recomputeDirty() {
+            dirty = {};
+            rowModels.forEach(function (rm, i) {
+                var base = i < baselineRows.length ? baselineRows[i] : null;
+                var empty = { name: "", prompt: "", negative_prompt: "", description: "", category: "" };
+                var ref = base || empty;
+                CSV_TABLE_FIELDS.forEach(function (f) {
+                    if (String(rm[f] != null ? rm[f] : "") !== String(ref[f] != null ? ref[f] : "")) {
+                        if (!dirty[i]) dirty[i] = {};
+                        dirty[i][f] = rm[f];
+                    }
+                });
+            });
+        }
+
+        function refreshDirtyUi() {
+            recomputeDirty();
+            qsa("tr.sg-csv-data-row", tbody).forEach(function (tr) {
+                var ri = parseInt(tr.getAttribute("data-row-index"), 10);
+                tr.classList.toggle("sg-csv-dirty", !!dirty[ri]);
+            });
+        }
+
+        var overlay = el("div", { className: "sg-csv-editor-overlay" });
+        var shell = el("div", { className: "sg-csv-editor-shell" });
+
+        var topBar = el("div", { className: "sg-csv-editor-topbar" });
+        topBar.appendChild(el("h2", {
+            className: "sg-csv-editor-title",
+            textContent: "Edit CSV — " + selectedSource,
+        }));
+        var closeTop = el("button", {
+            type: "button",
+            className: "sg-btn sg-csv-editor-close",
+            textContent: "✕",
+            title: "Close",
+            onClick: function () { requestCloseCsvEditor(); },
+        });
+        topBar.appendChild(closeTop);
+        shell.appendChild(topBar);
+
+        var toolRow = el("div", { className: "sg-csv-editor-toolbar" });
+        var filterInputs = {};
+        function clearFilters() {
+            Object.keys(filterInputs).forEach(function (k) {
+                filterInputs[k].value = "";
+            });
+            applyFilters();
+        }
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-primary",
+            textContent: "💾 Save Changes",
+            onClick: function () {
+                recomputeDirty();
+                var indices = Object.keys(dirty).map(function (x) { return parseInt(x, 10); }).filter(function (i) { return !isNaN(i); });
+                if (indices.length === 0) {
+                    alert("No changes to save.");
+                    return;
+                }
+                indices.sort(function (a, b) { return a - b; });
+                var v;
+                for (v = 0; v < indices.length; v++) {
+                    var vi = indices[v];
+                    if (!(rowModels[vi].name || "").trim()) {
+                        alert("Row " + (vi + 1) + ": name is required.");
+                        return;
+                    }
+                }
+                var usedNames = Object.create(null);
+                var u;
+                for (u = 0; u < rowModels.length; u++) {
+                    var un = (rowModels[u].name || "").trim();
+                    if (!un) continue;
+                    if (usedNames[un]) {
+                        alert("Duplicate style name \"" + un + "\". Each row must have a unique name before saving.");
+                        return;
+                    }
+                    usedNames[un] = true;
+                }
+                var totalDirty = indices.length;
+                var savedCount = 0;
+                clearSaveStatusUi();
+                indices.forEach(function (idx) {
+                    setRowSaveStatus(idx, "pending", "Pending");
+                });
+                var chain = Promise.resolve();
+                indices.forEach(function (i) {
+                    var rm = rowModels[i];
+                    var orig = i < baselineRows.length ? baselineRows[i] : null;
+                    var nameTrim = (rm.name || "").trim();
+                    var src = (orig && orig.source) || selectedSource;
+                    chain = chain.then(function () {
+                        setRowSaveStatus(i, "saving", "Saving…");
+                        var savePromise;
+                        if (orig && orig.name !== nameTrim) {
+                            savePromise = apiPost("/style_grid/style/delete", { name: orig.name, source: orig.source || selectedSource })
+                                .then(assertNoApiError)
+                                .then(function () {
+                                    return apiPost("/style_grid/style/save", {
+                                        name: nameTrim,
+                                        prompt: rm.prompt || "",
+                                        negative_prompt: rm.negative_prompt || "",
+                                        description: rm.description || "",
+                                        category: rm.category || "",
+                                        source: src,
+                                    }).then(assertNoApiError);
+                                });
+                        } else {
+                            savePromise = apiPost("/style_grid/style/save", {
+                                name: nameTrim,
+                                prompt: rm.prompt || "",
+                                negative_prompt: rm.negative_prompt || "",
+                                description: rm.description || "",
+                                category: rm.category || "",
+                                source: src,
+                            }).then(assertNoApiError);
+                        }
+                        return savePromise.then(function () {
+                            savedCount++;
+                            setRowSaveStatus(i, "saved", "✓ saved");
+                        }).catch(function (err) {
+                            setRowSaveStatus(i, "error", "✗ error");
+                            var msg = (err && err.message) ? err.message : "unknown error";
+                            var wrapped = new Error(msg);
+                            wrapped._sgCsvSaved = savedCount;
+                            wrapped._sgCsvTotal = totalDirty;
+                            wrapped._sgCsvRowName = nameTrim;
+                            throw wrapped;
+                        });
+                    });
+                });
+                chain.then(function () {
+                    closeCsvEditorOverlay();
+                    refreshPanel(tabName);
+                }).catch(function (e) {
+                    console.error("[Style Grid] CSV table save:", e);
+                    var x = (e && e._sgCsvSaved != null) ? e._sgCsvSaved : 0;
+                    var n = (e && e._sgCsvTotal != null) ? e._sgCsvTotal : totalDirty;
+                    var nm = (e && e._sgCsvRowName) ? e._sgCsvRowName : "?";
+                    var msg = (e && e.message) ? e.message : "unknown error";
+                    alert("Saved " + x + " of " + n + " rows. Row \"" + nm + "\" failed: " + msg + ". Rows above are written to disk.");
+                });
+            },
+        }));
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Discard",
+            onClick: function () {
+                rowModels = baselineRows.map(function (r) {
+                    var o = {};
+                    CSV_TABLE_FIELDS.forEach(function (f) { o[f] = r[f]; });
+                    o.source = r.source;
+                    return o;
+                });
+                renderTableBody();
+                recomputeDirty();
+                refreshDirtyUi();
+            },
+        }));
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary",
+            textContent: "➕ Add Row",
+            onClick: function () {
+                rowModels.push({
+                    name: "",
+                    prompt: "",
+                    negative_prompt: "",
+                    description: "",
+                    category: "",
+                    source: selectedSource,
+                });
+                renderTableBody();
+                refreshDirtyUi();
+            },
+        }));
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Clear filters",
+            onClick: function () { clearFilters(); },
+        }));
+        shell.appendChild(toolRow);
+
+        var filterRowWrap = el("div", { className: "sg-csv-editor-filters" });
+        var filterTable = el("table", { className: "sg-csv-editor-filter-table" });
+        var filterTr = el("tr");
+        filterTr.appendChild(el("th", { className: "sg-csv-col-actions" }));
+        filterTr.appendChild(el("th", { className: "sg-csv-col-status" }));
+        CSV_TABLE_FIELDS.forEach(function (f) {
+            var th = el("th");
+            var inp = el("input", {
+                type: "text",
+                className: "sg-csv-filter-input",
+                placeholder: "Filter " + f.replace(/_/g, " ") + "…",
+            });
+            filterInputs[f] = inp;
+            inp.addEventListener("input", function () { applyFilters(); });
+            th.appendChild(inp);
+            filterTr.appendChild(th);
+        });
+        var filterThead = el("thead");
+        filterThead.appendChild(filterTr);
+        filterTable.appendChild(filterThead);
+        filterRowWrap.appendChild(filterTable);
+        shell.appendChild(filterRowWrap);
+
+        var scroll = el("div", { className: "sg-csv-editor-scroll" });
+        var dataTable = el("table", { className: "sg-csv-editor-table" });
+        var thead = el("thead");
+        var headTr = el("tr");
+        headTr.appendChild(el("th", { className: "sg-csv-col-actions", textContent: "" }));
+        headTr.appendChild(el("th", { className: "sg-csv-col-status", textContent: "Status" }));
+        headTr.appendChild(el("th", { textContent: "Name" }));
+        headTr.appendChild(el("th", { textContent: "Prompt" }));
+        headTr.appendChild(el("th", { textContent: "Negative Prompt" }));
+        headTr.appendChild(el("th", { textContent: "Description" }));
+        headTr.appendChild(el("th", { textContent: "Category" }));
+        thead.appendChild(headTr);
+        dataTable.appendChild(thead);
+        var tbody = el("tbody");
+        dataTable.appendChild(tbody);
+        scroll.appendChild(dataTable);
+        shell.appendChild(scroll);
+
+        function clearSaveStatusUi() {
+            qsa("tr.sg-csv-data-row", tbody).forEach(function (tr) {
+                tr.classList.remove("sg-csv-save-pending", "sg-csv-save-saving", "sg-csv-save-ok", "sg-csv-save-err");
+                var st = tr.querySelector(".sg-csv-save-status-text");
+                if (st) st.textContent = "";
+            });
+        }
+
+        function setRowSaveStatus(rowIndex, phase, label) {
+            var tr = tbody.querySelector('tr.sg-csv-data-row[data-row-index="' + rowIndex + '"]');
+            if (!tr) return;
+            tr.classList.remove("sg-csv-save-pending", "sg-csv-save-saving", "sg-csv-save-ok", "sg-csv-save-err");
+            if (phase === "pending") tr.classList.add("sg-csv-save-pending");
+            else if (phase === "saving") tr.classList.add("sg-csv-save-saving");
+            else if (phase === "saved") tr.classList.add("sg-csv-save-ok");
+            else if (phase === "error") tr.classList.add("sg-csv-save-err");
+            var st = tr.querySelector(".sg-csv-save-status-text");
+            if (st) st.textContent = label != null ? label : "";
+        }
+
+        function applyFilters() {
+            qsa("tr.sg-csv-data-row", tbody).forEach(function (tr) {
+                var show = true;
+                CSV_TABLE_FIELDS.forEach(function (f) {
+                    var q = (filterInputs[f].value || "").trim().toLowerCase();
+                    if (!q) return;
+                    var cell = tr.querySelector('.sg-csv-cell--' + f + ' .sg-csv-cell-input');
+                    var val = cell ? (cell.value || "").toLowerCase() : "";
+                    if (val.indexOf(q) === -1) show = false;
+                });
+                tr.style.display = show ? "" : "none";
+            });
+        }
+
+        function focusNextCell(elInput) {
+            var all = Array.prototype.slice.call(tbody.querySelectorAll("input.sg-csv-cell-input, textarea.sg-csv-cell-input"));
+            var idx = all.indexOf(elInput);
+            if (idx === -1) return;
+            var j = idx + 1;
+            while (j < all.length) {
+                var next = all[j];
+                var tr = next.closest && next.closest("tr");
+                if (tr && tr.style.display !== "none") {
+                    next.focus();
+                    if (next.select) next.select();
+                    return;
+                }
+                j++;
+            }
+        }
+
+        function deleteRowAt(rowIndex) {
+            var rm = rowModels[rowIndex];
+            if (rowIndex < baselineRows.length) {
+                if (!confirm("Delete style \"" + (rm.name || "") + "\" from CSV?")) return;
+                apiPost("/style_grid/style/delete", { name: baselineRows[rowIndex].name, source: baselineRows[rowIndex].source || selectedSource })
+                    .then(assertNoApiError)
+                    .then(function () {
+                        rowModels.splice(rowIndex, 1);
+                        baselineRows.splice(rowIndex, 1);
+                        renderTableBody();
+                        refreshDirtyUi();
+                    })
+                    .catch(function (err) {
+                        console.error("[Style Grid] Delete failed:", err);
+                        alert("Delete failed");
+                    });
+            } else {
+                rowModels.splice(rowIndex, 1);
+                renderTableBody();
+                refreshDirtyUi();
+            }
+        }
+
+        function renderTableBody() {
+            tbody.innerHTML = "";
+            rowModels.forEach(function (rm, rowIdx) {
+                var tr = el("tr", { className: "sg-csv-data-row", "data-row-index": String(rowIdx) });
+                tr.addEventListener("contextmenu", function (e) {
+                    e.preventDefault();
+                    var prevMenu = qs(".sg-context-menu");
+                    if (prevMenu) prevMenu.remove();
+                    var menu = el("div", { className: "sg-context-menu" });
+                    menu.style.left = e.clientX + "px";
+                    menu.style.top = e.clientY + "px";
+                    menu.appendChild(el("div", {
+                        className: "sg-ctx-item",
+                        textContent: "🗑️ Delete row",
+                        onClick: function () {
+                            menu.remove();
+                            deleteRowAt(rowIdx);
+                        },
+                    }));
+                    document.body.appendChild(menu);
+                    setTimeout(function () {
+                        var close = function () { menu.remove(); document.removeEventListener("click", close); };
+                        document.addEventListener("click", close);
+                    }, 0);
+                });
+
+                var tdAct = el("td", { className: "sg-csv-col-actions" });
+                var delBtn = el("button", {
+                    type: "button",
+                    className: "sg-csv-row-del",
+                    textContent: "×",
+                    title: "Delete row",
+                    onClick: function (ev) {
+                        ev.stopPropagation();
+                        deleteRowAt(rowIdx);
+                    },
+                });
+                tdAct.appendChild(delBtn);
+                tr.appendChild(tdAct);
+
+                var tdSaveSt = el("td", { className: "sg-csv-col-status" });
+                tdSaveSt.appendChild(el("span", { className: "sg-csv-save-status-text" }));
+                tr.appendChild(tdSaveSt);
+
+                CSV_TABLE_FIELDS.forEach(function (field) {
+                    var isLong = field === "prompt" || field === "negative_prompt";
+                    var td = el("td", { className: "sg-csv-cell sg-csv-cell--" + field });
+                    var inp = isLong
+                        ? el("textarea", { className: "sg-csv-cell-input", rows: field === "prompt" ? 4 : 3 })
+                        : el("input", { type: "text", className: "sg-csv-cell-input" });
+                    inp.value = rm[field] != null ? String(rm[field]) : "";
+                    inp.setAttribute("data-row", String(rowIdx));
+                    inp.setAttribute("data-field", field);
+                    inp.addEventListener("input", function () {
+                        rowModels[rowIdx][field] = inp.value;
+                        refreshDirtyUi();
+                    });
+                    inp.addEventListener("keydown", function (e) {
+                        if (e.key === "Tab" && !e.shiftKey) {
+                            e.preventDefault();
+                            focusNextCell(inp);
+                        }
+                    });
+                    td.appendChild(inp);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            applyFilters();
+            refreshDirtyUi();
+        }
+
+        renderTableBody();
+        overlay.appendChild(shell);
+        overlay.addEventListener("click", function (e) { if (e.target === overlay) requestCloseCsvEditor(); });
+        document.body.appendChild(overlay);
+    }
+
     function duplicateStyle(tabName, style) {
         const newName = style.name + "_copy";
         apiPost("/style_grid/style/save", {
             name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
-        }).then(function () {
+        }).then(assertNoApiError).then(function () {
             refreshPanel(tabName);
         }).catch(function (err) {
             console.error("[Style Grid] API error:", err);
@@ -1086,6 +1550,7 @@
             onClick: function () {
                 overlay.remove();
                 apiPost("/style_grid/style/delete", { name: styleName, source: source })
+                    .then(assertNoApiError)
                     .then(function () { refreshPanel(tabName); })
                     .catch(function (err) {
                         console.error("[Style Grid] Delete failed:", err);
@@ -1136,13 +1601,13 @@
                 const oldName = style.name;
                 const rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
                 const newName = newCat.toUpperCase() + "_" + rest;
-                apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(function () {
+                apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(assertNoApiError).then(function () {
                     return apiPost("/style_grid/style/save", {
                         name: newName,
                         prompt: style.prompt,
                         negative_prompt: style.negative_prompt,
                         source: style.source
-                    });
+                    }).then(assertNoApiError);
                 }).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
@@ -1661,6 +2126,14 @@
 
         // Refresh
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "🔄", title: "Refresh styles", onClick: function () { refreshPanel(tabName); } }));
+
+        // Table editor (current source CSV)
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "📋",
+            title: "Edit all styles in the selected CSV (table)",
+            onClick: function () { openCsvTableEditor(tabName); },
+        }));
 
         // New style
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "➕", title: "Create new style", onClick: function () { openStyleEditor(tabName, null); } }));

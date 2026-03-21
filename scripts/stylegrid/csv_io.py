@@ -118,7 +118,7 @@ def categorize_styles(styles):
     return categories
 
 
-def save_style_to_csv(name, prompt, negative_prompt, description="", source_file=None):
+def save_style_to_csv(name, prompt, negative_prompt, description="", source_file=None, category=None):
     if source_file:
         source_file = os.path.basename(source_file)
         if not source_file.lower().endswith('.csv'):
@@ -151,12 +151,17 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
     def make_row(existing_row=None):
         existing_cat = existing_row[4].strip() if (
             existing_row and len(existing_row) > 4) else ""
+        if category is None:
+            cat_cell = existing_cat
+        else:
+            cat_cell = str(category).strip()
+            cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
         return [
             _sanitize_csv_cell(name),
             _sanitize_csv_cell(prompt),
             _sanitize_csv_cell(negative_prompt),
             _sanitize_csv_cell(description),
-            existing_cat
+            cat_cell,
         ]
 
     found = False

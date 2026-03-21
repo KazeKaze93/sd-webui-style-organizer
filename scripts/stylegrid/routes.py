@@ -203,6 +203,7 @@ def _register_crud_routes(app):
             data.get("negative_prompt", ""),
             data.get("description", ""),
             data.get("source"),
+            category=data.get("category"),
         )
         return {"ok": True}
 

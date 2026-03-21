@@ -1860,7 +1860,7 @@
                textContent: "🎲 Add category as wildcard",
                onClick: function () {
                    menu.remove();
-                   const wcTag = "__" + catId.toLowerCase() + "__";
+                   const wcTag = "{sg:" + catId.toLowerCase() + "}";
                    const promptEl = qs("#" + tabName + "_prompt textarea");
                    if (promptEl) {
                        const sep = promptEl.value.trim() ? ", " : "";

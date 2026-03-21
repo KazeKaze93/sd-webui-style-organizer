@@ -6,13 +6,16 @@
  */
 (function () {
     "use strict";
-    if (typeof window !== "undefined") { window.__SG_THUMB_VERSION = "2.0.1"; }
+    if (typeof window !== "undefined") {
+        window.__SG_THUMB_VERSION = "2.0.1";
+        window.SG = window.SG || {};
+    }
 
     // ════════════════════════════════════════════════════
-    // STATE & STORAGE
+    // STATE + INIT (per-tab runtime; see STORAGE for persistence)
     // ════════════════════════════════════════════════════
-    const state = {
-        txt2img: {
+    function createTabState() {
+        return {
             selected: new Set(),
             selectedOrder: [],
             applied: new Map(),
@@ -25,22 +28,16 @@
             userPromptBase: "",
             userPromptBaseNeg: "",
             hasThumbnail: new Set(),
-        },
-        img2img: {
-            selected: new Set(),
-            selectedOrder: [],
-            applied: new Map(),
-            categories: {},
-            panel: null,
-            selectedSource: "All",
-            usage: {},
-            presets: {},
-            silentMode: false,
-            userPromptBase: "",
-            userPromptBaseNeg: "",
-            hasThumbnail: new Set(),
-        },
-    };
+        };
+    }
+    const state = {};
+    ["txt2img", "img2img"].forEach(function (tab) {
+        state[tab] = createTabState();
+    });
+
+    // ════════════════════════════════════════════════════
+    // STORAGE (localStorage + server-backed preferences)
+    // ════════════════════════════════════════════════════
 
     var _thumbPopup = null;      // single shared popup element
     var _thumbHoverTimer = null; // pending hover timer
@@ -219,6 +216,9 @@
         return out;
     }
 
+    // ════════════════════════════════════════════════════
+    // CONFLICTS / COMBOS (description parsing & chips)
+    // ════════════════════════════════════════════════════
     function parseDescription(desc) {
         if (!desc) return { text: "", combos: [], conflicts: [] };
 
@@ -388,7 +388,7 @@
     }
 
     // ════════════════════════════════════════════════════
-    // API LAYER
+    // API CLIENT
     // ════════════════════════════════════════════════════
     // API helpers
     function apiPost(endpoint, data) {
@@ -404,6 +404,9 @@
         return fetch(endpoint).then(function (r) { return r.json(); });
     }
 
+    // ════════════════════════════════════════════════════
+    // THUMBNAILS
+    // ════════════════════════════════════════════════════
     function loadThumbnailList(tabName) {
         apiGet("/style_grid/thumbnails/list")
             .then(function (data) {
@@ -659,9 +662,7 @@
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
     }
 
-   // -----------------------------------------------------------------------
-   // Context menu
-   // -----------------------------------------------------------------------
+   // THUMBNAILS (batch / generate / upload — context menu entry points below)
    var _batchState = { running: false, cancelled: false, skipped: false };
 
    function startBatchThumbnails(tabName, catName, styles) {
@@ -926,6 +927,9 @@
         input.click();
     }
 
+    // ════════════════════════════════════════════════════
+    // UI: EDITOR / CONTEXT MENU
+    // ════════════════════════════════════════════════════
     function showContextMenu(e, tabName, styleName, style) {
         e.preventDefault();
         // Remove existing
@@ -1377,7 +1381,7 @@
     }
 
     // ════════════════════════════════════════════════════
-    // PANEL & UI
+    // UI: PANEL
     // ════════════════════════════════════════════════════
     // Build the Grid Panel
     // -----------------------------------------------------------------------
@@ -1400,13 +1404,16 @@
 
         // Overlay
         const overlay = el("div", { className: "sg-overlay", id: "sg_overlay_" + tabName });
-        let overlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) { overlayMouseDownTarget = e.target; }, true);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false); overlayMouseDownTarget = null; });
-
         const panel = el("div", { className: "sg-panel" });
 
-        // ---- Header ----
+        function _attachPanelEventDelegation() {
+            let overlayMouseDownTarget = null;
+            overlay.addEventListener("mousedown", function (e) { overlayMouseDownTarget = e.target; }, true);
+            overlay.addEventListener("click", function (e) { if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false); overlayMouseDownTarget = null; });
+        }
+        _attachPanelEventDelegation();
+
+        function _buildPanelHeader() {
         const header = el("div", { className: "sg-header" });
         const titleRow = el("div", { className: "sg-title-row" });
         titleRow.appendChild(el("span", { className: "sg-title", textContent: "🎨 Style Grid" }));
@@ -1422,8 +1429,10 @@
         const selectedCount = el("span", { className: "sg-selected-count", id: "sg_count_" + tabName, textContent: "0 selected" });
         titleRow.appendChild(selectedCount);
         header.appendChild(titleRow);
+        return header;
+        }
 
-        // Search row
+        function _buildSourceList() {
         const searchRow = el("div", { className: "sg-search-row" });
 
         // Source dropdown
@@ -1676,9 +1685,13 @@
         // Close
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-close", textContent: "✕", title: "Close", onClick: function () { togglePanel(tabName, false); } }));
 
-        header.appendChild(searchRow);
+        return searchRow;
+        }
+        var header = _buildPanelHeader();
+        header.appendChild(_buildSourceList());
         panel.appendChild(header);
 
+        function _buildCategoryGrid() {
         // ---- Body ----
         const body = el("div", { className: "sg-body" });
         const main = el("div", { className: "sg-main", id: "sg_main_" + tabName });
@@ -1811,8 +1824,10 @@
 
         body.appendChild(main);
         panel.appendChild(body);
+        }
+        _buildCategoryGrid();
 
-        // Footer
+        function _buildPanelFooter() {
         const footer = el("div", { className: "sg-footer", id: "sg_footer_" + tabName });
         footer.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
         footer.appendChild(el("div", { className: "sg-footer-tags", id: "sg_tags_" + tabName }));
@@ -1823,6 +1838,8 @@
         combosRow.style.display = "none";
         footer.appendChild(combosRow);
         panel.appendChild(footer);
+        }
+        _buildPanelFooter();
 
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -2874,9 +2891,9 @@
         }
     });
 
-    // -----------------------------------------------------------------------
-    // Init with MutationObserver re-injection guard
-    // -----------------------------------------------------------------------
+    // ════════════════════════════════════════════════════
+    // STATE + INIT (boot, triggers, MutationObserver)
+    // ════════════════════════════════════════════════════
     function ensureButtons() {
         const t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
         const t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");

@@ -1529,6 +1529,28 @@
                             searchInput.value = tokensInner.join(" ") + (needsValue ? "" : " ");
                             acSuppressNext = true;
                             acDropdown.style.display = "none";
+                            var styleObj = findStyleByName(tabName, match);
+                            if (!styleObj) {
+                                Object.values(state[tabName].categories || {}).forEach(function (arr) {
+                                    if (styleObj) return;
+                                    var f = arr.find(function (st) { return (st.display_name || st.name) === match; });
+                                    if (f) styleObj = f;
+                                });
+                            }
+                            if (styleObj) {
+                                if (!state[tabName].selected.has(styleObj.name)) {
+                                    state[tabName].selected.add(styleObj.name);
+                                    if (state[tabName].selectedOrder.indexOf(styleObj.name) === -1) {
+                                        state[tabName].selectedOrder.push(styleObj.name);
+                                    }
+                                    applyStyleImmediate(tabName, styleObj.name);
+                                    qsa('.sg-card[data-style-name="' + CSS.escape(styleObj.name) + '"]', state[tabName].panel).forEach(function (c) {
+                                        c.classList.add("sg-selected");
+                                        c.classList.add("sg-applied");
+                                    });
+                                    updateSelectedUI(tabName);
+                                }
+                            }
                             searchInput.dispatchEvent(new Event("input", { bubbles: true }));
                             searchInput.focus();
                         });

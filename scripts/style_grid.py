@@ -9,6 +9,8 @@ import json
 import time
 import shutil
 import hashlib
+import random
+import re
 import gradio as gr  # type: ignore[reportMissingImports]
 from modules import scripts, shared, script_callbacks  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
@@ -760,6 +762,17 @@ def register_api(demo, app):
         print(f"[Style Grid] Thumbnail cleanup: removed {removed} orphaned files")
         return {"removed": removed}
 
+def resolve_sg_wildcards(prompt, styles_by_category):
+    """Replace __category__ tokens with a random style prompt from that category."""
+    def replacer(m):
+        token = m.group(1).strip().lower()
+        candidates = styles_by_category.get(token)
+        if not candidates:
+            return m.group(0)
+        style = random.choice(candidates)
+        return style.get("prompt", "") or m.group(0)
+    return re.sub(r"\{sg:([^}]+)\}", replacer, prompt)
+
 script_callbacks.on_app_started(register_api)
 
 
@@ -803,6 +816,17 @@ class StyleGridScript(scripts.Script):
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Silent mode: inject styles into prompt at generation time."""
+        # Built-in wildcard resolver: __CATEGORY__ → random style from that category
+        all_styles = load_all_styles()
+        styles_by_cat = {}
+        for s in all_styles:
+            key = (s.get("category") or "").lower()
+            styles_by_cat.setdefault(key, []).append(s)
+        for i in range(len(p.all_prompts)):
+            p.all_prompts[i] = resolve_sg_wildcards(p.all_prompts[i], styles_by_cat)
+        for i in range(len(p.all_negative_prompts)):
+            p.all_negative_prompts[i] = resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat)
+
         if len(args) < 3:
             return
         silent_json = args[2]

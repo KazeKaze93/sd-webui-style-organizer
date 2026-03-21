@@ -1,0 +1,19 @@
+{
+  "name": "sd-webui-style-organizer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint:js": "eslint javascript/style_grid.js",
+    "lint:py": "ruff check scripts/",
+    "lint:py:fix": "ruff check scripts/ --fix --select=I001,E401",
+    "lint": "npm run lint:js && npm run lint:py",
+    "test:js": "start tests/test_js.html",
+    "test:py": "pytest tests/ -v",
+    "test": "npm run test:py",
+    "check": "npm run lint && npm run test:py"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "globals": "^17.4.0"
+  }
+}

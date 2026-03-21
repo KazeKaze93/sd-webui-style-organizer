@@ -106,7 +106,9 @@ class ThumbnailGenerationManager:
             negative = style.get("negative_prompt", "")
 
             from modules import processing  # type: ignore[reportMissingImports]
-            from modules.processing import StableDiffusionProcessingTxt2Img  # type: ignore[reportMissingImports]
+            from modules.processing import (
+                StableDiffusionProcessingTxt2Img,  # type: ignore[reportMissingImports]
+            )
             from modules.shared import sd_model  # type: ignore[reportMissingImports]
 
             p = StableDiffusionProcessingTxt2Img(

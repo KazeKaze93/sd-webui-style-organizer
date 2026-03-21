@@ -188,12 +188,6 @@
         Object.values(cats).forEach(function (arr) { arr.forEach(function (st) { if (st.source) s.add(st.source); }); });
         return Array.from(s).sort();
     }
-    function findCategoryMatch(q, t) {
-        if (!q) return null;
-        const names = Object.keys(state[t].categories || {});
-        if (getFavorites(t).size > 0) names.push("FAVORITES");
-        return names.find(function (c) { return c.toLowerCase().startsWith(q); }) || null;
-    }
     function findStyleByName(t, n) {
         for (const styles of Object.values(state[t].categories)) {
             const f = styles.find(function (s) { return s.name === n; });
@@ -325,6 +319,103 @@
         if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
         return (before + after).trim();
     }
+
+    // Canonical copy in javascript/sg_prompt_utils.js — keep in sync (Forge loads this file only).
+    /* eslint-disable no-unused-vars -- Duplicated prompt helpers; call sites TBD; single source: sg_prompt_utils.js */
+    function splitTopLevelCommas(s) {
+        if (!s || !String(s).trim()) return [];
+        var str = String(s);
+        var parts = [];
+        var depth = 0;
+        var cur = "";
+        for (var i = 0; i < str.length; i++) {
+            var c = str[i];
+            if (c === "(") depth++;
+            else if (c === ")") depth = Math.max(0, depth - 1);
+            if (c === "," && depth === 0) {
+                if (cur.trim()) parts.push(cur.trim());
+                cur = "";
+            } else {
+                cur += c;
+            }
+        }
+        if (cur.trim()) parts.push(cur.trim());
+        return parts;
+    }
+
+    /** Remove outer layers of balanced parentheses, e.g. "((foo))" → "foo". */
+    function stripParenLayers(s) {
+        var t = String(s || "").trim();
+        var changed = true;
+        while (changed) {
+            changed = false;
+            if (t.length < 2 || t.charAt(0) !== "(" || t.charAt(t.length - 1) !== ")") break;
+            var depth = 0;
+            var wrapsWhole = true;
+            for (var i = 0; i < t.length; i++) {
+                var c = t.charAt(i);
+                if (c === "(") depth++;
+                else if (c === ")") {
+                    depth--;
+                    if (depth === 0 && i !== t.length - 1) {
+                        wrapsWhole = false;
+                        break;
+                    }
+                }
+            }
+            if (wrapsWhole && depth === 0) {
+                t = t.slice(1, -1).trim();
+                changed = true;
+            }
+        }
+        return t;
+    }
+
+    function parseSegmentToTagged(seg) {
+        var t = (seg || "").trim();
+        if (!t) return null;
+        var m = /^\(([\s\S]+?):([\d.]+)\)$/.exec(t);
+        if (m) return { tag: m[1].trim(), weight: parseFloat(m[2]) };
+        return { tag: t, weight: 1 };
+    }
+
+    function parseStylePromptTags(prompt) {
+        return splitTopLevelCommas(prompt)
+            .map(parseSegmentToTagged)
+            .filter(function (x) { return x !== null; });
+    }
+
+    function formatScaledWeight(w, scale) {
+        var nw = 1 + (w - 1) * scale;
+        return String(+nw.toPrecision(10));
+    }
+
+    function scalePromptWeights(text, scale) {
+        if (scale === 1) return text;
+        var parts = splitTopLevelCommas(text);
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i].trim();
+            if (!p) continue;
+            if (p === "{prompt}") {
+                out.push(p);
+                continue;
+            }
+            var m = /^\(([\s\S]+?):([\d.]+)\)$/.exec(p);
+            if (m) {
+                if (scale === 0) continue;
+                var w = parseFloat(m[2]);
+                var nw = formatScaledWeight(w, scale);
+                out.push("(" + m[1].trim() + ":" + nw + ")");
+                continue;
+            }
+            if (scale === 0) continue;
+            out.push("(" + p + ":" + scale + ")");
+        }
+        return out.join(", ");
+    }
+    /* eslint-enable no-unused-vars */
+
     function setPromptValue(el, value) {
         if (!el) return;
         // Use native setter to bypass framework interception
@@ -402,7 +493,7 @@
                 if (text) {
                     try {
                         body = JSON.parse(text);
-                    } catch (e) {
+                    } catch (_e) {
                         if (!r.ok) {
                             return Promise.reject(new Error("HTTP " + r.status));
                         }
@@ -654,7 +745,7 @@
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
-        if (record.wrapTemplate && record.originalPrompt != null) {
+        if (record.wrapTemplate && record.originalPrompt !== null && record.originalPrompt !== undefined) {
             const parts = record.wrapTemplate.split("{prompt}");
             const prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
             const suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
@@ -670,7 +761,7 @@
             setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
         }
 
-        if (record.negWrapTemplate && record.originalNeg != null) {
+        if (record.negWrapTemplate && record.originalNeg !== null && record.originalNeg !== undefined) {
             const partsNeg = record.negWrapTemplate.split("{prompt}");
             const prefixNeg = (partsNeg[0] || "").replace(/,\s*$/, "").trim();
             const suffixNeg = (partsNeg[1] || "").replace(/^,\s*/, "").trim();
@@ -1101,7 +1192,7 @@
                         prompt: s.prompt || "",
                         negative_prompt: s.negative_prompt || "",
                         description: s.description || "",
-                        category: (s.category_explicit != null && String(s.category_explicit).trim() !== "")
+                        category: (s.category_explicit !== null && s.category_explicit !== undefined && String(s.category_explicit).trim() !== "")
                             ? String(s.category_explicit).trim()
                             : (s.category || ""),
                         source: s.source || selectedSource,
@@ -1113,7 +1204,7 @@
 
         var baselineRows = rows.map(function (r) {
             var o = {};
-            CSV_TABLE_FIELDS.forEach(function (f) { o[f] = r[f] != null ? String(r[f]) : ""; });
+            CSV_TABLE_FIELDS.forEach(function (f) { o[f] = (r[f] !== null && r[f] !== undefined) ? String(r[f]) : ""; });
             o.source = r.source;
             return o;
         });
@@ -1148,7 +1239,7 @@
                 var empty = { name: "", prompt: "", negative_prompt: "", description: "", category: "" };
                 var ref = base || empty;
                 CSV_TABLE_FIELDS.forEach(function (f) {
-                    if (String(rm[f] != null ? rm[f] : "") !== String(ref[f] != null ? ref[f] : "")) {
+                    if (String(rm[f] !== null && rm[f] !== undefined ? rm[f] : "") !== String(ref[f] !== null && ref[f] !== undefined ? ref[f] : "")) {
                         if (!dirty[i]) dirty[i] = {};
                         dirty[i][f] = rm[f];
                     }
@@ -1278,8 +1369,8 @@
                     refreshPanel(tabName);
                 }).catch(function (e) {
                     console.error("[Style Grid] CSV table save:", e);
-                    var x = (e && e._sgCsvSaved != null) ? e._sgCsvSaved : 0;
-                    var n = (e && e._sgCsvTotal != null) ? e._sgCsvTotal : totalDirty;
+                    var x = (e && e._sgCsvSaved !== null && e._sgCsvSaved !== undefined) ? e._sgCsvSaved : 0;
+                    var n = (e && e._sgCsvTotal !== null && e._sgCsvTotal !== undefined) ? e._sgCsvTotal : totalDirty;
                     var nm = (e && e._sgCsvRowName) ? e._sgCsvRowName : "?";
                     var msg = (e && e.message) ? e.message : "unknown error";
                     alert("Saved " + x + " of " + n + " rows. Row \"" + nm + "\" failed: " + msg + ". Rows above are written to disk.");
@@ -1385,7 +1476,7 @@
             else if (phase === "saved") tr.classList.add("sg-csv-save-ok");
             else if (phase === "error") tr.classList.add("sg-csv-save-err");
             var st = tr.querySelector(".sg-csv-save-status-text");
-            if (st) st.textContent = label != null ? label : "";
+            if (st) st.textContent = (label !== null && label !== undefined) ? label : "";
         }
 
         function applyFilters() {
@@ -1492,7 +1583,7 @@
                     var inp = isLong
                         ? el("textarea", { className: "sg-csv-cell-input", rows: field === "prompt" ? 4 : 3 })
                         : el("input", { type: "text", className: "sg-csv-cell-input" });
-                    inp.value = rm[field] != null ? String(rm[field]) : "";
+                    inp.value = (rm[field] !== null && rm[field] !== undefined) ? String(rm[field]) : "";
                     inp.setAttribute("data-row", String(rowIdx));
                     inp.setAttribute("data-field", field);
                     inp.addEventListener("input", function () {
@@ -1754,7 +1845,7 @@
                     }).catch(function (err) {
                         console.error("[Style Grid] API error:", err);
                     });
-                } catch (e) { alert("Invalid JSON file"); }
+                } catch (_e) { alert("Invalid JSON file"); }
             };
             reader.readAsText(file);
         });
@@ -3389,14 +3480,6 @@
     // ════════════════════════════════════════════════════
     // STATE + INIT (boot, triggers, MutationObserver)
     // ════════════════════════════════════════════════════
-    function ensureButtons() {
-        const t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
-        const t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
-        if (t1) console.log("[Style Grid] txt2img trigger OK");
-        if (t2) console.log("[Style Grid] img2img trigger OK");
-        return t1 && t2;
-    }
-
     function init() {
         let observer = null;
 

@@ -9,7 +9,11 @@ import os
 import time
 
 from fastapi import Request  # type: ignore[reportMissingImports]
-from fastapi.responses import FileResponse, JSONResponse, Response  # type: ignore[reportMissingImports]
+from fastapi.responses import (  # type: ignore[reportMissingImports]
+    FileResponse,
+    JSONResponse,
+    Response,
+)
 
 from stylegrid.cache import (
     check_files_changed,

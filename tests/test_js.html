@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Style Grid — prompt helpers (standalone tests)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 1rem; max-width: 56rem; }
+    #results { margin-top: 1rem; font-family: ui-monospace, monospace; font-size: 0.9rem; }
+    #results .ok { color: #0a6; margin: 0.2rem 0; }
+    #results .fail { color: #c12; margin: 0.2rem 0; }
+    pre.note { background: #f4f4f4; padding: 0.75rem; overflow: auto; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Style Grid JS helpers — browser tests</h1>
+  <p>Open this file directly (file://). No server or build step.</p>
+  <pre class="note"><strong>Source note:</strong> <code>splitTopLevelCommas</code>, <code>stripParenLayers</code>,
+<code>parseSegmentToTagged</code>, <code>parseStylePromptTags</code>, <code>scalePromptWeights</code> load from
+<code>../javascript/sg_prompt_utils.js</code> (canonical file; <code>style_grid.js</code> duplicates them — keep in sync).
+<code>removeSubstringFromPrompt</code> below is copied from <code>javascript/style_grid.js</code> (PROMPT ENGINE).</pre>
+  <div id="results"></div>
+
+  <script src="../javascript/sg_prompt_utils.js"></script>
+  <script>
+(function () {
+  "use strict";
+
+  // --- Copied from javascript/style_grid.js (verbatim) -----------------------
+  function removeSubstringFromPrompt(val, sub) {
+    if (!sub || !val) return val;
+    const idx = val.indexOf(sub);
+    if (idx === -1) return val;
+    const before = val.substring(0, idx).replace(/,\s*$/, "");
+    const after = val.substring(idx + sub.length).replace(/^,\s*/, "");
+    if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
+    return (before + after).trim();
+  }
+
+  // --- Test runner (~20 lines) -----------------------------------------------
+  var resultsEl = document.getElementById("results");
+
+  function logLine(ok, name, detail) {
+    var div = document.createElement("div");
+    div.className = ok ? "ok" : "fail";
+    div.textContent = (ok ? "✓ " : "✗ ") + name + (detail ? " — " + detail : "");
+    resultsEl.appendChild(div);
+  }
+
+  function test(name, fn) {
+    try {
+      fn();
+      console.log("✓", name);
+      logLine(true, name, "");
+    } catch (e) {
+      console.error("✗", name, e.message);
+      logLine(false, name, e.message);
+    }
+  }
+
+  function assert(a, b) {
+    if (JSON.stringify(a) !== JSON.stringify(b)) {
+      throw new Error("Expected " + JSON.stringify(b) + ", got " + JSON.stringify(a));
+    }
+  }
+
+  // --- Test cases --------------------------------------------------------------
+  test("scalePromptWeights identity", function () {
+    assert(scalePromptWeights("(tag:1.4)", 1.0), "(tag:1.4)");
+  });
+
+  test("scalePromptWeights zero drops weighted tag", function () {
+    assert(scalePromptWeights("(tag:1.4)", 0.0), "");
+  });
+
+  test("scalePromptWeights interpolation 1.4 * blend → 1.2", function () {
+    assert(scalePromptWeights("(tag:1.4)", 0.5), "(tag:1.2)");
+  });
+
+  test("scalePromptWeights plain tag gets explicit weight", function () {
+    assert(scalePromptWeights("plain_tag", 0.5), "(plain_tag:0.5)");
+  });
+
+  test("scalePromptWeights multi-tag", function () {
+    assert(scalePromptWeights("(a:1.2), (b:1.4)", 0.5), "(a:1.1), (b:1.2)");
+  });
+
+  test("scalePromptWeights preserves {prompt}", function () {
+    assert(scalePromptWeights("{prompt}, tag", 0.5), "{prompt}, (tag:0.5)");
+  });
+
+  test("parseStylePromptTags two weighted segments", function () {
+    assert(
+      parseStylePromptTags("(macro furry:1.4), (giant anthro:1.3)"),
+      [
+        { tag: "macro furry", weight: 1.4 },
+        { tag: "giant anthro", weight: 1.3 },
+      ]
+    );
+  });
+
+  test("removeSubstringFromPrompt removes middle segment", function () {
+    assert(removeSubstringFromPrompt("foo, bar, baz", "bar"), "foo, baz");
+  });
+})();
+  </script>
+</body>
+</html>

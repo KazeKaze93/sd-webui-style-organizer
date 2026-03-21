@@ -5,16 +5,16 @@ Replaces the clunky dropdown with a visual grid organized by categories.
 Implementation lives in the `stylegrid` package; this file is the Forge script entry point.
 """
 
-import sys, os
+import os
+import sys
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import json
-import os
 
 import gradio as gr  # type: ignore[reportMissingImports]
-from modules import scripts, script_callbacks  # type: ignore[reportMissingImports]
+from modules import script_callbacks, scripts  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
-
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR
 from stylegrid.csv_io import categorize_styles, load_all_styles
@@ -54,9 +54,9 @@ class StyleGridScript(scripts.Script):
             styles_data = gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
             selected_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")
             silent_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_silent_{tab_prefix}")
-            apply_trigger = gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")
+            gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")
         with gr.Group(visible=False):
-            cat_order = gr.Textbox(value=json.dumps(category_order), visible=False, elem_id=f"style_grid_cat_order_{tab_prefix}")
+            gr.Textbox(value=json.dumps(category_order), visible=False, elem_id=f"style_grid_cat_order_{tab_prefix}")
         return [styles_data, selected_styles, silent_styles]
 
     def process(self, p: StableDiffusionProcessing, *args):

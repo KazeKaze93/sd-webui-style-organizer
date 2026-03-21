@@ -763,7 +763,6 @@ def register_api(demo, app):
         return {"removed": removed}
 
 def resolve_sg_wildcards(prompt, styles_by_category):
-    """Replace __category__ tokens with a random style prompt from that category."""
     def replacer(m):
         token = m.group(1).strip().lower()
         candidates = styles_by_category.get(token)
@@ -816,7 +815,6 @@ class StyleGridScript(scripts.Script):
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Silent mode: inject styles into prompt at generation time."""
-        # Built-in wildcard resolver: __CATEGORY__ → random style from that category
         all_styles = load_all_styles()
         styles_by_cat = {}
         for s in all_styles:

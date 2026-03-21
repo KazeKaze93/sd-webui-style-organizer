@@ -504,8 +504,10 @@
     // -----------------------------------------------------------------------
     // Dynamic apply / unapply a single style
     // -----------------------------------------------------------------------
-    function applyStyleImmediate(tabName, styleName) {
-        if (state[tabName].applied.has(styleName)) return;
+    function applyStyleImmediate(tabName, styleName, opts) {
+        opts = opts || {};
+        var restoreOnly = opts.silent === true;
+        if (!restoreOnly && state[tabName].applied.has(styleName)) return;
         const style = findStyleByName(tabName, styleName);
         if (!style) return;
 
@@ -520,15 +522,28 @@
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
-        if (state[tabName].applied.size === 0) {
-            state[tabName].userPromptBase = promptEl.value;
-            state[tabName].userPromptBaseNeg = negEl.value;
+        if (!restoreOnly) {
+            if (state[tabName].applied.size === 0) {
+                state[tabName].userPromptBase = promptEl.value;
+                state[tabName].userPromptBaseNeg = negEl.value;
+            }
         }
 
-        const snapshotPrompt = promptEl.value;
-        const snapshotNeg = negEl.value;
-        let prompt = promptEl.value;
-        let neg = negEl.value;
+        var snapshotPrompt;
+        var snapshotNeg;
+        var prompt;
+        var neg;
+        if (restoreOnly) {
+            prompt = state[tabName]._restoreSimP;
+            neg = state[tabName]._restoreSimN;
+            snapshotPrompt = prompt;
+            snapshotNeg = neg;
+        } else {
+            snapshotPrompt = promptEl.value;
+            snapshotNeg = negEl.value;
+            prompt = promptEl.value;
+            neg = negEl.value;
+        }
         let addedPrompt = "";
         let addedNeg = "";
 
@@ -579,8 +594,13 @@
             originalPrompt: isPromptWrap ? snapshotPrompt : null,
             originalNeg: isNegWrap ? snapshotNeg : null
         });
-        setPromptValue(promptEl, prompt);
-        setPromptValue(negEl, neg);
+        if (restoreOnly) {
+            state[tabName]._restoreSimP = prompt;
+            state[tabName]._restoreSimN = neg;
+        } else {
+            setPromptValue(promptEl, prompt);
+            setPromptValue(negEl, neg);
+        }
 
         // Mark cards
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
@@ -1306,6 +1326,25 @@
                     c.classList.add("sg-applied");
                 });
             });
+            var restoreOrder;
+            if (state[tabName].appliedOrder && state[tabName].appliedOrder.length) {
+                restoreOrder = state[tabName].appliedOrder.filter(function (n) { return savedSelection.has(n); });
+            } else {
+                restoreOrder = [];
+                savedSelection.forEach(function (n) { restoreOrder.push(n); });
+            }
+            state[tabName].applied.clear();
+            if (!state[tabName].silentMode) {
+                state[tabName]._restoreSimP = state[tabName].userPromptBase;
+                state[tabName]._restoreSimN = state[tabName].userPromptBaseNeg;
+            }
+            restoreOrder.forEach(function (n) {
+                applyStyleImmediate(tabName, n, { silent: true });
+            });
+            if (!state[tabName].silentMode) {
+                delete state[tabName]._restoreSimP;
+                delete state[tabName]._restoreSimN;
+            }
             updateSelectedUI(tabName);
             // Restore visibility — keep panel open if it was open
             if (wasVisible) {

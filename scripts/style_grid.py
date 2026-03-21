@@ -11,7 +11,10 @@ import shutil
 import hashlib
 import random
 import re
+import logging
 import gradio as gr  # type: ignore[reportMissingImports]
+
+logger = logging.getLogger(__name__)
 from modules import scripts, shared, script_callbacks  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
@@ -77,6 +80,11 @@ def get_cached_styles():
     return _styles_cache["data"]
 
 
+def invalidate_styles_cache():
+    global _styles_cache
+    _styles_cache["data"] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -118,6 +126,7 @@ def parse_styles_csv(filepath):
                         "description": description,
                         "category_explicit": category_explicit,
                         "source": os.path.basename(filepath),
+                        "source_file": os.path.abspath(filepath),
                     })
     except Exception as e:
         print(f"[Style Grid] Error reading {filepath}: {e}")
@@ -262,8 +271,28 @@ os.makedirs(THUMBNAILS_DIR, exist_ok=True)
 print(f"[Style Grid] Thumbnails dir: {os.path.abspath(THUMBNAILS_DIR)}")
 
 
-def get_thumbnail_path(style_name):
-    safe = hashlib.md5(style_name.encode("utf-8")).hexdigest()
+def _thumbnail_hash_input(style_name, csv_path=""):
+    """Stable string for thumbnail filename hash; empty csv_path keeps legacy name-only hash."""
+    if not csv_path:
+        return style_name
+    ap = os.path.normpath(os.path.abspath(csv_path))
+    rel = None
+    for base in get_styles_dirs():
+        try:
+            b = os.path.normpath(os.path.abspath(base))
+            r = os.path.relpath(ap, b)
+            if not r.startswith(".."):
+                rel = r.replace("\\", "/")
+                break
+        except ValueError:
+            continue
+    if rel is None:
+        rel = os.path.basename(ap).replace("\\", "/")
+    return f"{style_name}::{rel}"
+
+
+def get_thumbnail_path(style_name, csv_path=""):
+    safe = hashlib.md5(_thumbnail_hash_input(style_name, csv_path).encode("utf-8")).hexdigest()
     return os.path.join(THUMBNAILS_DIR, safe + ".webp")
 
 
@@ -277,7 +306,9 @@ def list_thumbnails():
     }
     result = set()
     for s in get_cached_styles():
-        h = hashlib.md5(s["name"].encode("utf-8")).hexdigest()
+        h = hashlib.md5(
+            _thumbnail_hash_input(s["name"], s.get("source_file") or "").encode("utf-8")
+        ).hexdigest()
         if h in hashes:
             result.add(s["name"])
     return result
@@ -287,7 +318,7 @@ def list_thumbnails():
 # Conflict detection
 # ---------------------------------------------------------------------------
 def detect_conflicts(style_names):
-    styles_map = {s["name"]: s for s in load_all_styles()}
+    styles_map = {s["name"]: s for s in get_cached_styles()}
     conflicts = []
     style_tokens = {}
     for name in style_names:
@@ -388,7 +419,11 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         writer.writerow(header)
         for row in rows:
             writer.writerow(row)
+    invalidate_styles_cache()
     return True
+
+FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]
+
 
 def delete_style_from_csv(name, source_file=None):
     if not source_file:
@@ -420,13 +455,16 @@ def delete_style_from_csv(name, source_file=None):
                 continue
             if row and row[0].strip() != name:
                 rows.append(row)
-    if not header:
-        header = ["name", "prompt", "negative_prompt"]
     with open(target_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
+        writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
+        writer.writeheader()
         for row in rows:
-            writer.writerow(row)
+            row_dict = {
+                fn: (row[i].strip() if i < len(row) and row[i] is not None else "")
+                for i, fn in enumerate(FIELDNAMES)
+            }
+            writer.writerow(row_dict)
+    invalidate_styles_cache()
     return True
 
 
@@ -550,6 +588,7 @@ def register_api(demo, app):
                         s.get("description", ""),
                         s.get("category", "") or s.get("category_explicit", ""),
                     ])
+            invalidate_styles_cache()
         return {"ok": True}
 
     @app.post("/style_grid/category_order/save")
@@ -570,7 +609,7 @@ def register_api(demo, app):
     async def api_get_thumbnail(name: str = ""):
         path = get_thumbnail_path(name)
         exists = os.path.isfile(path)
-        print(f"[Style Grid] GET thumbnail: name={name!r}, path={path}, exists={exists}")
+        logger.debug("[Style Grid] GET thumbnail: name=%r, path=%s, exists=%s", name, path, exists)
         if not exists:
             return Response(status_code=404)
         return FileResponse(
@@ -607,7 +646,7 @@ def register_api(demo, app):
             path = get_thumbnail_path(style_name)
             with open(path, "wb") as f:
                 f.write(raw)
-            print(f"[Style Grid] Thumbnail uploaded: {path}")
+            logger.debug("[Style Grid] Thumbnail uploaded: %s", path)
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}
@@ -644,6 +683,7 @@ def register_api(demo, app):
             _gen_status[style_name] = {"status": "running"}
 
         def run_generation():
+            thumb_csv_path = ""
             try:
                 style_map = {s["name"]: s for s in get_cached_styles()}
                 style = style_map.get(style_name)
@@ -654,18 +694,20 @@ def register_api(demo, app):
                         }
                     return
 
+                thumb_csv_path = style.get("source_file") or ""
+
                 # Delete old thumbnail BEFORE generating new one
-                old_path = get_thumbnail_path(style_name)
+                old_path = get_thumbnail_path(style_name, thumb_csv_path)
                 if os.path.isfile(old_path):
                     os.remove(old_path)
-                    print(f"[Style Grid] Deleted old thumbnail: {old_path}")
+                    logger.debug("[Style Grid] Deleted old thumbnail: %s", old_path)
 
-                img_path = get_thumbnail_path(style_name)
+                img_path = get_thumbnail_path(style_name, thumb_csv_path)
                 # ── Save to TEMP file first, replace AFTER success ──
                 tmp_path = img_path + ".tmp"
-                print(f"[Style Grid] Generating thumbnail for: {style_name}")
-                print(f"[Style Grid] Target path: {img_path}")
-                print(f"[Style Grid] Old file exists: {os.path.isfile(img_path)}")
+                logger.debug("[Style Grid] Generating thumbnail for: %s", style_name)
+                logger.debug("[Style Grid] Target path: %s", img_path)
+                logger.debug("[Style Grid] Old file exists: %s", os.path.isfile(img_path))
 
                 prompt = style.get("prompt", "")
                 prompt = prompt.replace("{prompt}", "1girl, solo")
@@ -705,18 +747,20 @@ def register_api(demo, app):
                 if os.path.isfile(img_path):
                     os.remove(img_path)
                 os.rename(tmp_path, img_path)
-                print(f"[Style Grid] Thumbnail saved: {img_path} ({os.path.getsize(img_path)} bytes)")
+                logger.debug(
+                    "[Style Grid] Thumbnail saved: %s (%s bytes)",
+                    img_path,
+                    os.path.getsize(img_path),
+                )
 
                 with _gen_lock:
                     _gen_status[style_name] = {"status": "done"}
 
             except Exception as e:
-                print(f"[Style Grid] Thumbnail generation FAILED: {e}")
-                import traceback
-                traceback.print_exc()
+                logger.exception("[Style Grid] Thumbnail generation FAILED: %s", e)
                 # Clean up temp file if it exists
                 try:
-                    tmp_path = get_thumbnail_path(style_name) + ".tmp"
+                    tmp_path = get_thumbnail_path(style_name, thumb_csv_path) + ".tmp"
                     if os.path.isfile(tmp_path):
                         os.remove(tmp_path)
                 except Exception:
@@ -745,7 +789,9 @@ def register_api(demo, app):
         # Build set of valid hashes from current styles
         valid_hashes = set()
         for s in get_cached_styles():
-            h = hashlib.md5(s["name"].encode("utf-8")).hexdigest()
+            h = hashlib.md5(
+                _thumbnail_hash_input(s["name"], s.get("source_file") or "").encode("utf-8")
+            ).hexdigest()
             valid_hashes.add(h)
         # Scan thumbnails dir and remove orphans
         removed = 0
@@ -759,7 +805,7 @@ def register_api(demo, app):
                     removed += 1
                 except Exception:
                     pass
-        print(f"[Style Grid] Thumbnail cleanup: removed {removed} orphaned files")
+        logger.debug("[Style Grid] Thumbnail cleanup: removed %s orphaned files", removed)
         return {"removed": removed}
 
 def resolve_sg_wildcards(prompt, styles_by_category):
@@ -837,7 +883,7 @@ class StyleGridScript(scripts.Script):
             return
         if not style_names or not isinstance(style_names, list):
             return
-        style_map = {s["name"]: s for s in load_all_styles()}
+        style_map = {s["name"]: s for s in all_styles}
         prompts_add = []
         neg_add = []
         for name in style_names:

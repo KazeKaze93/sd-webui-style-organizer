@@ -1872,6 +1872,10 @@
 
            // Batch thumbnail generation for this category
            var stylesInCat = styles || [];
+           var activeSource = state[tabName].selectedSource || "All";
+           if (activeSource !== "All") {
+               stylesInCat = stylesInCat.filter(function (s) { return s.source === activeSource; });
+           }
            var missingCount = 0;
            stylesInCat.forEach(function (s) {
                if (!state[tabName].hasThumbnail.has(s.name)) missingCount++;

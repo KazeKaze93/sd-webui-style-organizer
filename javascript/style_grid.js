@@ -7,6 +7,7 @@
 (function () {
     "use strict";
     if (typeof window !== "undefined") {
+        window.SG_V2_ENABLED = true; // set true to test React iframe UI (v2)
         window.__SG_THUMB_VERSION = "2.0.1";
         window.SG = window.SG || {};
     }
@@ -28,6 +29,8 @@
             userPromptBase: "",
             userPromptBaseNeg: "",
             hasThumbnail: new Set(),
+            sgFrame: null,
+            sgV2HostInitSent: false,
         };
     }
     const state = {};
@@ -3363,10 +3366,52 @@
     }
 
     // -----------------------------------------------------------------------
+    // Style Grid v2 iframe — push SG_INIT to frame when needed
+    // -----------------------------------------------------------------------
+    function postSGInitToFrame(tabName) {
+        var fr = state[tabName].sgFrame;
+        if (!fr || !fr.contentWindow) return;
+        fetch("/style_grid/styles")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var styles = Array.isArray(data) ? data : (data.styles ?? []);
+                fr.contentWindow.postMessage({
+                    type: "SG_INIT",
+                    tab: tabName,
+                    styles: styles,
+                }, "*");
+                state[tabName].sgV2HostInitSent = true;
+            })
+            .catch(function (err) {
+                console.error("[Style Grid] v2: failed to load styles for iframe:", err);
+            });
+    }
+
+    // -----------------------------------------------------------------------
     // Toggle panel visibility
     // -----------------------------------------------------------------------
     function togglePanel(tabName, show) {
         var panel = state[tabName].panel;
+
+        if (window.SG_V2_ENABLED === true) {
+            if (!state[tabName].sgFrame) ensureSGFramesOnce();
+            var fr = state[tabName].sgFrame;
+            if (fr) {
+                if (typeof show === "undefined")
+                    show = fr.style.display !== "block";
+                if (!show) {
+                    if (panel) panel.classList.remove("sg-visible");
+                    fr.style.display = "none";
+                    return;
+                }
+                if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
+                fr.style.display = "block";
+                if (!state[tabName].sgV2HostInitSent)
+                    postSGInitToFrame(tabName);
+                return;
+            }
+        }
+
         if (typeof show === "undefined")
             show = !panel || !panel.classList.contains("sg-visible");
 
@@ -3472,6 +3517,11 @@
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
             ["txt2img", "img2img"].forEach(function (t) {
+                if (window.SG_V2_ENABLED === true && state[t].sgFrame && state[t].sgFrame.style.display === "block") {
+                    state[t].sgFrame.style.display = "none";
+                    e.preventDefault();
+                    return;
+                }
                 if (state[t].panel && state[t].panel.classList.contains("sg-visible")) { togglePanel(t, false); e.preventDefault(); }
             });
         }
@@ -3480,6 +3530,82 @@
     // ════════════════════════════════════════════════════
     // STATE + INIT (boot, triggers, MutationObserver)
     // ════════════════════════════════════════════════════
+    // React iframe bridge (txt2img iframe first; init once via onUiLoaded).
+    function initSGFrame(tab) {
+        var existing = document.getElementById("sg-frame-" + tab);
+        if (existing) {
+            return existing;
+        }
+        const frame = document.createElement("iframe");
+        frame.id = "sg-frame-" + tab;
+        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html";
+        frame.style.cssText = [
+            "width:100%", "height:100%", "border:none",
+            "position:fixed", "inset:0", "z-index:1000",
+            "display:none",
+        ].join(";");
+        document.body.appendChild(frame);
+
+        window.addEventListener("message", function (e) {
+            if (e.source !== frame.contentWindow) return;
+            if (!e.data || !e.data.type) return;
+            const msg = e.data;
+
+            if (msg.type === "SG_READY") {
+                if (state[tab].sgV2HostInitSent) return;
+                fetch("/style_grid/styles")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        // /style_grid/styles returns {categories: {CAT: [styles]}, usage: {}}
+                        // flatten into array
+                        var styles = [];
+                        if (Array.isArray(data)) {
+                            styles = data;
+                        } else if (data.categories) {
+                            styles = Object.values(data.categories).flat();
+                        } else if (data.styles) {
+                            styles = data.styles;
+                        }
+                        const seen = new Set();
+                        styles = styles.filter(function (s) {
+                            const key = s.name;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        });
+                        frame.contentWindow.postMessage({
+                            type: "SG_INIT",
+                            tab: tab,
+                            styles: styles,
+                        }, "*");
+                        state[tab].sgV2HostInitSent = true;
+                    })
+                    .catch(function (err) {
+                        console.error("[Style Grid] v2: failed to load styles for iframe:", err);
+                    });
+            }
+
+            if (msg.type === "SG_APPLY") {
+                applyStyleImmediate(tab, {
+                    name: msg.styleId,
+                    prompt: msg.prompt,
+                    negative_prompt: msg.neg,
+                });
+            }
+
+            if (msg.type === "SG_CLOSE_REQUEST") {
+                frame.style.display = "none";
+            }
+        });
+
+        return frame;
+    }
+
+    function ensureSGFramesOnce() {
+        if (state.txt2img.sgFrame) return;
+        state.txt2img.sgFrame = initSGFrame("txt2img");
+    }
+
     function init() {
         let observer = null;
 
@@ -3529,4 +3655,12 @@
     }
 
     init();
+
+    if (typeof onUiLoaded === "function") {
+        onUiLoaded(ensureSGFramesOnce);
+    } else if (document.body) {
+        ensureSGFramesOnce();
+    } else {
+        document.addEventListener("DOMContentLoaded", ensureSGFramesOnce);
+    }
 })();

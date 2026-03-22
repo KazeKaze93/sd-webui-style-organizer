@@ -37,6 +37,10 @@ def check_files_changed():
     if set(_file_hashes.keys()) != set(current.keys()):
         changed = True
     _file_hashes = current
+    # Hashes are updated here; without clearing, the next get_cached_styles() would call
+    # check_files_changed() again, see no diff, and keep serving stale _styles_cache["data"].
+    if changed:
+        invalidate_styles_cache()
     return changed
 
 

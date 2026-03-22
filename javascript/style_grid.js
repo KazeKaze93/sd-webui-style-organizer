@@ -6,13 +6,16 @@
  */
 (function () {
     "use strict";
-    if (typeof window !== "undefined") { window.__SG_THUMB_VERSION = "2.0.1"; }
+    if (typeof window !== "undefined") {
+        window.__SG_THUMB_VERSION = "2.0.1";
+        window.SG = window.SG || {};
+    }
 
     // ════════════════════════════════════════════════════
-    // STATE & STORAGE
+    // STATE + INIT (per-tab runtime; see STORAGE for persistence)
     // ════════════════════════════════════════════════════
-    const state = {
-        txt2img: {
+    function createTabState() {
+        return {
             selected: new Set(),
             selectedOrder: [],
             applied: new Map(),
@@ -25,22 +28,16 @@
             userPromptBase: "",
             userPromptBaseNeg: "",
             hasThumbnail: new Set(),
-        },
-        img2img: {
-            selected: new Set(),
-            selectedOrder: [],
-            applied: new Map(),
-            categories: {},
-            panel: null,
-            selectedSource: "All",
-            usage: {},
-            presets: {},
-            silentMode: false,
-            userPromptBase: "",
-            userPromptBaseNeg: "",
-            hasThumbnail: new Set(),
-        },
-    };
+        };
+    }
+    const state = {};
+    ["txt2img", "img2img"].forEach(function (tab) {
+        state[tab] = createTabState();
+    });
+
+    // ════════════════════════════════════════════════════
+    // STORAGE (localStorage + server-backed preferences)
+    // ════════════════════════════════════════════════════
 
     var _thumbPopup = null;      // single shared popup element
     var _thumbHoverTimer = null; // pending hover timer
@@ -191,12 +188,6 @@
         Object.values(cats).forEach(function (arr) { arr.forEach(function (st) { if (st.source) s.add(st.source); }); });
         return Array.from(s).sort();
     }
-    function findCategoryMatch(q, t) {
-        if (!q) return null;
-        const names = Object.keys(state[t].categories || {});
-        if (getFavorites(t).size > 0) names.push("FAVORITES");
-        return names.find(function (c) { return c.toLowerCase().startsWith(q); }) || null;
-    }
     function findStyleByName(t, n) {
         for (const styles of Object.values(state[t].categories)) {
             const f = styles.find(function (s) { return s.name === n; });
@@ -219,6 +210,9 @@
         return out;
     }
 
+    // ════════════════════════════════════════════════════
+    // CONFLICTS / COMBOS (description parsing & chips)
+    // ════════════════════════════════════════════════════
     function parseDescription(desc) {
         if (!desc) return { text: "", combos: [], conflicts: [] };
 
@@ -325,6 +319,103 @@
         if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
         return (before + after).trim();
     }
+
+    // Canonical copy in javascript/sg_prompt_utils.js — keep in sync (Forge loads this file only).
+    /* eslint-disable no-unused-vars -- Duplicated prompt helpers; call sites TBD; single source: sg_prompt_utils.js */
+    function splitTopLevelCommas(s) {
+        if (!s || !String(s).trim()) return [];
+        var str = String(s);
+        var parts = [];
+        var depth = 0;
+        var cur = "";
+        for (var i = 0; i < str.length; i++) {
+            var c = str[i];
+            if (c === "(") depth++;
+            else if (c === ")") depth = Math.max(0, depth - 1);
+            if (c === "," && depth === 0) {
+                if (cur.trim()) parts.push(cur.trim());
+                cur = "";
+            } else {
+                cur += c;
+            }
+        }
+        if (cur.trim()) parts.push(cur.trim());
+        return parts;
+    }
+
+    /** Remove outer layers of balanced parentheses, e.g. "((foo))" → "foo". */
+    function stripParenLayers(s) {
+        var t = String(s || "").trim();
+        var changed = true;
+        while (changed) {
+            changed = false;
+            if (t.length < 2 || t.charAt(0) !== "(" || t.charAt(t.length - 1) !== ")") break;
+            var depth = 0;
+            var wrapsWhole = true;
+            for (var i = 0; i < t.length; i++) {
+                var c = t.charAt(i);
+                if (c === "(") depth++;
+                else if (c === ")") {
+                    depth--;
+                    if (depth === 0 && i !== t.length - 1) {
+                        wrapsWhole = false;
+                        break;
+                    }
+                }
+            }
+            if (wrapsWhole && depth === 0) {
+                t = t.slice(1, -1).trim();
+                changed = true;
+            }
+        }
+        return t;
+    }
+
+    function parseSegmentToTagged(seg) {
+        var t = (seg || "").trim();
+        if (!t) return null;
+        var m = /^\(([\s\S]+?):([\d.]+)\)$/.exec(t);
+        if (m) return { tag: m[1].trim(), weight: parseFloat(m[2]) };
+        return { tag: t, weight: 1 };
+    }
+
+    function parseStylePromptTags(prompt) {
+        return splitTopLevelCommas(prompt)
+            .map(parseSegmentToTagged)
+            .filter(function (x) { return x !== null; });
+    }
+
+    function formatScaledWeight(w, scale) {
+        var nw = 1 + (w - 1) * scale;
+        return String(+nw.toPrecision(10));
+    }
+
+    function scalePromptWeights(text, scale) {
+        if (scale === 1) return text;
+        var parts = splitTopLevelCommas(text);
+        var out = [];
+        for (var i = 0; i < parts.length; i++) {
+            var p = parts[i].trim();
+            if (!p) continue;
+            if (p === "{prompt}") {
+                out.push(p);
+                continue;
+            }
+            var m = /^\(([\s\S]+?):([\d.]+)\)$/.exec(p);
+            if (m) {
+                if (scale === 0) continue;
+                var w = parseFloat(m[2]);
+                var nw = formatScaledWeight(w, scale);
+                out.push("(" + m[1].trim() + ":" + nw + ")");
+                continue;
+            }
+            if (scale === 0) continue;
+            out.push("(" + p + ":" + scale + ")");
+        }
+        return out.join(", ");
+    }
+    /* eslint-enable no-unused-vars */
+
     function setPromptValue(el, value) {
         if (!el) return;
         // Use native setter to bypass framework interception
@@ -388,7 +479,7 @@
     }
 
     // ════════════════════════════════════════════════════
-    // API LAYER
+    // API CLIENT
     // ════════════════════════════════════════════════════
     // API helpers
     function apiPost(endpoint, data) {
@@ -397,13 +488,44 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data || {}),
         }).then(function (r) {
-            return r.json();
+            return r.text().then(function (text) {
+                var body = {};
+                if (text) {
+                    try {
+                        body = JSON.parse(text);
+                    } catch (_e) {
+                        if (!r.ok) {
+                            return Promise.reject(new Error("HTTP " + r.status));
+                        }
+                        return Promise.reject(new Error("Invalid JSON in response"));
+                    }
+                }
+                if (!r.ok) {
+                    var msg = (body && body.error) || (typeof body.detail === "string" ? body.detail : null);
+                    if (!msg && body && Array.isArray(body.detail)) {
+                        msg = body.detail.map(function (d) { return (d && d.msg) ? d.msg : ""; }).filter(Boolean).join("; ");
+                    }
+                    return Promise.reject(new Error(msg || ("HTTP " + r.status)));
+                }
+                return body;
+            });
         });
+    }
+
+    /** Reject when API returns HTTP 200 with { error: "..." } (style routes, etc.). Thumbnail generate keeps soft errors in .then handlers. */
+    function assertNoApiError(result) {
+        if (result && result.error) {
+            return Promise.reject(new Error(result.error));
+        }
+        return result;
     }
     function apiGet(endpoint) {
         return fetch(endpoint).then(function (r) { return r.json(); });
     }
 
+    // ════════════════════════════════════════════════════
+    // THUMBNAILS
+    // ════════════════════════════════════════════════════
     function loadThumbnailList(tabName) {
         apiGet("/style_grid/thumbnails/list")
             .then(function (data) {
@@ -504,8 +626,10 @@
     // -----------------------------------------------------------------------
     // Dynamic apply / unapply a single style
     // -----------------------------------------------------------------------
-    function applyStyleImmediate(tabName, styleName) {
-        if (state[tabName].applied.has(styleName)) return;
+    function applyStyleImmediate(tabName, styleName, opts) {
+        opts = opts || {};
+        var restoreOnly = opts.silent === true;
+        if (!restoreOnly && state[tabName].applied.has(styleName)) return;
         const style = findStyleByName(tabName, styleName);
         if (!style) return;
 
@@ -520,15 +644,28 @@
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
-        if (state[tabName].applied.size === 0) {
-            state[tabName].userPromptBase = promptEl.value;
-            state[tabName].userPromptBaseNeg = negEl.value;
+        if (!restoreOnly) {
+            if (state[tabName].applied.size === 0) {
+                state[tabName].userPromptBase = promptEl.value;
+                state[tabName].userPromptBaseNeg = negEl.value;
+            }
         }
 
-        const snapshotPrompt = promptEl.value;
-        const snapshotNeg = negEl.value;
-        let prompt = promptEl.value;
-        let neg = negEl.value;
+        var snapshotPrompt;
+        var snapshotNeg;
+        var prompt;
+        var neg;
+        if (restoreOnly) {
+            prompt = state[tabName]._restoreSimP;
+            neg = state[tabName]._restoreSimN;
+            snapshotPrompt = prompt;
+            snapshotNeg = neg;
+        } else {
+            snapshotPrompt = promptEl.value;
+            snapshotNeg = negEl.value;
+            prompt = promptEl.value;
+            neg = negEl.value;
+        }
         let addedPrompt = "";
         let addedNeg = "";
 
@@ -579,8 +716,13 @@
             originalPrompt: isPromptWrap ? snapshotPrompt : null,
             originalNeg: isNegWrap ? snapshotNeg : null
         });
-        setPromptValue(promptEl, prompt);
-        setPromptValue(negEl, neg);
+        if (restoreOnly) {
+            state[tabName]._restoreSimP = prompt;
+            state[tabName]._restoreSimN = neg;
+        } else {
+            setPromptValue(promptEl, prompt);
+            setPromptValue(negEl, neg);
+        }
 
         // Mark cards
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
@@ -603,7 +745,7 @@
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
 
-        if (record.wrapTemplate && record.originalPrompt != null) {
+        if (record.wrapTemplate && record.originalPrompt !== null && record.originalPrompt !== undefined) {
             const parts = record.wrapTemplate.split("{prompt}");
             const prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
             const suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
@@ -619,7 +761,7 @@
             setPromptValue(promptEl, removeSubstringFromPrompt(promptEl.value, record.prompt));
         }
 
-        if (record.negWrapTemplate && record.originalNeg != null) {
+        if (record.negWrapTemplate && record.originalNeg !== null && record.originalNeg !== undefined) {
             const partsNeg = record.negWrapTemplate.split("{prompt}");
             const prefixNeg = (partsNeg[0] || "").replace(/,\s*$/, "").trim();
             const suffixNeg = (partsNeg[1] || "").replace(/^,\s*/, "").trim();
@@ -639,9 +781,7 @@
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
     }
 
-   // -----------------------------------------------------------------------
-   // Context menu
-   // -----------------------------------------------------------------------
+   // THUMBNAILS (batch / generate / upload — context menu entry points below)
    var _batchState = { running: false, cancelled: false, skipped: false };
 
    function startBatchThumbnails(tabName, catName, styles) {
@@ -906,6 +1046,9 @@
         input.click();
     }
 
+    // ════════════════════════════════════════════════════
+    // UI: EDITOR / CONTEXT MENU
+    // ════════════════════════════════════════════════════
     function showContextMenu(e, tabName, styleName, style) {
         e.preventDefault();
         // Remove existing
@@ -1012,7 +1155,7 @@
                     negative_prompt: negInput.value,
                     description: descInput.value,
                     source: existingStyle ? existingStyle.source : null,
-                }).then(function () {
+                }).then(assertNoApiError).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
                 }).catch(function (err) {
@@ -1032,11 +1175,447 @@
         nameInput.focus();
     }
 
+    var CSV_TABLE_FIELDS = ["name", "prompt", "negative_prompt", "description", "category"];
+
+    function openCsvTableEditor(tabName) {
+        var selectedSource = state[tabName].selectedSource || "All";
+        if (selectedSource === "All") {
+            alert("Choose a single CSV in the source filter (not “All Sources”) to edit that file as a table.");
+            return;
+        }
+        var rows = [];
+        Object.values(state[tabName].categories || {}).forEach(function (arr) {
+            arr.forEach(function (s) {
+                if (s.source === selectedSource) {
+                    rows.push({
+                        name: s.name || "",
+                        prompt: s.prompt || "",
+                        negative_prompt: s.negative_prompt || "",
+                        description: s.description || "",
+                        category: (s.category_explicit !== null && s.category_explicit !== undefined && String(s.category_explicit).trim() !== "")
+                            ? String(s.category_explicit).trim()
+                            : (s.category || ""),
+                        source: s.source || selectedSource,
+                    });
+                }
+            });
+        });
+        rows.sort(function (a, b) { return (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" }); });
+
+        var baselineRows = rows.map(function (r) {
+            var o = {};
+            CSV_TABLE_FIELDS.forEach(function (f) { o[f] = (r[f] !== null && r[f] !== undefined) ? String(r[f]) : ""; });
+            o.source = r.source;
+            return o;
+        });
+        var rowModels = baselineRows.map(function (r) {
+            var o = {};
+            CSV_TABLE_FIELDS.forEach(function (f) { o[f] = r[f]; });
+            o.source = r.source;
+            return o;
+        });
+        var dirty = {};
+
+        function hasTableUnsavedChanges() {
+            recomputeDirty();
+            return Object.keys(dirty).length > 0;
+        }
+
+        function closeCsvEditorOverlay() {
+            overlay.remove();
+        }
+
+        function requestCloseCsvEditor() {
+            if (hasTableUnsavedChanges()) {
+                if (!confirm("Close the table editor? Unsaved changes will be lost.")) return;
+            }
+            closeCsvEditorOverlay();
+        }
+
+        function recomputeDirty() {
+            dirty = {};
+            rowModels.forEach(function (rm, i) {
+                var base = i < baselineRows.length ? baselineRows[i] : null;
+                var empty = { name: "", prompt: "", negative_prompt: "", description: "", category: "" };
+                var ref = base || empty;
+                CSV_TABLE_FIELDS.forEach(function (f) {
+                    if (String(rm[f] !== null && rm[f] !== undefined ? rm[f] : "") !== String(ref[f] !== null && ref[f] !== undefined ? ref[f] : "")) {
+                        if (!dirty[i]) dirty[i] = {};
+                        dirty[i][f] = rm[f];
+                    }
+                });
+            });
+        }
+
+        function refreshDirtyUi() {
+            recomputeDirty();
+            qsa("tr.sg-csv-data-row", tbody).forEach(function (tr) {
+                var ri = parseInt(tr.getAttribute("data-row-index"), 10);
+                tr.classList.toggle("sg-csv-dirty", !!dirty[ri]);
+            });
+        }
+
+        var overlay = el("div", { className: "sg-csv-editor-overlay" });
+        var shell = el("div", { className: "sg-csv-editor-shell" });
+
+        var topBar = el("div", { className: "sg-csv-editor-topbar" });
+        topBar.appendChild(el("h2", {
+            className: "sg-csv-editor-title",
+            textContent: "Edit CSV — " + selectedSource,
+        }));
+        var closeTop = el("button", {
+            type: "button",
+            className: "sg-btn sg-csv-editor-close",
+            textContent: "✕",
+            title: "Close",
+            onClick: function () { requestCloseCsvEditor(); },
+        });
+        topBar.appendChild(closeTop);
+        shell.appendChild(topBar);
+
+        var toolRow = el("div", { className: "sg-csv-editor-toolbar" });
+        var filterInputs = {};
+        function clearFilters() {
+            Object.keys(filterInputs).forEach(function (k) {
+                filterInputs[k].value = "";
+            });
+            applyFilters();
+        }
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-primary",
+            textContent: "💾 Save Changes",
+            onClick: function () {
+                recomputeDirty();
+                var indices = Object.keys(dirty).map(function (x) { return parseInt(x, 10); }).filter(function (i) { return !isNaN(i); });
+                if (indices.length === 0) {
+                    alert("No changes to save.");
+                    return;
+                }
+                indices.sort(function (a, b) { return a - b; });
+                var v;
+                for (v = 0; v < indices.length; v++) {
+                    var vi = indices[v];
+                    if (!(rowModels[vi].name || "").trim()) {
+                        alert("Row " + (vi + 1) + ": name is required.");
+                        return;
+                    }
+                }
+                var usedNames = Object.create(null);
+                var u;
+                for (u = 0; u < rowModels.length; u++) {
+                    var un = (rowModels[u].name || "").trim();
+                    if (!un) continue;
+                    if (usedNames[un]) {
+                        alert("Duplicate style name \"" + un + "\". Each row must have a unique name before saving.");
+                        return;
+                    }
+                    usedNames[un] = true;
+                }
+                var totalDirty = indices.length;
+                var savedCount = 0;
+                clearSaveStatusUi();
+                indices.forEach(function (idx) {
+                    setRowSaveStatus(idx, "pending", "Pending");
+                });
+                var chain = Promise.resolve();
+                indices.forEach(function (i) {
+                    var rm = rowModels[i];
+                    var orig = i < baselineRows.length ? baselineRows[i] : null;
+                    var nameTrim = (rm.name || "").trim();
+                    var src = (orig && orig.source) || selectedSource;
+                    chain = chain.then(function () {
+                        setRowSaveStatus(i, "saving", "Saving…");
+                        var savePromise;
+                        if (orig && orig.name !== nameTrim) {
+                            savePromise = apiPost("/style_grid/style/delete", { name: orig.name, source: orig.source || selectedSource })
+                                .then(assertNoApiError)
+                                .then(function () {
+                                    return apiPost("/style_grid/style/save", {
+                                        name: nameTrim,
+                                        prompt: rm.prompt || "",
+                                        negative_prompt: rm.negative_prompt || "",
+                                        description: rm.description || "",
+                                        category: rm.category || "",
+                                        source: src,
+                                    }).then(assertNoApiError);
+                                });
+                        } else {
+                            savePromise = apiPost("/style_grid/style/save", {
+                                name: nameTrim,
+                                prompt: rm.prompt || "",
+                                negative_prompt: rm.negative_prompt || "",
+                                description: rm.description || "",
+                                category: rm.category || "",
+                                source: src,
+                            }).then(assertNoApiError);
+                        }
+                        return savePromise.then(function () {
+                            savedCount++;
+                            setRowSaveStatus(i, "saved", "✓ saved");
+                        }).catch(function (err) {
+                            setRowSaveStatus(i, "error", "✗ error");
+                            var msg = (err && err.message) ? err.message : "unknown error";
+                            var wrapped = new Error(msg);
+                            wrapped._sgCsvSaved = savedCount;
+                            wrapped._sgCsvTotal = totalDirty;
+                            wrapped._sgCsvRowName = nameTrim;
+                            throw wrapped;
+                        });
+                    });
+                });
+                chain.then(function () {
+                    closeCsvEditorOverlay();
+                    refreshPanel(tabName);
+                }).catch(function (e) {
+                    console.error("[Style Grid] CSV table save:", e);
+                    var x = (e && e._sgCsvSaved !== null && e._sgCsvSaved !== undefined) ? e._sgCsvSaved : 0;
+                    var n = (e && e._sgCsvTotal !== null && e._sgCsvTotal !== undefined) ? e._sgCsvTotal : totalDirty;
+                    var nm = (e && e._sgCsvRowName) ? e._sgCsvRowName : "?";
+                    var msg = (e && e.message) ? e.message : "unknown error";
+                    alert("Saved " + x + " of " + n + " rows. Row \"" + nm + "\" failed: " + msg + ". Rows above are written to disk.");
+                });
+            },
+        }));
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Discard",
+            onClick: function () {
+                rowModels = baselineRows.map(function (r) {
+                    var o = {};
+                    CSV_TABLE_FIELDS.forEach(function (f) { o[f] = r[f]; });
+                    o.source = r.source;
+                    return o;
+                });
+                renderTableBody();
+                recomputeDirty();
+                refreshDirtyUi();
+            },
+        }));
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary",
+            textContent: "➕ Add Row",
+            onClick: function () {
+                rowModels.push({
+                    name: "",
+                    prompt: "",
+                    negative_prompt: "",
+                    description: "",
+                    category: "",
+                    source: selectedSource,
+                });
+                renderTableBody();
+                refreshDirtyUi();
+            },
+        }));
+        toolRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Clear filters",
+            onClick: function () { clearFilters(); },
+        }));
+        shell.appendChild(toolRow);
+
+        var filterRowWrap = el("div", { className: "sg-csv-editor-filters" });
+        var filterTable = el("table", { className: "sg-csv-editor-filter-table" });
+        var filterTr = el("tr");
+        filterTr.appendChild(el("th", { className: "sg-csv-col-actions" }));
+        filterTr.appendChild(el("th", { className: "sg-csv-col-status" }));
+        CSV_TABLE_FIELDS.forEach(function (f) {
+            var th = el("th");
+            var inp = el("input", {
+                type: "text",
+                className: "sg-csv-filter-input",
+                placeholder: "Filter " + f.replace(/_/g, " ") + "…",
+            });
+            filterInputs[f] = inp;
+            inp.addEventListener("input", function () { applyFilters(); });
+            th.appendChild(inp);
+            filterTr.appendChild(th);
+        });
+        var filterThead = el("thead");
+        filterThead.appendChild(filterTr);
+        filterTable.appendChild(filterThead);
+        filterRowWrap.appendChild(filterTable);
+        shell.appendChild(filterRowWrap);
+
+        var scroll = el("div", { className: "sg-csv-editor-scroll" });
+        var dataTable = el("table", { className: "sg-csv-editor-table" });
+        var thead = el("thead");
+        var headTr = el("tr");
+        headTr.appendChild(el("th", { className: "sg-csv-col-actions", textContent: "" }));
+        headTr.appendChild(el("th", { className: "sg-csv-col-status", textContent: "Status" }));
+        headTr.appendChild(el("th", { textContent: "Name" }));
+        headTr.appendChild(el("th", { textContent: "Prompt" }));
+        headTr.appendChild(el("th", { textContent: "Negative Prompt" }));
+        headTr.appendChild(el("th", { textContent: "Description" }));
+        headTr.appendChild(el("th", { textContent: "Category" }));
+        thead.appendChild(headTr);
+        dataTable.appendChild(thead);
+        var tbody = el("tbody");
+        dataTable.appendChild(tbody);
+        scroll.appendChild(dataTable);
+        shell.appendChild(scroll);
+
+        function clearSaveStatusUi() {
+            qsa("tr.sg-csv-data-row", tbody).forEach(function (tr) {
+                tr.classList.remove("sg-csv-save-pending", "sg-csv-save-saving", "sg-csv-save-ok", "sg-csv-save-err");
+                var st = tr.querySelector(".sg-csv-save-status-text");
+                if (st) st.textContent = "";
+            });
+        }
+
+        function setRowSaveStatus(rowIndex, phase, label) {
+            var tr = tbody.querySelector('tr.sg-csv-data-row[data-row-index="' + rowIndex + '"]');
+            if (!tr) return;
+            tr.classList.remove("sg-csv-save-pending", "sg-csv-save-saving", "sg-csv-save-ok", "sg-csv-save-err");
+            if (phase === "pending") tr.classList.add("sg-csv-save-pending");
+            else if (phase === "saving") tr.classList.add("sg-csv-save-saving");
+            else if (phase === "saved") tr.classList.add("sg-csv-save-ok");
+            else if (phase === "error") tr.classList.add("sg-csv-save-err");
+            var st = tr.querySelector(".sg-csv-save-status-text");
+            if (st) st.textContent = (label !== null && label !== undefined) ? label : "";
+        }
+
+        function applyFilters() {
+            qsa("tr.sg-csv-data-row", tbody).forEach(function (tr) {
+                var show = true;
+                CSV_TABLE_FIELDS.forEach(function (f) {
+                    var q = (filterInputs[f].value || "").trim().toLowerCase();
+                    if (!q) return;
+                    var cell = tr.querySelector('.sg-csv-cell--' + f + ' .sg-csv-cell-input');
+                    var val = cell ? (cell.value || "").toLowerCase() : "";
+                    if (val.indexOf(q) === -1) show = false;
+                });
+                tr.style.display = show ? "" : "none";
+            });
+        }
+
+        function focusNextCell(elInput) {
+            var all = Array.prototype.slice.call(tbody.querySelectorAll("input.sg-csv-cell-input, textarea.sg-csv-cell-input"));
+            var idx = all.indexOf(elInput);
+            if (idx === -1) return;
+            var j = idx + 1;
+            while (j < all.length) {
+                var next = all[j];
+                var tr = next.closest && next.closest("tr");
+                if (tr && tr.style.display !== "none") {
+                    next.focus();
+                    if (next.select) next.select();
+                    return;
+                }
+                j++;
+            }
+        }
+
+        function deleteRowAt(rowIndex) {
+            var rm = rowModels[rowIndex];
+            if (rowIndex < baselineRows.length) {
+                if (!confirm("Delete style \"" + (rm.name || "") + "\" from CSV?")) return;
+                apiPost("/style_grid/style/delete", { name: baselineRows[rowIndex].name, source: baselineRows[rowIndex].source || selectedSource })
+                    .then(assertNoApiError)
+                    .then(function () {
+                        rowModels.splice(rowIndex, 1);
+                        baselineRows.splice(rowIndex, 1);
+                        renderTableBody();
+                        refreshDirtyUi();
+                    })
+                    .catch(function (err) {
+                        console.error("[Style Grid] Delete failed:", err);
+                        alert("Delete failed");
+                    });
+            } else {
+                rowModels.splice(rowIndex, 1);
+                renderTableBody();
+                refreshDirtyUi();
+            }
+        }
+
+        function renderTableBody() {
+            tbody.innerHTML = "";
+            rowModels.forEach(function (rm, rowIdx) {
+                var tr = el("tr", { className: "sg-csv-data-row", "data-row-index": String(rowIdx) });
+                tr.addEventListener("contextmenu", function (e) {
+                    e.preventDefault();
+                    var prevMenu = qs(".sg-context-menu");
+                    if (prevMenu) prevMenu.remove();
+                    var menu = el("div", { className: "sg-context-menu" });
+                    menu.style.left = e.clientX + "px";
+                    menu.style.top = e.clientY + "px";
+                    menu.appendChild(el("div", {
+                        className: "sg-ctx-item",
+                        textContent: "🗑️ Delete row",
+                        onClick: function () {
+                            menu.remove();
+                            deleteRowAt(rowIdx);
+                        },
+                    }));
+                    document.body.appendChild(menu);
+                    setTimeout(function () {
+                        var close = function () { menu.remove(); document.removeEventListener("click", close); };
+                        document.addEventListener("click", close);
+                    }, 0);
+                });
+
+                var tdAct = el("td", { className: "sg-csv-col-actions" });
+                var delBtn = el("button", {
+                    type: "button",
+                    className: "sg-csv-row-del",
+                    textContent: "×",
+                    title: "Delete row",
+                    onClick: function (ev) {
+                        ev.stopPropagation();
+                        deleteRowAt(rowIdx);
+                    },
+                });
+                tdAct.appendChild(delBtn);
+                tr.appendChild(tdAct);
+
+                var tdSaveSt = el("td", { className: "sg-csv-col-status" });
+                tdSaveSt.appendChild(el("span", { className: "sg-csv-save-status-text" }));
+                tr.appendChild(tdSaveSt);
+
+                CSV_TABLE_FIELDS.forEach(function (field) {
+                    var isLong = field === "prompt" || field === "negative_prompt";
+                    var td = el("td", { className: "sg-csv-cell sg-csv-cell--" + field });
+                    var inp = isLong
+                        ? el("textarea", { className: "sg-csv-cell-input", rows: field === "prompt" ? 4 : 3 })
+                        : el("input", { type: "text", className: "sg-csv-cell-input" });
+                    inp.value = (rm[field] !== null && rm[field] !== undefined) ? String(rm[field]) : "";
+                    inp.setAttribute("data-row", String(rowIdx));
+                    inp.setAttribute("data-field", field);
+                    inp.addEventListener("input", function () {
+                        rowModels[rowIdx][field] = inp.value;
+                        refreshDirtyUi();
+                    });
+                    inp.addEventListener("keydown", function (e) {
+                        if (e.key === "Tab" && !e.shiftKey) {
+                            e.preventDefault();
+                            focusNextCell(inp);
+                        }
+                    });
+                    td.appendChild(inp);
+                    tr.appendChild(td);
+                });
+                tbody.appendChild(tr);
+            });
+            applyFilters();
+            refreshDirtyUi();
+        }
+
+        renderTableBody();
+        overlay.appendChild(shell);
+        overlay.addEventListener("click", function (e) { if (e.target === overlay) requestCloseCsvEditor(); });
+        document.body.appendChild(overlay);
+    }
+
     function duplicateStyle(tabName, style) {
         const newName = style.name + "_copy";
         apiPost("/style_grid/style/save", {
             name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
-        }).then(function () {
+        }).then(assertNoApiError).then(function () {
             refreshPanel(tabName);
         }).catch(function (err) {
             console.error("[Style Grid] API error:", err);
@@ -1062,6 +1641,7 @@
             onClick: function () {
                 overlay.remove();
                 apiPost("/style_grid/style/delete", { name: styleName, source: source })
+                    .then(assertNoApiError)
                     .then(function () { refreshPanel(tabName); })
                     .catch(function (err) {
                         console.error("[Style Grid] Delete failed:", err);
@@ -1112,13 +1692,13 @@
                 const oldName = style.name;
                 const rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
                 const newName = newCat.toUpperCase() + "_" + rest;
-                apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(function () {
+                apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(assertNoApiError).then(function () {
                     return apiPost("/style_grid/style/save", {
                         name: newName,
                         prompt: style.prompt,
                         negative_prompt: style.negative_prompt,
                         source: style.source
-                    });
+                    }).then(assertNoApiError);
                 }).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
@@ -1265,7 +1845,7 @@
                     }).catch(function (err) {
                         console.error("[Style Grid] API error:", err);
                     });
-                } catch (e) { alert("Invalid JSON file"); }
+                } catch (_e) { alert("Invalid JSON file"); }
             };
             reader.readAsText(file);
         });
@@ -1306,6 +1886,25 @@
                     c.classList.add("sg-applied");
                 });
             });
+            var restoreOrder;
+            if (state[tabName].appliedOrder && state[tabName].appliedOrder.length) {
+                restoreOrder = state[tabName].appliedOrder.filter(function (n) { return savedSelection.has(n); });
+            } else {
+                restoreOrder = [];
+                savedSelection.forEach(function (n) { restoreOrder.push(n); });
+            }
+            state[tabName].applied.clear();
+            if (!state[tabName].silentMode) {
+                state[tabName]._restoreSimP = state[tabName].userPromptBase;
+                state[tabName]._restoreSimN = state[tabName].userPromptBaseNeg;
+            }
+            restoreOrder.forEach(function (n) {
+                applyStyleImmediate(tabName, n, { silent: true });
+            });
+            if (!state[tabName].silentMode) {
+                delete state[tabName]._restoreSimP;
+                delete state[tabName]._restoreSimN;
+            }
             updateSelectedUI(tabName);
             // Restore visibility — keep panel open if it was open
             if (wasVisible) {
@@ -1338,7 +1937,7 @@
     }
 
     // ════════════════════════════════════════════════════
-    // PANEL & UI
+    // UI: PANEL
     // ════════════════════════════════════════════════════
     // Build the Grid Panel
     // -----------------------------------------------------------------------
@@ -1361,13 +1960,16 @@
 
         // Overlay
         const overlay = el("div", { className: "sg-overlay", id: "sg_overlay_" + tabName });
-        let overlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) { overlayMouseDownTarget = e.target; }, true);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false); overlayMouseDownTarget = null; });
-
         const panel = el("div", { className: "sg-panel" });
 
-        // ---- Header ----
+        function _attachPanelEventDelegation() {
+            let overlayMouseDownTarget = null;
+            overlay.addEventListener("mousedown", function (e) { overlayMouseDownTarget = e.target; }, true);
+            overlay.addEventListener("click", function (e) { if (e.target === overlay && overlayMouseDownTarget === overlay) togglePanel(tabName, false); overlayMouseDownTarget = null; });
+        }
+        _attachPanelEventDelegation();
+
+        function _buildPanelHeader() {
         const header = el("div", { className: "sg-header" });
         const titleRow = el("div", { className: "sg-title-row" });
         titleRow.appendChild(el("span", { className: "sg-title", textContent: "🎨 Style Grid" }));
@@ -1383,8 +1985,10 @@
         const selectedCount = el("span", { className: "sg-selected-count", id: "sg_count_" + tabName, textContent: "0 selected" });
         titleRow.appendChild(selectedCount);
         header.appendChild(titleRow);
+        return header;
+        }
 
-        // Search row
+        function _buildSourceList() {
         const searchRow = el("div", { className: "sg-search-row" });
 
         // Source dropdown
@@ -1481,6 +2085,28 @@
                             searchInput.value = tokensInner.join(" ") + (needsValue ? "" : " ");
                             acSuppressNext = true;
                             acDropdown.style.display = "none";
+                            var styleObj = findStyleByName(tabName, match);
+                            if (!styleObj) {
+                                Object.values(state[tabName].categories || {}).forEach(function (arr) {
+                                    if (styleObj) return;
+                                    var f = arr.find(function (st) { return (st.display_name || st.name) === match; });
+                                    if (f) styleObj = f;
+                                });
+                            }
+                            if (styleObj) {
+                                if (!state[tabName].selected.has(styleObj.name)) {
+                                    state[tabName].selected.add(styleObj.name);
+                                    if (state[tabName].selectedOrder.indexOf(styleObj.name) === -1) {
+                                        state[tabName].selectedOrder.push(styleObj.name);
+                                    }
+                                    applyStyleImmediate(tabName, styleObj.name);
+                                    qsa('.sg-card[data-style-name="' + CSS.escape(styleObj.name) + '"]', state[tabName].panel).forEach(function (c) {
+                                        c.classList.add("sg-selected");
+                                        c.classList.add("sg-applied");
+                                    });
+                                    updateSelectedUI(tabName);
+                                }
+                            }
                             searchInput.dispatchEvent(new Event("input", { bubbles: true }));
                             searchInput.focus();
                         });
@@ -1592,6 +2218,14 @@
         // Refresh
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "🔄", title: "Refresh styles", onClick: function () { refreshPanel(tabName); } }));
 
+        // Table editor (current source CSV)
+        searchRow.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "📋",
+            title: "Edit all styles in the selected CSV (table)",
+            onClick: function () { openCsvTableEditor(tabName); },
+        }));
+
         // New style
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "➕", title: "Create new style", onClick: function () { openStyleEditor(tabName, null); } }));
 
@@ -1637,9 +2271,13 @@
         // Close
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-close", textContent: "✕", title: "Close", onClick: function () { togglePanel(tabName, false); } }));
 
-        header.appendChild(searchRow);
+        return searchRow;
+        }
+        var header = _buildPanelHeader();
+        header.appendChild(_buildSourceList());
         panel.appendChild(header);
 
+        function _buildCategoryGrid() {
         // ---- Body ----
         const body = el("div", { className: "sg-body" });
         const main = el("div", { className: "sg-main", id: "sg_main_" + tabName });
@@ -1772,8 +2410,10 @@
 
         body.appendChild(main);
         panel.appendChild(body);
+        }
+        _buildCategoryGrid();
 
-        // Footer
+        function _buildPanelFooter() {
         const footer = el("div", { className: "sg-footer", id: "sg_footer_" + tabName });
         footer.appendChild(el("span", { className: "sg-footer-label", textContent: "Selected: " }));
         footer.appendChild(el("div", { className: "sg-footer-tags", id: "sg_tags_" + tabName }));
@@ -1784,6 +2424,8 @@
         combosRow.style.display = "none";
         footer.appendChild(combosRow);
         panel.appendChild(footer);
+        }
+        _buildPanelFooter();
 
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
@@ -2835,17 +3477,9 @@
         }
     });
 
-    // -----------------------------------------------------------------------
-    // Init with MutationObserver re-injection guard
-    // -----------------------------------------------------------------------
-    function ensureButtons() {
-        const t1 = !!qs("#sg_trigger_txt2img") || injectButton("txt2img");
-        const t2 = !!qs("#sg_trigger_img2img") || injectButton("img2img");
-        if (t1) console.log("[Style Grid] txt2img trigger OK");
-        if (t2) console.log("[Style Grid] img2img trigger OK");
-        return t1 && t2;
-    }
-
+    // ════════════════════════════════════════════════════
+    // STATE + INIT (boot, triggers, MutationObserver)
+    // ════════════════════════════════════════════════════
     function init() {
         let observer = null;
 

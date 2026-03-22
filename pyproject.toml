@@ -1,0 +1,10 @@
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]   # errors, pyflakes, warnings, isort
+ignore = ["E501"]                # длинные строки — не наша проблема сейчас
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/style_grid.py" = ["F401"]  # реэкспорт импортов — ок

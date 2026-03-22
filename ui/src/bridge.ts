@@ -8,7 +8,7 @@ export type HostMessage =
 // ── Message types: Frame (React app) → Host (Forge) ──────────
 export type FrameMessage =
   | { type: 'SG_READY' }
-  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string }
+  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; silent?: boolean }
   | { type: 'SG_UNAPPLY';       styleId: string }
   | { type: 'SG_SAVE_STYLE';    style: Style }
   | { type: 'SG_DELETE_STYLE';  styleId: string }

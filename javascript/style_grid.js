@@ -733,6 +733,9 @@
         });
     }
 
+    window._sgApplyStyle = applyStyleImmediate;
+    window._sgUnapplyStyle = unapplyStyle;
+
     function unapplyStyle(tabName, styleName) {
         const record = state[tabName].applied.get(styleName);
         if (!record) return;
@@ -3546,9 +3549,48 @@
         ].join(";");
         document.body.appendChild(frame);
 
+        frame.addEventListener("load", function () {
+            setTimeout(function () {
+                fetch("/style_grid/styles")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var styles = [];
+                        if (Array.isArray(data)) {
+                            styles = data;
+                        } else if (data.categories) {
+                            styles = Object.values(data.categories).flat();
+                        }
+                        var seen = new Set();
+                        styles = styles.filter(function (s) {
+                            if (seen.has(s.name)) return false;
+                            seen.add(s.name);
+                            return true;
+                        });
+                        // Populate host-side style cache for applyStyleImmediate
+                        if (!state[tab]) state[tab] = {};
+                        if (!state[tab].categories) state[tab].categories = {};
+                        styles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            var exists = state[tab].categories[cat].some(function (x) {
+                                return x.name === s.name;
+                            });
+                            if (!exists) state[tab].categories[cat].push(s);
+                        });
+                        if (frame.contentWindow) {
+                            frame.contentWindow.postMessage({
+                                type: "SG_INIT",
+                                tab: tab,
+                                styles: styles,
+                            }, "*");
+                        }
+                    });
+            }, 500);
+        });
+
         window.addEventListener("message", function (e) {
-            if (e.source !== frame.contentWindow) return;
             if (!e.data || !e.data.type) return;
+            if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
 
             if (msg.type === "SG_READY") {
@@ -3573,6 +3615,17 @@
                             seen.add(key);
                             return true;
                         });
+                        // Populate host-side style cache for applyStyleImmediate
+                        if (!state[tab]) state[tab] = {};
+                        if (!state[tab].categories) state[tab].categories = {};
+                        styles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            var exists = state[tab].categories[cat].some(function (x) {
+                                return x.name === s.name;
+                            });
+                            if (!exists) state[tab].categories[cat].push(s);
+                        });
                         frame.contentWindow.postMessage({
                             type: "SG_INIT",
                             tab: tab,
@@ -3586,11 +3639,13 @@
             }
 
             if (msg.type === "SG_APPLY") {
-                applyStyleImmediate(tab, {
-                    name: msg.styleId,
-                    prompt: msg.prompt,
-                    negative_prompt: msg.neg,
-                });
+                console.log("[SG Bridge] applying:", msg.styleId);
+                window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
+            }
+
+            if (msg.type === "SG_UNAPPLY") {
+                console.log("[SG Bridge] unapplying:", msg.styleId);
+                window._sgUnapplyStyle(tab, msg.styleId);
             }
 
             if (msg.type === "SG_CLOSE_REQUEST") {

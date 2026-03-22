@@ -1922,6 +1922,35 @@
         });
     }
 
+    function applyRandomStyle(tabName) {
+        const allStyles = [];
+        const src = state[tabName].selectedSource;
+        Object.values(state[tabName].categories).forEach(function (arr) {
+            arr.forEach(function (s) {
+                if (src === "All" || s.source === src) allStyles.push(s);
+            });
+        });
+        if (allStyles.length === 0) return;
+        const rand = allStyles[Math.floor(Math.random() * allStyles.length)];
+        if (!state[tabName].selected.has(rand.name)) {
+            state[tabName].selected.add(rand.name);
+            if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
+            applyStyleImmediate(tabName, rand.name);
+            qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
+            updateSelectedUI(tabName);
+        }
+    }
+
+    function runManualStyleBackup(tabName) {
+        apiPost("/style_grid/backup").then(function (r) {
+            if (r && r.ok) alert("Backup saved successfully!");
+            else alert("Nothing to backup or backup failed.");
+        }).catch(function (err) {
+            console.error("[Style Grid] API error:", err);
+            showStatusMessage(tabName, "Backup failed", true);
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Dynamic polling for file changes
     // -----------------------------------------------------------------------
@@ -2176,24 +2205,7 @@
         // Random style
         const btnRandom = el("button", {
             className: "sg-btn sg-btn-secondary", textContent: "🎲", title: "Random style (use at your own risk!)",
-            onClick: function () {
-                const allStyles = [];
-                const src = state[tabName].selectedSource;
-                Object.values(state[tabName].categories).forEach(function (arr) {
-                    arr.forEach(function (s) {
-                        if (src === "All" || s.source === src) allStyles.push(s);
-                    });
-                });
-                if (allStyles.length === 0) return;
-                const rand = allStyles[Math.floor(Math.random() * allStyles.length)];
-                if (!state[tabName].selected.has(rand.name)) {
-                    state[tabName].selected.add(rand.name);
-                    if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
-                    applyStyleImmediate(tabName, rand.name);
-                    qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
-                    updateSelectedUI(tabName);
-                }
-            }
+            onClick: function () { applyRandomStyle(tabName); }
         });
         searchRow.appendChild(btnRandom);
 
@@ -2242,15 +2254,7 @@
         searchRow.appendChild(el("button", {
             className: "sg-btn sg-btn-secondary", textContent: "💾",
             title: "Backup all CSV style files manually. Saves a timestamped copy to data/backups/ (keeps last 20).",
-            onClick: function () {
-                apiPost("/style_grid/backup").then(function (r) {
-                    if (r && r.ok) alert("Backup saved successfully!");
-                    else alert("Nothing to backup or backup failed.");
-                }).catch(function (err) {
-                    console.error("[Style Grid] API error:", err);
-                    showStatusMessage(tabName, "Backup failed", true);
-                });
-            }
+            onClick: function () { runManualStyleBackup(tabName); }
         }));
 
         // Thumbnail cleanup — remove orphaned previews
@@ -3650,6 +3654,25 @@
 
             if (msg.type === "SG_CLOSE_REQUEST") {
                 frame.style.display = "none";
+            }
+
+            if (msg.type === "SG_RANDOM") {
+                applyRandomStyle(tab);
+            }
+            if (msg.type === "SG_BACKUP") {
+                runManualStyleBackup(tab);
+            }
+            if (msg.type === "SG_REFRESH") {
+                refreshPanel(tab);
+            }
+            if (msg.type === "SG_PRESETS") {
+                showPresetsMenu(tab);
+            }
+            if (msg.type === "SG_IMPORT_EXPORT") {
+                showExportImport(tab);
+            }
+            if (msg.type === "SG_NEW_STYLE") {
+                openStyleEditor(tab, null);
             }
         });
 

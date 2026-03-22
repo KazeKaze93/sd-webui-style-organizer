@@ -1,3 +1,4 @@
+import { motion, AnimatePresence } from 'framer-motion'
 import { useStylesStore } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 
@@ -14,11 +15,15 @@ export function StyleGrid() {
   }
 
   return (
-    <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] 
-                    gap-2 content-start">
-      {styles.map(style => (
-        <StyleCard key={style.name} style={style} />
-      ))}
-    </div>
+    <AnimatePresence mode="popLayout">
+      <motion.div
+        className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] 
+                    gap-2 content-start"
+      >
+        {styles.map(style => (
+          <StyleCard key={style.name} style={style} />
+        ))}
+      </motion.div>
+    </AnimatePresence>
   )
 }

@@ -1,3 +1,4 @@
+import { motion } from 'framer-motion'
 import type { Style } from '../bridge'
 import { useStylesStore } from '../store/stylesStore'
 
@@ -12,7 +13,14 @@ export function StyleCard({ style }: Props) {
     : style.name
 
   return (
-    <div
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      transition={{ duration: 0.1 }}
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
       onClick={() => toggleStyle(style)}
       className={`
         relative cursor-pointer rounded-lg border p-3 
@@ -32,6 +40,6 @@ export function StyleCard({ style }: Props) {
         <div className="absolute top-2 right-2 w-2 h-2 
                         rounded-full bg-sg-accent" />
       )}
-    </div>
+    </motion.div>
   )
 }

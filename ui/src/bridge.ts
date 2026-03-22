@@ -14,6 +14,12 @@ export type FrameMessage =
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_REQUEST_STYLES' }
   | { type: 'SG_CLOSE_REQUEST' }
+  | { type: 'SG_RANDOM' }
+  | { type: 'SG_PRESETS' }
+  | { type: 'SG_BACKUP' }
+  | { type: 'SG_IMPORT_EXPORT' }
+  | { type: 'SG_REFRESH' }
+  | { type: 'SG_NEW_STYLE' }
 
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'

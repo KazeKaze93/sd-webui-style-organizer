@@ -38,6 +38,8 @@ Search is now pure text matching against style names and descriptions.
 Multi-word queries use AND logic. The previous structured operators
 (`cat:`, `tag:`, `prefix:`, etc.) have been removed for simplicity.
 
+See [CHANGELOG.md](CHANGELOG.md) for full history.
+
 ### Previous (v4.0)
 
 <details>
@@ -97,6 +99,8 @@ combinations from the style's description field.
 - **Category view** — Sidebar (when many categories): show **All**, **★ Favorites**, **🕑 Recent**, or one category. Compact bar when there are few categories.
 - **Silent mode** — Toggle `👁 Silent` to hide style content from prompt fields. Styles are injected at generation time only and recorded in image metadata as `Style Grid: style1, style2, ...`.
 - **Style presets** — Save any combination of selected styles as a named preset (📦). Load or delete presets from the menu. Stored in `data/presets.json`.
+- **CSV Table Editor** — Full inline table editor for any CSV source: filter by column, edit cells, save individual rows, per-row status indicators. Access via toolbar.
+- **Autocomplete apply** — Selecting an autocomplete suggestion immediately applies the style and adds it to the Selected bar.
 - **Conflict detector** — Warns when selected styles contradict each other (e.g. one adds a tag that another negates). Shows a pulsing ⚠ badge with details on hover.
 - **Context menu** — Right-click any card: Edit, Duplicate, Delete, Move to category, Copy prompt to clipboard.
 - **Built-in style editor** — Create and edit styles directly from the grid (➕ or right-click → Edit). Changes are written to CSV — no manual file editing needed.
@@ -244,7 +248,8 @@ Conflicts: do not mix with BASE_Pony
 
 ## Style Packs
 
-[existing links here]
+Style packs are distributed separately.
+Find official packs on [CivitAI](https://civitai.com) (search "Style Grid pack").
 Place screenshots in docs/screenshots/.
 
 ---

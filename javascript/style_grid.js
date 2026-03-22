@@ -7,7 +7,7 @@
 (function () {
     "use strict";
     if (typeof window !== "undefined") {
-        window.SG_V2_ENABLED = true; // set true to test React iframe UI (v2)
+        window.SG_V2_ENABLED = true; // v2 iframe (React UI); set to false for legacy panel only
         window.__SG_THUMB_VERSION = "2.0.1";
         window.SG = window.SG || {};
     }
@@ -3400,9 +3400,10 @@
     function togglePanel(tabName, show) {
         var panel = state[tabName].panel;
 
-        if (window.SG_V2_ENABLED === true) {
-            if (!state[tabName].sgFrame) ensureSGFramesOnce();
-            var fr = state[tabName].sgFrame;
+        // v2: show React iframe when SG_V2_ENABLED is true (default) or any value except explicit false
+        if (window.SG_V2_ENABLED !== false) {
+            if (!state.txt2img.sgFrame) ensureSGFramesOnce();
+            var fr = state[tabName].sgFrame || state.txt2img.sgFrame;
             if (fr) {
                 if (typeof show === "undefined")
                     show = fr.style.display !== "block";
@@ -3417,8 +3418,11 @@
                     postSGInitToFrame(tabName);
                 return;
             }
+            console.error("[Style Grid] v2 enabled but iframe failed to initialize.");
+            return;
         }
 
+        // Legacy DOM panel only when SG_V2_ENABLED === false
         if (typeof show === "undefined")
             show = !panel || !panel.classList.contains("sg-visible");
 
@@ -3427,10 +3431,10 @@
             return;
         }
 
-        var hasData = Object.keys(state[tabName].categories || {}).length > 0;
-        if (!panel || !hasData) {
+        var hasDataLegacy = Object.keys(state[tabName].categories || {}).length > 0;
+        if (!panel || !hasDataLegacy) {
             if (!panel) panel = buildPanel(tabName);
-            if (!hasData) {
+            if (!hasDataLegacy) {
                 apiGet("/style_grid/styles").then(function (data) {
                     state[tabName].categories = data.categories || {};
                     state[tabName].usage = data.usage || {};
@@ -3524,8 +3528,9 @@
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
             ["txt2img", "img2img"].forEach(function (t) {
-                if (window.SG_V2_ENABLED === true && state[t].sgFrame && state[t].sgFrame.style.display === "block") {
-                    state[t].sgFrame.style.display = "none";
+                var frEsc = state[t].sgFrame || state.txt2img.sgFrame;
+                if (window.SG_V2_ENABLED !== false && frEsc && frEsc.style.display === "block") {
+                    frEsc.style.display = "none";
                     e.preventDefault();
                     return;
                 }

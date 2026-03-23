@@ -7,14 +7,21 @@ import {
 import { Popover, PopoverContent, PopoverAnchor } from './ui/popover'
 
 export function SearchBar() {
-  const { styles, search, setSearch, toggleStyle, selectedStyles } = useStylesStore()
+  const { styles, activeSource, search, setSearch, toggleStyle, selectedStyles } = useStylesStore()
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState(search)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Autocomplete suggestions - top 8 matches by name
+  // Autocomplete suggestions:
+  // - specific source selected: search only in that CSV
+  // - All Sources selected: search across all loaded styles
+  const searchableStyles = activeSource
+    ? styles.filter(s => s.source_file === activeSource)
+    : styles
+
+  // Top 8 matches by name
   const suggestions = inputValue.length > 0
-    ? styles
+    ? searchableStyles
         .filter(s => s.name.toLowerCase().includes(inputValue.toLowerCase()))
         .slice(0, 8)
     : []

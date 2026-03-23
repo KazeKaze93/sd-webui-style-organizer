@@ -17,13 +17,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Style Grid host ↔ frame messaging flow refactored to SG_* postMessage contract and on-demand re-init/update pushes (`589ca79`, `e6276da`).
 - Sidebar/category behavior refined for per-source ordering logic and All Sources fallback handling (`6c2e8e4`, `af23d07`).
 - `docs/API.md` backend route definitions now originate from modular backend route registration (`scripts/stylegrid/routes.py`) instead of monolithic script split assumptions.
+- **Documentation:** README expanded (workflows, wildcards compatibility, search, fullscreen, img2img, testing notes); `docs/screenshots/README.md` lists which PNGs to refresh when the UI changes.
+
+### Removed
+- **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.
 
 ### Fixed
 - Improved iframe close/escape behavior and minimized accidental host/page interaction conflicts while V2 panel is open (`930f6b6`, `72c77f2`).
 - Fixed several V2 synchronization issues after backend refresh/update flows (`e6276da`, `589ca79`).
-
-### Removed
-- None.
 
 ### Security
 - None.

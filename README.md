@@ -86,15 +86,15 @@ The small tab badge in the panel header shows the active host context.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
 ### 4) Favorites and recent
-- Click `★` on a card to add or remove it from **Favorites** (the star is filled when it is favorited).
+- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites** (there is no star icon on the tile itself).
 - **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
-- **Favorites** shows only starred styles, also grouped by category.
+- Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists.
 
 ![Recent — last applied styles](docs/screenshots/recent-styles.png)
 
-![Favorites — starred styles only](docs/screenshots/favorites-view.png)
+![Favorites — styles saved via context menu](docs/screenshots/favorites-view.png)
 
-![Favorites while browsing a category — starred cards show a filled star](docs/screenshots/favorites-in-category.png)
+![Browsing a category — tiles show names only; use sidebar or context menu for favorites](docs/screenshots/favorites-in-category.png)
 
 ### 5) Category context menu: wildcards and previews
 
@@ -169,7 +169,7 @@ After a successful run, the iframe is notified so the UI can refresh that style�
 
 **What the card shows**
 
-- The **grid card** stays a compact label (name, category color, star, etc.). The **generated image is not painted inside the small card** — you see it when you **hover**.
+- The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — you see it when you **hover**.
 
 **Hover popup (preview window)**
 
@@ -261,6 +261,12 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
 | Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. |
+
+---
+
+## Screenshots in this repo
+
+PNG files live under `docs/screenshots/` and are named to match sections in this README. If the UI changes, replace the images but **keep the same filenames** (see `docs/screenshots/README.md` for a refresh checklist).
 
 ---
 

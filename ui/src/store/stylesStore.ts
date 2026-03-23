@@ -75,6 +75,7 @@ interface StylesStore {
   recentNames: string[]
   conflicts: Conflict[]
   usageCounts: Record<string, number>
+  categoryOrder: string[]
   
   // Actions
   setStyles: (styles: Style[], tab: Tab) => void
@@ -94,6 +95,7 @@ interface StylesStore {
   detectConflicts: () => void
   loadUsage: () => Promise<void>
   incrementUsage: (name: string) => void
+  setCategoryOrder: (order: string[]) => void
   toggleFavorite: (name: string) => void
   isFavorite: (name: string) => boolean
   addToRecent: (name: string) => void
@@ -114,6 +116,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   selectedStyles: [],
   conflicts: [],
   usageCounts: {},
+  categoryOrder: JSON.parse(
+    localStorage.getItem('sg_v2_category_order') || '[]'
+  ) as string[],
   collapsedCategories: new Set(),
   silentMode: false,
   compactMode: false,
@@ -128,11 +133,25 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const sources = [...new Set(
       styles.map(s => s.source_file).filter(Boolean)
     )].sort()
-    set({ styles, tab, sources })
+    
+    // Restore last selected source if it still exists
+    const lastSource = localStorage.getItem('sg_v2_last_source')
+    const activeSource = lastSource && sources.includes(lastSource)
+      ? lastSource
+      : null
+    
+    set({ styles, tab, sources, activeSource })
   },
   setSearch: (search) => set({ search }),
   setCategory: (activeCategory) => set({ activeCategory }),
-  setActiveSource: (activeSource) => set({ activeSource }),
+  setActiveSource: (activeSource) => {
+    if (activeSource) {
+      localStorage.setItem('sg_v2_last_source', activeSource)
+    } else {
+      localStorage.removeItem('sg_v2_last_source')
+    }
+    set({ activeSource })
+  },
   toggleSilent: () => set((s) => ({ silentMode: !s.silentMode })),
   toggleCompact: () => set((s) => ({ compactMode: !s.compactMode })),
   toggleCollapse: (cat) => set((s) => {
@@ -274,7 +293,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       const r = await fetch('/style_grid/usage')
       const data = await r.json()
       set({ usageCounts: data || {} })
-    } catch {}
+    } catch {
+      // ignore usage load errors
+    }
   },
   incrementUsage: (name: string) => {
     const counts = { ...get().usageCounts }
@@ -287,13 +308,30 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       body: JSON.stringify({ name })
     }).catch(() => {})
   },
+  setCategoryOrder: (order: string[]) => {
+    localStorage.setItem('sg_v2_category_order', JSON.stringify(order))
+    set({ categoryOrder: order })
+    // Sync to backend same as old panel
+    fetch('/style_grid/category_order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order })
+    }).catch(() => {})
+  },
 
   categories: () => {
-    const { styles, activeSource } = get()
+    const { styles, activeSource, categoryOrder } = get()
     const filtered = activeSource
       ? styles.filter(s => s.source_file === activeSource)
       : styles
-    return [...new Set(filtered.map(s => s.category).filter(Boolean))].sort()
+    const all = [...new Set(
+      filtered.map(s => s.category).filter(Boolean)
+    )]
+    if (categoryOrder.length === 0) return all.sort()
+    // Put ordered categories first, then alphabetical remainder
+    const ordered = categoryOrder.filter(c => all.includes(c))
+    const rest = all.filter(c => !categoryOrder.includes(c)).sort()
+    return [...ordered, ...rest]
   },
 
   filteredStyles: () => {

@@ -1,5 +1,4 @@
 import { useStylesStore } from '../store/stylesStore'
-import { sendToHost } from '../bridge'
 
 interface Props {
   style: { name: string; description: string }
@@ -19,7 +18,7 @@ function parseConflictTokens(description: string): string[] {
 }
 
 export function ComboChips({ style }: Props) {
-  const { styles, setSearch, setCategory, toggleStyle, selectedStyles } = useStylesStore()
+  const { styles, setCategory, toggleStyle, selectedStyles } = useStylesStore()
 
   if (!style.description) return null
 

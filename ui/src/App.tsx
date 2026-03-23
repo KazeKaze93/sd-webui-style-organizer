@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { onHostMessage, sendToHost } from './bridge'
 import { useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
@@ -49,8 +49,10 @@ const ToolBtn = ({
 )
 
 export default function App() {
+  const [isFullscreen, setIsFullscreen] = useState(false)
   const {
     setStyles,
+    tab,
     selectedStyles,
     conflicts,
     silentMode,
@@ -65,13 +67,13 @@ export default function App() {
     useStylesStore.getState().loadUsage()
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_INIT' || msg.type === 'SG_STYLES_UPDATE') {
-        const raw = (msg as any).styles
+        const raw: unknown = (msg as { styles?: unknown }).styles
         const arr = Array.isArray(raw)
           ? raw
-          : Array.isArray(raw?.styles)
-            ? raw.styles
-            : raw?.categories
-              ? Object.values(raw.categories).flat()
+          : Array.isArray((raw as { styles?: unknown[] } | null)?.styles)
+            ? (raw as { styles: unknown[] }).styles
+            : (raw as { categories?: Record<string, unknown[]> } | null)?.categories
+              ? Object.values((raw as { categories: Record<string, unknown[]> }).categories).flat()
               : []
         setStyles(arr, msg.type === 'SG_INIT' ? msg.tab : 'txt2img')
       }
@@ -89,7 +91,55 @@ export default function App() {
     })
     sendToHost({ type: 'SG_READY' })
     return unsub
+  }, [setStyles])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        sendToHost({ type: 'SG_CLOSE_REQUEST' })
+      }
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [])
+
+  const toggleFullscreen = () => {
+    // window.frameElement = the <iframe> tag
+    // wrapper = window.frameElement.parentElement (the resizable div)
+    const iframe = window.frameElement as HTMLElement
+    if (!iframe) return
+    const wrapper = iframe.parentElement as HTMLElement
+    if (!wrapper) return
+
+    if (!isFullscreen) {
+      // Save current size
+      wrapper.dataset.prevWidth = wrapper.style.width
+      wrapper.dataset.prevHeight = wrapper.style.height
+      wrapper.dataset.prevTop = wrapper.style.top
+      wrapper.dataset.prevLeft = wrapper.style.left
+      wrapper.dataset.prevMaxH = wrapper.style.maxHeight
+      wrapper.dataset.prevMaxW = wrapper.style.maxWidth
+      // Go fullscreen
+      wrapper.style.width = 'calc(100vw - 16px)'
+      wrapper.style.height = 'calc(100vh - 100px)'
+      wrapper.style.top = '90px'
+      wrapper.style.left = '8px'
+      wrapper.style.maxWidth = 'calc(100vw - 16px)'
+      wrapper.style.maxHeight = 'calc(100vh - 100px)'
+      wrapper.style.resize = 'none'
+      setIsFullscreen(true)
+    } else {
+      // Restore
+      wrapper.style.width = wrapper.dataset.prevWidth || '960px'
+      wrapper.style.height = wrapper.dataset.prevHeight || '600px'
+      wrapper.style.top = wrapper.dataset.prevTop || '130px'
+      wrapper.style.left = wrapper.dataset.prevLeft || '0px'
+      wrapper.style.maxHeight = wrapper.dataset.prevMaxH || 'calc(100vh - 140px)'
+      wrapper.style.maxWidth = wrapper.dataset.prevMaxW || 'calc(100vw - 16px)'
+      wrapper.style.resize = 'both'
+      setIsFullscreen(false)
+    }
+  }
 
   return (
     <motion.div
@@ -102,6 +152,10 @@ export default function App() {
       <div className="flex items-center gap-3 px-4 py-3 
                       border-b border-sg-border shrink-0">
         <span className="text-sg-accent font-semibold">🎨 Style Grid</span>
+        <span className="text-xs text-sg-muted/60 border border-sg-border/50 
+                   px-1.5 py-0.5 rounded font-mono">
+          {tab}
+        </span>
         <SourceFilter />
         <div className="flex-1">
           <SearchBar />
@@ -203,6 +257,28 @@ export default function App() {
               </div>
             )}
             <button
+              onClick={() => { /* TODO: windowed mode */ }}
+              className="text-sg-muted hover:text-sg-text transition-colors text-sm w-6 h-6
+               flex items-center justify-center"
+              title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            >
+              {isFullscreen ? (
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                  xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="1" width="12" height="12" rx="1"
+                    stroke="currentColor" strokeWidth="1.2" fill="none" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
+                  xmlns="http://www.w3.org/2000/svg">
+                  <rect x="1" y="3" width="9" height="9" rx="1"
+                    stroke="currentColor" strokeWidth="1.2" fill="none" />
+                  <path d="M4 3V2a1 1 0 011-1h7a1 1 0 011 1v7a1 1 0 01-1 1h-1"
+                    stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              )}
+            </button>
+            <button
               type="button"
               onClick={() => sendToHost({ type: 'SG_CLOSE_REQUEST' })}
               className="text-sg-muted hover:text-sg-text transition-colors text-lg"
@@ -217,12 +293,12 @@ export default function App() {
       <div className="flex flex-1 gap-0 overflow-hidden">
         {/* Sidebar */}
         <div className="w-48 shrink-0 border-r border-sg-border 
-                        overflow-y-auto p-3">
+                        overflow-y-auto p-3 sidebar-scroll">
           <Sidebar />
         </div>
 
         {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-3 sidebar-scroll">
           <StyleGrid />
         </div>
       </div>

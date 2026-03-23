@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { motion, AnimatePresence, Reorder } from 'framer-motion'
 import { useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'

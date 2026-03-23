@@ -12,10 +12,11 @@ const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
 export function StyleCard({ style }: Props) {
-  const { selectedStyles, toggleStyle, isFavorite, toggleFavorite } = useStylesStore()
+  const { selectedStyles, toggleStyle, isFavorite, toggleFavorite, usageCounts } = useStylesStore()
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const isSelected = selectedStyles.some(s => s.name === style.name)
   const fav = isFavorite(style.name)
+  const usageCount = usageCounts[style.name] || 0
 
   const displayName = style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
@@ -102,6 +103,12 @@ export function StyleCard({ style }: Props) {
           {isSelected && (
             <div className="absolute bottom-2 right-2 w-2 h-2
                             rounded-full bg-sg-accent" />
+          )}
+          {usageCount > 0 && (
+            <span className="absolute bottom-1.5 left-2 text-[10px] 
+                     text-sg-muted/60 font-mono">
+              {usageCount > 99 ? '99+' : usageCount}
+            </span>
           )}
         </motion.div>
       </ThumbnailPreview>

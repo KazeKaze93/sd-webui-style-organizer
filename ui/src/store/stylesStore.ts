@@ -1,6 +1,12 @@
 import { create } from 'zustand'
 import { sendToHost, type Style, type Tab } from '../bridge'
 
+interface Conflict {
+  styleA: string
+  styleB: string
+  reason: string
+}
+
 export function getCategoryColor(category: string): string {
   // Fixed palette of visually distinct colors — no duplicates
   const PALETTE = [
@@ -67,6 +73,8 @@ interface StylesStore {
   compactMode: boolean
   favorites: Set<string>
   recentNames: string[]
+  conflicts: Conflict[]
+  usageCounts: Record<string, number>
   
   // Actions
   setStyles: (styles: Style[], tab: Tab) => void
@@ -83,6 +91,9 @@ interface StylesStore {
   setSelectedStyles: (styles: Style[]) => void
   clearAll: () => void
   showToast: (message: string, variant?: 'success' | 'error' | 'info') => void
+  detectConflicts: () => void
+  loadUsage: () => Promise<void>
+  incrementUsage: (name: string) => void
   toggleFavorite: (name: string) => void
   isFavorite: (name: string) => boolean
   addToRecent: (name: string) => void
@@ -101,6 +112,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   activeSource: null,
   sources: [],
   selectedStyles: [],
+  conflicts: [],
+  usageCounts: {},
   collapsedCategories: new Set(),
   silentMode: false,
   compactMode: false,
@@ -196,9 +209,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     if (isSelected) {
       set({ selectedStyles: selectedStyles.filter(s => s.name !== style.name) })
       sendToHost({ type: 'SG_UNAPPLY', styleId: style.name })
+      get().detectConflicts()
     } else {
       set({ selectedStyles: [...selectedStyles, style] })
       get().addToRecent(style.name)
+      get().incrementUsage(style.name)
       sendToHost({ 
         type: 'SG_APPLY', 
         styleId: style.name,
@@ -206,6 +221,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         neg: style.negative_prompt,
         silent: get().silentMode,
       })
+      get().detectConflicts()
     }
   },
   setSelectedStyles: (styles: Style[]) => set({ selectedStyles: styles }),
@@ -222,6 +238,54 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     setTimeout(() => set((s) => ({
       toasts: s.toasts.filter(t => t.id !== id)
     })), 3000)
+  },
+  detectConflicts: () => {
+    const { selectedStyles } = get()
+    const conflicts: Conflict[] = []
+
+    for (let i = 0; i < selectedStyles.length; i++) {
+      for (let j = i + 1; j < selectedStyles.length; j++) {
+        const a = selectedStyles[i]
+        const b = selectedStyles[j]
+
+        // Check if style A's negative prompt contains tags from B's prompt
+        const aTags = a.prompt.toLowerCase().split(',').map(t => t.trim())
+        const bTags = b.prompt.toLowerCase().split(',').map(t => t.trim())
+        const aNeg = (a.negative_prompt || '').toLowerCase().split(',').map(t => t.trim())
+        const bNeg = (b.negative_prompt || '').toLowerCase().split(',').map(t => t.trim())
+
+        const aKillsB = bTags.some(tag => tag && aNeg.some(n => n && n.includes(tag)))
+        const bKillsA = aTags.some(tag => tag && bNeg.some(n => n && n.includes(tag)))
+
+        if (aKillsB) conflicts.push({
+          styleA: a.name, styleB: b.name,
+          reason: `${a.name} negates tags from ${b.name}`
+        })
+        if (bKillsA) conflicts.push({
+          styleA: b.name, styleB: a.name,
+          reason: `${b.name} negates tags from ${a.name}`
+        })
+      }
+    }
+    set({ conflicts })
+  },
+  loadUsage: async () => {
+    try {
+      const r = await fetch('/style_grid/usage')
+      const data = await r.json()
+      set({ usageCounts: data || {} })
+    } catch {}
+  },
+  incrementUsage: (name: string) => {
+    const counts = { ...get().usageCounts }
+    counts[name] = (counts[name] || 0) + 1
+    set({ usageCounts: counts })
+    // Persist to backend
+    fetch('/style_grid/usage/increment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    }).catch(() => {})
   },
 
   categories: () => {

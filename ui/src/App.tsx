@@ -6,6 +6,7 @@ import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
+import { StyleInfoPanel } from './components/StyleInfoPanel'
 import { SelectedBar } from './components/SelectedBar'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
 import { Toast } from './components/Toast'
@@ -51,6 +52,7 @@ export default function App() {
   const {
     setStyles,
     selectedStyles,
+    conflicts,
     silentMode,
     toggleSilent,
     toggleCompact,
@@ -60,6 +62,7 @@ export default function App() {
   } = useStylesStore()
 
   useEffect(() => {
+    useStylesStore.getState().loadUsage()
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_INIT' || msg.type === 'SG_STYLES_UPDATE') {
         const raw = (msg as any).styles
@@ -177,6 +180,28 @@ export default function App() {
             <span className="text-xs text-sg-muted">
               {selectedStyles.length > 0 && `${selectedStyles.length} selected`}
             </span>
+            {conflicts.length > 0 && (
+              <div className="relative group">
+                <span className="flex items-center gap-1 px-2 py-1 rounded 
+                       bg-red-500/20 border border-red-500/40 
+                       text-red-400 text-xs cursor-help
+                       animate-pulse">
+                  ⚠️ {conflicts.length}
+                </span>
+                <div className="absolute top-full right-0 mt-1 z-50
+                      bg-[#0f172a] border border-sg-border rounded-lg
+                      shadow-xl p-3 min-w-64 hidden group-hover:block">
+                  <div className="text-xs font-semibold text-white mb-2">
+                    Style Conflicts
+                  </div>
+                  {conflicts.map((c, i) => (
+                    <div key={i} className="text-xs text-red-400 py-0.5">
+                      {c.reason}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => sendToHost({ type: 'SG_CLOSE_REQUEST' })}
@@ -201,6 +226,8 @@ export default function App() {
           <StyleGrid />
         </div>
       </div>
+
+      <StyleInfoPanel />
 
       {/* Selected bar */}
       <SelectedBar />

@@ -3705,6 +3705,18 @@
         document.body.appendChild(wrapper);
         wrapper.appendChild(frame);
         state[tab].sgFrameWrapper = wrapper;
+        // Close panel when clicking anywhere outside the extension window.
+        document.addEventListener("mousedown", function (e) {
+            if (wrapper.style.display !== "block") return;
+            var target = e.target;
+            if (!target) return;
+            // Ignore trigger button clicks to preserve explicit toggle behavior.
+            if (target.closest && target.closest(".sg-trigger-btn")) return;
+            if (!wrapper.contains(target)) {
+                wrapper.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
+            }
+        }, true);
         document.addEventListener("keydown", function (e) {
             if (e.key === "Escape" && wrapper.style.display !== "none") {
                 e.stopPropagation();

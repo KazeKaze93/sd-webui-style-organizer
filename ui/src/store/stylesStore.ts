@@ -370,12 +370,24 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         .filter(Boolean) as Style[]
     }
 
-    return styles.filter(s => {
+    let filtered = styles.filter(s => {
       const matchSource = !activeSource || s.source_file === activeSource
       const matchCat = !activeCategory || s.category === activeCategory
       const matchSearch = !search || 
         s.name.toLowerCase().includes(search.toLowerCase())
       return matchSource && matchCat && matchSearch
     })
+
+    // All Sources: keep one card per style name.
+    if (!activeSource) {
+      const seen = new Set<string>()
+      filtered = filtered.filter(s => {
+        if (seen.has(s.name)) return false
+        seen.add(s.name)
+        return true
+      })
+    }
+
+    return filtered
   }
 }))

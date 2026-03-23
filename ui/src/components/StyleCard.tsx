@@ -15,17 +15,27 @@ const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
 export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
-  const { selectedStyles, toggleStyle, isFavorite, toggleFavorite, usageCounts } = useStylesStore()
+  const {
+    selectedStyles, toggleStyle, isFavorite, toggleFavorite, usageCounts, styles, activeSource
+  } = useStylesStore()
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
+  const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
   const isSelected = selectedStyles.some(s => s.name === style.name)
   const fav = isFavorite(style.name)
   const usageCount = usageCounts[style.name] || 0
+  const duplicates = styles.filter(s => s.name === style.name)
+  const hasMultipleSources = duplicates.length > 1
+  const sourceLabels = duplicates.map((dup) =>
+    ((dup.source_file || 'Unknown').split(/[\\/]/).pop() || 'Unknown')
+      .replace(/\.csv$/i, '')
+  )
+  const maxSourceLabelLen = sourceLabels.reduce((max, label) => Math.max(max, label.length), 0)
+  const pickerWidthCh = Math.min(48, Math.max(18, maxSourceLabelLen + 4))
 
   const displayName = style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
     : style.name
 
-  const hasPromptPlaceholder = style.prompt?.includes('{prompt}')
   const borderColor = getCategoryColor(style.category || 'OTHER')
 
   useEffect(() => {
@@ -70,7 +80,16 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             e.stopPropagation()
             setMenuPos({ x: e.clientX, y: e.clientY })
           }}
-          onClick={() => toggleStyle(style)}
+          onClick={(e) => {
+            if (hasMultipleSources && !activeSource && !isSelected) {
+              const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
+              const left = Math.min(rect.right + 8, window.innerWidth - 280)
+              const top = Math.max(8, rect.top)
+              setPickerPos({ x: left, y: top })
+              return
+            }
+            toggleStyle(style)
+          }}
           className={`
             relative cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
             transition-colors duration-150 select-none
@@ -90,12 +109,6 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             className={`absolute top-1.5 right-6 text-xs transition-colors z-10
               ${fav ? 'text-yellow-400' : 'text-sg-border hover:text-sg-muted'}`}
           >★</button>
-
-          {/* {prompt} indicator */}
-          {hasPromptPlaceholder && (
-            <span className="absolute top-1.5 right-2 text-xs text-sg-muted"
-                  title="Contains {prompt} placeholder">⟳</span>
-          )}
 
           <div className={`${windowed ? 'text-xs' : 'text-sm'} font-medium text-sg-text truncate ${windowed ? 'pr-6' : 'pr-8'}`}>
             {displayName}
@@ -185,6 +198,45 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             className="fixed inset-0 z-[9998]"
             onClick={() => setMenuPos(null)}
             onContextMenu={(e) => e.preventDefault()}
+          />
+        </Portal>
+      )}
+
+      {pickerPos && (
+        <Portal>
+          <div
+            className="fixed z-[10005] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              left: pickerPos.x,
+              top: pickerPos.y,
+              width: `${pickerWidthCh}ch`,
+              minWidth: '18ch',
+              maxWidth: '48ch',
+            }}
+          >
+            {duplicates.map((dup, idx) => {
+              const sourceLabel = sourceLabels[idx] || 'Unknown'
+              return (
+                <button
+                  key={`${dup.source_file || 'unknown'}-${idx}`}
+                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    toggleStyle(dup)
+                    setPickerPos(null)
+                  }}
+                >
+                  <div className="font-medium truncate">{sourceLabel}</div>
+                </button>
+              )
+            })}
+          </div>
+          <div
+            className="fixed inset-0 z-[10004]"
+            onMouseDown={() => setPickerPos(null)}
           />
         </Portal>
       )}

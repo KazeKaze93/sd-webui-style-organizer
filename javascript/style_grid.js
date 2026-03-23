@@ -3730,14 +3730,9 @@
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
-                        var styles = [];
-                        if (Array.isArray(data)) {
-                            styles = data;
-                        } else if (data.categories) {
-                            styles = Object.values(data.categories).flat();
-                        }
+                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
                         var seen = new Set();
-                        styles = styles.filter(function (s) {
+                        var deduped = allStyles.filter(function (s) {
                             if (seen.has(s.name)) return false;
                             seen.add(s.name);
                             return true;
@@ -3745,7 +3740,7 @@
                         // Populate host-side style cache for applyStyleImmediate
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};
-                        styles.forEach(function (s) {
+                        allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
                             if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
                             var exists = state[tab].categories[cat].some(function (x) {
@@ -3757,7 +3752,7 @@
                             frame.contentWindow.postMessage({
                                 type: "SG_INIT",
                                 tab: tab,
-                                styles: styles,
+                                styles: allStyles,
                             }, "*");
                         }
                     });
@@ -3772,15 +3767,15 @@
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
-                        var styles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
                         var seen = new Set();
-                        styles = styles.filter(function (s) {
+                        var deduped = allStyles.filter(function (s) {
                             if (seen.has(s.name)) return false;
                             seen.add(s.name);
                             return true;
                         });
                         state[tab].categories = {};
-                        styles.forEach(function (s) {
+                        allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
                             if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
                             state[tab].categories[cat].push(s);
@@ -3789,7 +3784,7 @@
                         if (v2frame && v2frame.contentWindow) {
                             v2frame.contentWindow.postMessage({
                                 type: "SG_STYLES_UPDATE",
-                                styles: styles
+                                styles: allStyles
                             }, "*");
                         }
                     });
@@ -3810,27 +3805,19 @@
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
-                        // /style_grid/styles returns {categories: {CAT: [styles]}, usage: {}}
-                        // flatten into array
-                        var styles = [];
-                        if (Array.isArray(data)) {
-                            styles = data;
-                        } else if (data.categories) {
-                            styles = Object.values(data.categories).flat();
-                        } else if (data.styles) {
-                            styles = data.styles;
-                        }
-                        const seen = new Set();
-                        styles = styles.filter(function (s) {
-                            const key = s.name;
-                            if (seen.has(key)) return false;
-                            seen.add(key);
+                        var allStyles = Array.isArray(data)
+                            ? data
+                            : Object.values(data.categories || {}).flat();
+                        var seen = new Set();
+                        var deduped = allStyles.filter(function (s) {
+                            if (seen.has(s.name)) return false;
+                            seen.add(s.name);
                             return true;
                         });
                         // Populate host-side style cache for applyStyleImmediate
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};
-                        styles.forEach(function (s) {
+                        allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
                             if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
                             var exists = state[tab].categories[cat].some(function (x) {
@@ -3841,7 +3828,7 @@
                         frame.contentWindow.postMessage({
                             type: "SG_INIT",
                             tab: tab,
-                            styles: styles,
+                            styles: allStyles,
                         }, "*");
                         state[tab].sgV2HostInitSent = true;
                     })
@@ -3922,15 +3909,15 @@
                     .then(function () { return fetch("/style_grid/styles"); })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
-                        var styles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
                         var seen = new Set();
-                        styles = styles.filter(function (s) {
+                        var deduped = allStyles.filter(function (s) {
                             if (seen.has(s.name)) return false;
                             seen.add(s.name);
                             return true;
                         });
                         state[tab].categories = {};
-                        styles.forEach(function (s) {
+                        allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
                             if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
                             state[tab].categories[cat].push(s);
@@ -3938,7 +3925,7 @@
                         if (frame.contentWindow) {
                             frame.contentWindow.postMessage({
                                 type: "SG_STYLES_UPDATE",
-                                styles: styles
+                                styles: allStyles
                             }, "*");
                         }
                     });

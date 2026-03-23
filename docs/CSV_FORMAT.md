@@ -74,6 +74,12 @@ Category wildcard insertion and resolution:
 
 Note: `{CATEGORY_NAME}` (without `sg:`) is not handled by this resolver.
 
+### Compatibility with other wildcard extensions
+
+- Extensions such as **stable-diffusion-webui-wildcards** or **Dynamic Prompts** usually recognize **`__name__`** (or other grammar), not `{sg:…}`.
+- Style Grid expands **only** `{sg:…}` via `resolve_sg_wildcards`; other extensions do not interpret that pattern by default, so the syntaxes **do not overlap**.
+- You **do not need** those third-party extensions for Style Grid’s `{sg:…}` feature — it is implemented in this extension (Python resolver + categories derived from loaded CSV rows).
+
 ## Recommended Combos
 
 "Works with" chips are rendered in UI by parsing the `description` field (`javascript/style_grid.js`).

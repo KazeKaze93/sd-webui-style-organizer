@@ -4,7 +4,6 @@ import base64
 import csv
 import hashlib
 import json
-import logging
 import os
 import time
 
@@ -41,9 +40,6 @@ from stylegrid.thumbnails import (
     list_thumbnails,
     thumbnail_generation_manager,
 )
-
-logger = logging.getLogger(__name__)
-
 
 def detect_conflicts(style_names):
     styles_map = {s["name"]: s for s in get_cached_styles()}
@@ -86,6 +82,7 @@ def detect_conflicts(style_names):
 
 
 def _register_style_routes(app):
+    """Register style list/reload/conflict/export/import/category-order routes."""
     @app.get("/style_grid/styles")
     async def get_styles(request: Request):
         styles = get_cached_styles()
@@ -159,6 +156,7 @@ def _register_style_routes(app):
 
 
 def _register_preset_routes(app):
+    """Register preset CRUD routes."""
     @app.get("/style_grid/presets")
     async def get_presets():
         return load_presets()
@@ -185,6 +183,7 @@ def _register_preset_routes(app):
 
 
 def _register_usage_routes(app):
+    """Register usage stats routes."""
     @app.get("/style_grid/usage")
     async def get_usage_route():
         return load_usage()
@@ -196,6 +195,7 @@ def _register_usage_routes(app):
 
 
 def _register_crud_routes(app):
+    """Register style save/delete and backup routes."""
     @app.post("/style_grid/style/save")
     async def api_save_style(data: dict):
         name = data.get("name", "").strip()
@@ -225,6 +225,7 @@ def _register_crud_routes(app):
 
 
 def _register_thumbnail_routes(app):
+    """Register thumbnail list/get/upload/generate/delete/cleanup routes."""
     mgr = thumbnail_generation_manager
 
     @app.get("/style_grid/thumbnails/list")
@@ -234,7 +235,6 @@ def _register_thumbnail_routes(app):
     @app.get("/style_grid/thumbnail")
     async def api_get_thumbnail(name: str = ""):
         path = get_thumbnail_path(name)
-        print(f"[SG thumbnail] name={name!r} path={path!r} exists={os.path.exists(path)}")
         exists = os.path.isfile(path)
 
         if not exists:
@@ -242,15 +242,10 @@ def _register_thumbnail_routes(app):
             style = next((s for s in get_cached_styles() if s.get("name") == name), None)
             if style:
                 path_with_source = get_thumbnail_path(name, style.get("source_file") or "")
-                print(
-                    f"[SG thumbnail] name={name!r} path={path_with_source!r} "
-                    f"exists={os.path.exists(path_with_source)}"
-                )
                 if os.path.isfile(path_with_source):
                     path = path_with_source
                     exists = True
 
-        logger.debug("[Style Grid] GET thumbnail: name=%r, path=%s, exists=%s", name, path, exists)
         if not exists:
             return Response(status_code=404)
         return FileResponse(
@@ -286,7 +281,6 @@ def _register_thumbnail_routes(app):
             path = get_thumbnail_path(style_name)
             with open(path, "wb") as f:
                 f.write(raw)
-            logger.debug("[Style Grid] Thumbnail uploaded: %s", path)
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}
@@ -344,11 +338,16 @@ def _register_thumbnail_routes(app):
                     removed += 1
                 except Exception:
                     pass
-        logger.debug("[Style Grid] Thumbnail cleanup: removed %s orphaned files", removed)
         return {"removed": removed}
 
 
 def register_api(demo, app):
+    """
+    Register all Style Grid API groups on FastAPI app.
+
+    Most handlers return HTTP 200 with `{ "error": ... }` payloads on logical failures;
+    notable exceptions include `/styles` ETag 304 and `/thumbnail` 404.
+    """
     _register_style_routes(app)
     _register_preset_routes(app)
     _register_usage_routes(app)

@@ -8,6 +8,10 @@ interface Props {
 }
 
 export function ThumbnailPreview({ style, children }: Props) {
+  /**
+   * Delays preview open (300ms) to reduce flicker during fast cursor travel,
+   * and falls back to text-only popup if thumbnail image fails to load.
+   */
   const [visible, setVisible] = useState(false)
   const [imgOk, setImgOk] = useState(false)
   const [above, setAbove] = useState(true)

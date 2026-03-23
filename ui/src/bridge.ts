@@ -11,6 +11,11 @@ export type FrameMessage =
   | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; silent?: boolean }
   | { type: 'SG_UNAPPLY';       styleId: string }
   | { type: 'SG_SAVE_STYLE';    style: Style }
+  | { type: 'SG_EDIT_STYLE';      styleId: string }
+  | { type: 'SG_DUPLICATE_STYLE'; styleId: string }
+  | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string }
+  | { type: 'SG_GENERATE_PREVIEW'; styleId: string }
+  | { type: 'SG_UPLOAD_PREVIEW';   styleId: string }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_REQUEST_STYLES' }
   | { type: 'SG_CLOSE_REQUEST' }

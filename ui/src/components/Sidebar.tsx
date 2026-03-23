@@ -26,8 +26,15 @@ export function Sidebar() {
     { id: '🕑 Recent', label: '🕑 Recent', count: recentNames.length },
   ]
 
-  const count = (cat: string | null) =>
-    cat ? styles.filter(s => s.category === cat).length : styles.length
+  const count = (cat: string | null) => {
+    const { styles, activeSource } = useStylesStore.getState()
+    const src = activeSource
+      ? styles.filter(s => s.source_file === activeSource)
+      : styles
+    return cat
+      ? src.filter(s => s.category === cat).length
+      : src.length
+  }
 
   return (
     <div className="w-44 shrink-0 flex flex-col gap-1 overflow-y-auto pr-2">

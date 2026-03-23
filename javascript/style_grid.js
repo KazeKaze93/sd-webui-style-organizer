@@ -1628,7 +1628,7 @@
         });
     }
 
-    function deleteStyle(tabName, styleName, source) {
+    function deleteStyle(tabName, styleName, source, onDeleted) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
         modal.appendChild(el("h3", {
@@ -1648,7 +1648,10 @@
                 overlay.remove();
                 apiPost("/style_grid/style/delete", { name: styleName, source: source })
                     .then(assertNoApiError)
-                    .then(function () { refreshPanel(tabName); })
+                    .then(function () {
+                        refreshPanel(tabName);
+                        if (typeof onDeleted === "function") onDeleted();
+                    })
                     .catch(function (err) {
                         console.error("[Style Grid] Delete failed:", err);
                         showStatusMessage(tabName, "Delete failed", true);
@@ -3601,6 +3604,42 @@
             if (!e.data || !e.data.type) return;
             if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
+            function findStyleByName(styleName) {
+                var cats = (state[tab] && state[tab].categories) || {};
+                for (var cat in cats) {
+                    if (!Object.prototype.hasOwnProperty.call(cats, cat)) continue;
+                    var list = cats[cat] || [];
+                    var found = list.find(function (s) { return s.name === styleName; });
+                    if (found) return found;
+                }
+                return null;
+            }
+            function sendStylesUpdateToFrame() {
+                apiGet("/style_grid/styles").then(function (data) {
+                    var styles = [];
+                    if (Array.isArray(data)) {
+                        styles = data;
+                    } else if (data.categories) {
+                        styles = Object.values(data.categories).flat();
+                    } else if (data.styles) {
+                        styles = data.styles;
+                    }
+                    var seen = new Set();
+                    styles = styles.filter(function (s) {
+                        if (seen.has(s.name)) return false;
+                        seen.add(s.name);
+                        return true;
+                    });
+                    if (frame.contentWindow) {
+                        frame.contentWindow.postMessage({
+                            type: "SG_STYLES_UPDATE",
+                            styles: styles,
+                        }, "*");
+                    }
+                }).catch(function (err) {
+                    console.error("[Style Grid] v2: failed to send updated styles:", err);
+                });
+            }
 
             if (msg.type === "SG_READY") {
                 if (state[tab].sgV2HostInitSent) return;
@@ -3678,6 +3717,36 @@
             }
             if (msg.type === "SG_NEW_STYLE") {
                 openStyleEditor(tab, null);
+            }
+            if (msg.type === "SG_EDIT_STYLE") {
+                var styleToEdit = findStyleByName(msg.styleId);
+                if (styleToEdit) {
+                    openStyleEditor(tab, styleToEdit);
+                }
+            }
+            if (msg.type === "SG_DUPLICATE_STYLE") {
+                var styleToDup = findStyleByName(msg.styleId);
+                if (styleToDup) {
+                    duplicateStyle(tab, styleToDup);
+                }
+            }
+            if (msg.type === "SG_MOVE_TO_CATEGORY") {
+                var styleToMove = findStyleByName(msg.styleId);
+                if (styleToMove) {
+                    moveToCategory(tab, styleToMove);
+                }
+            }
+            if (msg.type === "SG_GENERATE_PREVIEW") {
+                generateThumbnail(tab, msg.styleId);
+            }
+            if (msg.type === "SG_UPLOAD_PREVIEW") {
+                uploadThumbnail(tab, msg.styleId);
+            }
+            if (msg.type === "SG_DELETE_STYLE") {
+                var styleToDelete = findStyleByName(msg.styleId);
+                if (styleToDelete) {
+                    deleteStyle(tab, styleToDelete.name, styleToDelete.source || styleToDelete.source_file, sendStylesUpdateToFrame);
+                }
             }
         });
 

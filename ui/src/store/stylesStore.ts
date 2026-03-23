@@ -96,8 +96,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   },
 
   categories: () => {
-    const { styles } = get()
-    return [...new Set(styles.map(s => s.category).filter(Boolean))].sort()
+    const { styles, activeSource } = get()
+    const filtered = activeSource
+      ? styles.filter(s => s.source_file === activeSource)
+      : styles
+    return [...new Set(filtered.map(s => s.category).filter(Boolean))].sort()
   },
 
   filteredStyles: () => {

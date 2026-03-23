@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { sendToHost } from '../bridge'
 import { getCategoryColor, useStylesStore } from '../store/stylesStore'
@@ -6,9 +6,9 @@ import { StyleCard } from './StyleCard'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
-    filteredStyles, activeCategory, activeSource, compactMode,
+    filteredStyles, activeCategory, compactMode,
     collapsedCategories, toggleCollapse,
-    selectedStyles, selectAllInCategory, search, styles
+    selectedStyles, selectAllInCategory
   } = useStylesStore()
   const [catMenu, setCatMenu] = useState<{
     x: number
@@ -17,10 +17,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     missingCount: number
   } | null>(null)
 
-  const filtered = useMemo(
-    () => filteredStyles(),
-    [filteredStyles, styles, search, activeCategory, activeSource]
-  )
+  const filtered = filteredStyles()
 
   if (filtered.length === 0) {
     return (

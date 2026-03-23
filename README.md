@@ -63,6 +63,14 @@ The small tab badge in the panel header shows the active host context.
 
 ![Browse and filter styles](docs/screenshots/browse-and-filter.png)
 
+### Search and autocomplete
+- Type in the search box to filter cards by style name in real time.
+- A suggestion popup appears while you type and shows matching style names with their category.
+- Use arrow keys + Enter to pick a suggestion quickly, or click the item with mouse.
+- Search respects your current source/category view, so results stay relevant to what is on screen.
+
+![Search with autocomplete suggestions](docs/screenshots/search-autocomplete.png)
+
 ### 2) Apply styles from cards
 - Card click toggles selection and applies/unapplies style.
 - Selected styles are tracked in the bottom selected bar.

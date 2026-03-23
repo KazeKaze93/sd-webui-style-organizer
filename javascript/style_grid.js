@@ -3898,12 +3898,6 @@
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        var seen = new Set();
-                        var deduped = allStyles.filter(function (s) {
-                            if (seen.has(s.name)) return false;
-                            seen.add(s.name);
-                            return true;
-                        });
                         state[tab].categories = {};
                         allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";

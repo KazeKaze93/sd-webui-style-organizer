@@ -102,15 +102,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             borderLeftWidth: '3px'
           }}
         >
-          {/* Favorite star */}
-          <button
-            type="button"
-            onClick={e => { e.stopPropagation(); toggleFavorite(style.name) }}
-            className={`absolute top-1.5 right-6 text-xs transition-colors z-10
-              ${fav ? 'text-yellow-400' : 'text-sg-border hover:text-sg-muted'}`}
-          >★</button>
-
-          <div className={`${windowed ? 'text-xs' : 'text-sm'} font-medium text-sg-text truncate ${windowed ? 'pr-6' : 'pr-8'}`}>
+          <div className={`${windowed ? 'text-xs' : 'text-sm'} font-medium text-sg-text truncate`}>
             {displayName}
           </div>
 

@@ -41,6 +41,7 @@ from stylegrid.thumbnails import (
     thumbnail_generation_manager,
 )
 
+
 def detect_conflicts(style_names):
     styles_map = {s["name"]: s for s in get_cached_styles()}
     conflicts = []

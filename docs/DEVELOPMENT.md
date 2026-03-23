@@ -28,6 +28,7 @@ flowchart LR
 │  ├─ src/bridge.ts                   # Typed SG_* message contract
 │  ├─ src/store/stylesStore.ts        # Client state/actions/derived filters
 │  └─ src/components/                 # UI building blocks
+├─ tests/                              # pytest (csv_io, routes, wildcards); test_js.html
 ├─ docs/API.md
 ├─ docs/CSV_FORMAT.md
 └─ docs/DEVELOPMENT.md
@@ -78,6 +79,16 @@ sequenceDiagram
 - `data/backups/`: CSV backups.
 
 Client-side localStorage keys are also used for UI state (`favorites`, `recent`, source filter, collapsed categories, etc.).
+
+## Testing
+
+| Layer | How |
+|-------|-----|
+| **Python** | `python -m pytest tests/ -q` — CSV I/O, HTTP routes, `{sg:…}` wildcards (`tests/README.md`). |
+| **JS prompt helpers** | Open `tests/test_js.html` in a browser (no server). |
+| **UI** | Included in root `npm run lint` via `lint:ui` (`npm --prefix ui run lint`). No Jest/Vitest suite yet. |
+
+Gaps worth knowing: React/iframe logic and `javascript/style_grid.js` are not covered by CI automation; regressions are caught by manual QA or future e2e tests.
 
 ## Practical Notes
 

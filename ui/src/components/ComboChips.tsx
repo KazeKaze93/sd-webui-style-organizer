@@ -5,6 +5,7 @@ interface Props {
 }
 
 function parseComboTokens(description: string): string[] {
+  /** Parses "Combos: TOKEN1; TOKEN2; ..." segment from style description text. */
   // Parse "Some text. Combos: TOKEN1; TOKEN2; TOKEN3."
   const match = description.match(/Combos?:\s*([^.]+)/i)
   if (!match) return []
@@ -28,6 +29,7 @@ export function ComboChips({ style }: Props) {
   if (comboTokens.length === 0 && conflictTokens.length === 0) return null
 
   const resolveToken = (token: string) => {
+    // Resolution priority: exact style name -> category token -> unknown token.
     // Try exact style name match
     const exact = styles.find(s => s.name === token)
     if (exact) return { type: 'style', style: exact }

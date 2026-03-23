@@ -192,6 +192,7 @@
         return Array.from(s).sort();
     }
     function findStyleByName(t, n) {
+        // Looks up style by name inside host cache state[tab].categories.
         for (const styles of Object.values(state[t].categories)) {
             const f = styles.find(function (s) { return s.name === n; });
             if (f) return f;
@@ -733,7 +734,9 @@
         });
     }
 
+    // Exposed on window so iframe message handlers can trigger host-side prompt mutations.
     window._sgApplyStyle = applyStyleImmediate;
+    // Exposed on window so iframe message handlers can trigger host-side prompt rollback.
     window._sgUnapplyStyle = unapplyStyle;
 
     function unapplyStyle(tabName, styleName) {
@@ -3671,6 +3674,7 @@
     // STATE + INIT (boot, triggers, MutationObserver)
     // ════════════════════════════════════════════════════
     // React iframe bridge (txt2img iframe first; init once via onUiLoaded).
+    // Creates iframe wrapper, wires SG_* message bridge, and hydrates host style cache.
     function initSGFrame(tab) {
         var existing = document.getElementById("sg-frame-" + tab);
         if (existing) {
@@ -3731,12 +3735,6 @@
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        var seen = new Set();
-                        var deduped = allStyles.filter(function (s) {
-                            if (seen.has(s.name)) return false;
-                            seen.add(s.name);
-                            return true;
-                        });
                         // Populate host-side style cache for applyStyleImmediate
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};
@@ -3763,17 +3761,12 @@
             if (!e.data || !e.data.type) return;
             if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
+            // Event-driven refresh path used after SG actions that mutate styles on disk.
             function refreshAndNotifyFrame() {
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        var seen = new Set();
-                        var deduped = allStyles.filter(function (s) {
-                            if (seen.has(s.name)) return false;
-                            seen.add(s.name);
-                            return true;
-                        });
                         state[tab].categories = {};
                         allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
@@ -3791,6 +3784,7 @@
             }
             state[tab].refreshAndNotifyFrame = refreshAndNotifyFrame;
             function findStyleByName(styleName) {
+                // Searches the tab-local host cache built from state[tab].categories.
                 var cats = (state[tab] && state[tab].categories) || {};
                 for (var cat in cats) {
                     if (!Object.prototype.hasOwnProperty.call(cats, cat)) continue;
@@ -3808,12 +3802,6 @@
                         var allStyles = Array.isArray(data)
                             ? data
                             : Object.values(data.categories || {}).flat();
-                        var seen = new Set();
-                        var deduped = allStyles.filter(function (s) {
-                            if (seen.has(s.name)) return false;
-                            seen.add(s.name);
-                            return true;
-                        });
                         // Populate host-side style cache for applyStyleImmediate
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};

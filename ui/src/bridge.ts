@@ -1,4 +1,4 @@
-// ── Message types: Host (Forge) → Frame (React app) ──────────
+/** Messages sent from Forge host script to the React iframe. */
 export type HostMessage =
   | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
@@ -9,7 +9,7 @@ export type HostMessage =
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
 
-// ── Message types: Frame (React app) → Host (Forge) ──────────
+/** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
   | { type: 'SG_READY' }
   | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; silent?: boolean }
@@ -45,12 +45,14 @@ export interface Style {
   has_thumbnail:     boolean
 }
 
-// ── Send to host ──────────────────────────────────────────────
+/** Posts one typed bridge message to the Forge host window. */
 export function sendToHost(msg: FrameMessage): void {
   window.parent.postMessage(msg, '*')
 }
 
-// ── Listen from host ──────────────────────────────────────────
+/**
+ * Subscribes to host postMessage events and returns an unsubscribe cleanup.
+ */
 export function onHostMessage(
   handler: (msg: HostMessage) => void
 ): () => void {

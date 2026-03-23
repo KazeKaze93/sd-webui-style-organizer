@@ -6,6 +6,7 @@ import os
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import EXT_DIR, get_styles_dirs
 
+# Canonical CSV column order used when writing style rows back to disk.
 FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]
 
 
@@ -17,6 +18,12 @@ def _sanitize_csv_cell(value):
 
 
 def parse_styles_csv(filepath):
+    """
+    Parse one styles CSV file as UTF-8/UTF-8-BOM and return normalized style dicts.
+
+    Returns list items with keys: name, prompt, negative_prompt, description,
+    category_explicit, source (basename), and source_file (absolute path).
+    """
     styles = []
     if not os.path.isfile(filepath):
         return styles
@@ -47,8 +54,8 @@ def parse_styles_csv(filepath):
                         "source": os.path.basename(filepath),
                         "source_file": os.path.abspath(filepath),
                     })
-    except Exception as e:
-        print(f"[Style Grid] Error reading {filepath}: {e}")
+    except Exception:
+        return styles
     return styles
 
 
@@ -119,6 +126,9 @@ def categorize_styles(styles):
 
 
 def save_style_to_csv(name, prompt, negative_prompt, description="", source_file=None, category=None):
+    """
+    Upsert a style row in target CSV: replace the first matching name row, or append new row.
+    """
     if source_file:
         source_file = os.path.basename(source_file)
         if not source_file.lower().endswith('.csv'):
@@ -182,6 +192,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
 
 
 def delete_style_from_csv(name, source_file=None):
+    """Delete style row by name from selected/inferred source; returns False when not found."""
     if not source_file:
         for s in load_all_styles():
             if s["name"] == name:

@@ -7,6 +7,7 @@ interface Conflict {
   reason: string
 }
 
+/** Maps category text to a stable palette index for repeatable colors. */
 export function getCategoryColor(category: string): string {
   // Fixed palette of visually distinct colors — no duplicates
   const PALETTE = [
@@ -54,6 +55,7 @@ export function getCategoryColor(category: string): string {
   return PALETTE[index]
 }
 
+/** Central UI state for style filtering, selection, and host-side actions. */
 interface StylesStore {
   toasts: { id: number; message: string; variant: 'success' | 'error' | 'info' }[]
   // Data
@@ -68,13 +70,19 @@ interface StylesStore {
   
   // Selection
   selectedStyles: Style[]
+  /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
   silentMode: boolean
   compactMode: boolean
+  /** Favorite style names persisted in localStorage. */
   favorites: Set<string>
+  /** Most recently applied style names (max 10). */
   recentNames: string[]
+  /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
+  /** Usage counters loaded/persisted via backend API. */
   usageCounts: Record<string, number>
+  /** User-defined category order for All Sources view. */
   categoryOrder: string[]
   
   // Actions
@@ -259,6 +267,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     })), 3000)
   },
   detectConflicts: () => {
+    // Conflict heuristic: compare normalized prompt tags against each
+    // other style's negative tags; any overlap is treated as a conflict.
     const { selectedStyles } = get()
     const conflicts: Conflict[] = []
 
@@ -378,7 +388,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       return matchSource && matchCat && matchSearch
     })
 
-    // All Sources: keep one card per style name.
+    // All Sources keeps one card per style name to avoid cross-source duplicates.
     if (!activeSource) {
       const seen = new Set<string>()
       filtered = filtered.filter(s => {

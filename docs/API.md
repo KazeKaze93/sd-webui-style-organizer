@@ -17,6 +17,19 @@ flowchart LR
 
 The API contract in this document reflects `scripts/stylegrid/routes.py`.
 
+## Generation-time: `{sg:…}` wildcards
+
+This is **not** an HTTP API. During each generation, `scripts/style_grid.py` runs `resolve_sg_wildcards` from `scripts/stylegrid/wildcards.py` over the positive and negative prompt strings.
+
+| Topic | Behavior |
+|---|---|
+| Syntax | `{sg:<category>}` — matched by regex `\{sg:([^}]+)\}`. |
+| Lookup | Token category is lowercased; map key is lowercased category from loaded styles. |
+| Replacement | One random style in that category; inserts that style’s CSV **`prompt`** field. |
+| No match | Original `{sg:…}` text is kept. |
+
+**Compatibility:** Automatic1111-style wildcard extensions (e.g. file-based **`__wildcard__`** tokens) use **different** syntax. They do not consume `{sg:…}` and Style Grid does not consume `__…__` — no mandatory conflict. **`{sg:…}` does not require** installing external wildcard extensions; it is self-contained in this extension.
+
 ## Styles
 
 ## GET /styles

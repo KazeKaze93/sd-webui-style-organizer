@@ -293,7 +293,7 @@ export default function App() {
       <div className="flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>
         {/* Sidebar */}
         <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
-          style={{ width: isFullscreen ? '170px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
+          style={{ width: isFullscreen ? '210px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
           <Sidebar />
         </div>
 

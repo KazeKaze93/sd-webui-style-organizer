@@ -310,6 +310,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   },
   setCategoryOrder: (order: string[]) => {
     localStorage.setItem('sg_v2_category_order', JSON.stringify(order))
+    localStorage.setItem('sg_v2_category_order_source', 'all')
     set({ categoryOrder: order })
     // Sync to backend same as old panel
     fetch('/style_grid/category_order', {
@@ -327,11 +328,31 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const all = [...new Set(
       filtered.map(s => s.category).filter(Boolean)
     )]
-    if (categoryOrder.length === 0) return all.sort()
-    // Put ordered categories first, then alphabetical remainder
-    const ordered = categoryOrder.filter(c => all.includes(c))
-    const rest = all.filter(c => !categoryOrder.includes(c)).sort()
-    return [...ordered, ...rest]
+
+    // When specific source selected — always alphabetical
+    // Saved category order only applies to All Sources view
+    if (activeSource) {
+      return all.sort()
+    }
+
+    // Only use saved order if it was saved for All Sources context
+    // (contains most of the current categories)
+    const allSorted = all.sort()
+    if (categoryOrder.length === 0) return allSorted
+
+    const savedForSource = localStorage.getItem('sg_v2_category_order_source')
+    if (savedForSource !== 'all' && !activeSource) {
+      return allSorted
+    }
+
+    const relevantOrder = categoryOrder.filter(c => all.includes(c))
+    const coverage = relevantOrder.length / all.length
+
+    // If saved order covers less than 80% of current categories — ignore it
+    if (coverage < 0.8) return allSorted
+
+    const rest = all.filter(c => !relevantOrder.includes(c)).sort()
+    return [...relevantOrder, ...rest]
   },
 
   filteredStyles: () => {

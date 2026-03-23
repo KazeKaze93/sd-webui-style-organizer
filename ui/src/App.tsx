@@ -7,6 +7,7 @@ import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
 import { SelectedBar } from './components/SelectedBar'
+import { ThumbProgressModal } from './components/ThumbProgressModal'
 import {
   Tooltip,
   TooltipContent,
@@ -43,14 +44,28 @@ const ToolBtn = ({
 )
 
 export default function App() {
-  const { setStyles, selectedStyles, silentMode, toggleSilent } = useStylesStore()
+  const {
+    setStyles,
+    selectedStyles,
+    silentMode,
+    toggleSilent,
+    toggleCompact,
+    collapsedCategories,
+    collapseAll,
+    expandAll,
+  } = useStylesStore()
 
   useEffect(() => {
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_INIT' || msg.type === 'SG_STYLES_UPDATE') {
-        const arr = Array.isArray(msg.styles)
-          ? msg.styles
-          : (msg.styles as any)?.styles ?? []
+        const raw = (msg as any).styles
+        const arr = Array.isArray(raw)
+          ? raw
+          : Array.isArray(raw?.styles)
+            ? raw.styles
+            : raw?.categories
+              ? Object.values(raw.categories).flat()
+              : []
         setStyles(arr, msg.type === 'SG_INIT' ? msg.tab : 'txt2img')
       }
       if (msg.type === 'SG_CLOSE') {
@@ -114,6 +129,18 @@ export default function App() {
               onClick={() => sendToHost({ type: 'SG_REFRESH' })}
             />
             <ToolBtn
+              icon="▪"
+              label="Compact mode"
+              onClick={() => toggleCompact()}
+            />
+            <ToolBtn
+              icon="↕"
+              label="Collapse all"
+              onClick={() =>
+                collapsedCategories.size > 0 ? expandAll() : collapseAll()
+              }
+            />
+            <ToolBtn
               icon="➕"
               label="New style"
               onClick={() => sendToHost({ type: 'SG_NEW_STYLE' })}
@@ -148,6 +175,7 @@ export default function App() {
 
       {/* Selected bar */}
       <SelectedBar />
+      <ThumbProgressModal />
     </motion.div>
   )
 }

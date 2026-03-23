@@ -234,7 +234,22 @@ def _register_thumbnail_routes(app):
     @app.get("/style_grid/thumbnail")
     async def api_get_thumbnail(name: str = ""):
         path = get_thumbnail_path(name)
+        print(f"[SG thumbnail] name={name!r} path={path!r} exists={os.path.exists(path)}")
         exists = os.path.isfile(path)
+
+        if not exists:
+            # Generation hashes include source_file when available; resolve the same way.
+            style = next((s for s in get_cached_styles() if s.get("name") == name), None)
+            if style:
+                path_with_source = get_thumbnail_path(name, style.get("source_file") or "")
+                print(
+                    f"[SG thumbnail] name={name!r} path={path_with_source!r} "
+                    f"exists={os.path.exists(path_with_source)}"
+                )
+                if os.path.isfile(path_with_source):
+                    path = path_with_source
+                    exists = True
+
         logger.debug("[Style Grid] GET thumbnail: name=%r, path=%s, exists=%s", name, path, exists)
         if not exists:
             return Response(status_code=404)

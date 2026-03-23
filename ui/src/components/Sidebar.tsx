@@ -1,25 +1,15 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useStylesStore } from '../store/stylesStore'
-
-/** Same HSL generation as `getCategoryColor` in javascript/style_grid.js */
-function hashString(s: string): number {
-  let h = 0
-  for (let i = 0; i < s.length; i++) {
-    h = (h << 5) - h + s.charCodeAt(i)
-    h = h & h
-  }
-  return Math.abs(h)
-}
-
-function getCategoryColor(c: string): string {
-  const hue = hashString(c) % 360
-  const sat = 55 + (hashString(`${c}s`) % 25)
-  const light = 48 + (hashString(`${c}l`) % 12)
-  return `hsl(${hue},${sat}%,${light}%)`
-}
+import { sendToHost } from '../bridge'
+import { getCategoryColor, useStylesStore } from '../store/stylesStore'
 
 export function Sidebar() {
-  const { activeCategory, setCategory, categories, styles, favorites, recentNames } = useStylesStore()
+  const { activeCategory, setCategory, categories, favorites, recentNames } = useStylesStore()
+  const [catMenu, setCatMenu] = useState<{
+    x: number
+    y: number
+    cat: string
+  } | null>(null)
   const cats = categories()
   const specialCategories = [
     { id: '★ Favorites', label: '★ Favorites', count: favorites.size },
@@ -87,7 +77,13 @@ export function Sidebar() {
             key={cat}
             type="button"
             onClick={() => setCategory(cat)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              setCatMenu({ x: e.clientX, y: e.clientY, cat })
+            }}
             className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors relative overflow-hidden
+              group cursor-context-menu
               ${isActive
                 ? 'text-white'
                 : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
@@ -107,12 +103,47 @@ export function Sidebar() {
               />
               <span className="truncate">{cat}</span>
             </span>
-            <span className="relative z-10 text-xs opacity-60 shrink-0">
-              {count(cat)}
+            <span className="ml-auto flex items-center gap-2 relative z-10 shrink-0">
+              <span className="text-xs opacity-60">{count(cat)}</span>
             </span>
           </button>
         )
       })}
+      {catMenu && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setCatMenu(null)} />
+          <div
+            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
+            style={{ left: catMenu.x, top: catMenu.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+              onClick={() => {
+                sendToHost({
+                  type: 'SG_WILDCARD_CATEGORY',
+                  category: catMenu.cat
+                })
+                setCatMenu(null)
+              }}
+            >
+              🎲 Add category as wildcard
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+              onClick={() => {
+                sendToHost({
+                  type: 'SG_GENERATE_CATEGORY_PREVIEWS',
+                  category: catMenu.cat,
+                  missingCount: 0
+                })
+                setCatMenu(null)
+              }}
+            >
+              🎨 Generate previews...
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

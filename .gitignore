@@ -12,6 +12,17 @@ dist/
 build/
 *.manifest
 
+# Python tooling / env (local)
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
 # JS / Node (if any)
 node_modules/
 npm-debug.log*

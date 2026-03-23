@@ -1,298 +1,275 @@
-# Style Grid v5.0
-
-A visual style selector for Stable Diffusion WebUI Forge.
-Replaces the default dropdown with a searchable, categorized grid.
-
-A grid/gallery-based style selector extension for [Stable Diffusion WebUI Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge). Replaces the default dropdown with a searchable, categorized grid — multi-select, favorites, source filter, instant apply, silent mode, presets, conflict detection, and more.
-
-![UI](https://img.shields.io/badge/UI-Grid%20Selector-6366f1?style=flat-square)
-
----
-
-## What's New in v5.0
-
-### Smart Deduplication
-When viewing **All Sources**, styles that exist in multiple CSV files
-are collapsed into a single card. Clicking a deduplicated card opens a
-**source picker** showing each CSV variant with a prompt preview, so you
-choose exactly which version to apply.
-
-### Drag-and-Drop Category Ordering
-Drag categories in the sidebar to reorder them. Your custom order is
-saved automatically (browser + `data/category_order.json`) and persists
-across restarts. New categories from added CSVs appear alphabetically
-at the bottom.
-
-### Batch Thumbnail Generation
-Right-click any category header → **Generate previews (N missing)**.
-Processes styles sequentially with a progress modal. Supports **Skip**
-(jump to next style) and **Cancel** (stop after current finishes).
-No parallel generation — your GPU handles one at a time.
-
-### Persistent Category Collapse
-Collapsed/expanded state for each category is saved in the browser.
-Categories you collapse stay collapsed between sessions.
-
-### Simplified Search
-Search is now pure text matching against style names and descriptions.
-Multi-word queries use AND logic. The previous structured operators
-(`cat:`, `tag:`, `prefix:`, etc.) have been removed for simplicity.
-
-See [CHANGELOG.md](CHANGELOG.md) for full history.
-
-### Previous (v4.0)
-
-<details>
-<summary>v4.0 features (click to expand)</summary>
-
-#### Smart Search with Autocomplete
-Start typing to search across all style names.
-Autocomplete dropdown suggests matching styles as you type —
-searches anywhere in the name, case-insensitive.
-
-#### Thumbnail Preview on Hover
-Hover over any card for 700ms to see a preview popup with:
-- Thumbnail image (if uploaded or generated)
-- Style display name
-- Prompt content preview
-
-**Add thumbnails two ways:**
-1. Right-click a card → **Upload preview image** — pick any image from disk
-2. Right-click a card → **Generate preview (SD)** — auto-generates using
-   your current model with the style's prompt, fixed seed 42, 384×512px
-
-Cards with thumbnails get a subtle left-border indicator.
-Thumbnails stored in `data/thumbnails/` inside the extension folder.
-
-#### Recommended Combos
-Select any style → a row appears at the bottom showing recommended
-combinations from the style's description field.
-
-- **Blue chips** = specific styles. Click to apply immediately.
-- **Orange chips** = category wildcards. Click to filter the grid.
-- **Red chips** = conflicts to avoid.
-- ✓ mark on chips already selected.
-
-#### Performance
-- `content-visibility: auto` for instant rendering regardless of style count
-- Server-side style cache with ETag
-- All API calls have error handling with visible status messages
-
-#### Style Editor Improvements
-- **Description & Combos field** for combo suggestions
-- Delete and Move dialogs are proper modals
-- Error feedback for failed operations
-
-</details>
-
----
-
-## What it does
-
-- **Visual grid** — Styles appear as cards in a categorized grid instead of a long dropdown.
-- **Dynamic categories** — Grouping by name: `PREFIX_StyleName` → category **PREFIX**; `name-with-dash` → category from the part before the dash; otherwise from the CSV filename. Colors are generated from category names.
-- **Instant apply** — Click a card to select **and** immediately apply its prompt. Click again to deselect and cleanly remove it. No Apply button needed.
-- **Multi-select** — Select several styles at once; each is applied independently and can be removed individually.
-- **Favorites** — Star any style; a **★ Favorites** section at the top lists them. Favorites update immediately (no reload).
-- **Source filter** — Dropdown to show **All Sources** or a single CSV file (e.g. `styles.csv`, `styles_integrated.csv`). Combines with search.
-- **Search** — Filter by style name; works together with the source filter. Category names in the search box show only that category.
-- **Category view** — Sidebar (when many categories): show **All**, **★ Favorites**, **🕑 Recent**, or one category. Compact bar when there are few categories.
-- **Silent mode** — Toggle `👁 Silent` to hide style content from prompt fields. Styles are injected at generation time only and recorded in image metadata as `Style Grid: style1, style2, ...`.
-- **Style presets** — Save any combination of selected styles as a named preset (📦). Load or delete presets from the menu. Stored in `data/presets.json`.
-- **CSV Table Editor** — Full inline table editor for any CSV source: filter by column, edit cells, save individual rows, per-row status indicators. Access via toolbar.
-- **Autocomplete apply** — Selecting an autocomplete suggestion immediately applies the style and adds it to the Selected bar.
-- **Conflict detector** — Warns when selected styles contradict each other (e.g. one adds a tag that another negates). Shows a pulsing ⚠ badge with details on hover.
-- **Context menu** — Right-click any card: Edit, Duplicate, Delete, Move to category, Copy prompt to clipboard.
-- **Built-in style editor** — Create and edit styles directly from the grid (➕ or right-click → Edit). Changes are written to CSV — no manual file editing needed.
-- **Recent history** — 🕑 section showing the last 10 used styles for quick re-access.
-- **Usage counter** — Tracks how many times each style was used; badge on cards. Stats in `data/usage.json`.
-- **Random style** — 🎲 picks a random style (use at your own risk!).
-- **Manual backup** — 💾 snapshots all CSV files to `data/backups/` (keeps last 20).
-- **Import/Export** — 📥 export all styles, presets, and usage stats as JSON, or import from one.
-- **Dynamic refresh** — Auto-detects CSV changes every 5 seconds; manual 🔄 button also available.
-- **{prompt} placeholder highlight** — Styles containing `{prompt}` are marked with a ⟳ icon.
-- **Collapse / Expand** — Collapse or expand all category blocks. **Compact** mode for a denser layout.
-- **Select All** — Per-category "Select All" to toggle the whole group.
-- **Selected summary** — Footer shows selected styles as removable tags; the trigger button shows a count badge.
-- **Preferences** — Source choice and compact mode are saved in the browser (survive refresh).
-- **Both tabs** — Separate state for txt2img and img2img; same behavior on both.
-- **Smart tag deduplication** — When applying multiple styles, duplicate tags are automatically skipped. Works in both normal and silent mode.
-- **Source-aware randomizer** — The 🎲 button respects the selected CSV source: if a specific file is selected, random picks only from that file.
-- **Search clear button** — × button in the search field for quick clear.
-- **Drag-and-drop prompt ordering** — Tags of selected styles in the footer can be dragged to change order. The prompt updates in real time; user text stays in place.
-- **Category wildcard injection** — Right-click on a category header → "Add as wildcard to prompt" inserts all styles of the category as `__sg_CATEGORY__` into the prompt. Compatible with Dynamic Prompts.
-
----
-
-## User guide
-
-### Opening the grid
-
-1. Find the **grid icon button** (⊞) next to the other tools under the Generate button (txt2img or img2img).
-2. Click it to open the **Style Grid** modal over the page.
-
-<img width="342" height="214" alt="{2B661361-44A2-41D4-A150-C50683B35F1F}" src="https://github.com/user-attachments/assets/fccfbb2b-913d-4c5f-9f2f-b7e3bf952d8a" />
-
-
-### Browsing and filtering
-
-- **Categories** — Styles are grouped (e.g. BASE, BODY, ★ Favorites, 🕑 Recent). Click a category in the sidebar (or **All** / **★ Favorites** in the compact bar) to show only that group.
-- **Source** — Use the dropdown to the left of the search bar: **All Sources** or a specific CSV file. Only styles from that source are shown.
-- **Search** — Type in the search box to filter by style name. Search applies on top of the current source and category view.
-
-<img width="1113" height="790" alt="{9F10AF51-46C8-441E-9830-0C838140C05A}" src="https://github.com/user-attachments/assets/2346aa16-113a-4ef2-8196-260ff87a8c46" />
-
-
-
-### Selecting and applying styles
-
-- **Click a card** to select and apply it instantly — the style's prompt is added to your prompt fields immediately. Click again to deselect and remove.
-- **Select All** on a category header to select or clear all styles in that category.
-- **Star (★)** on a card to add or remove it from **★ Favorites**; the Favorites block updates at once.
-- **Silent mode** — When `👁 Silent` is active, clicking a card selects it, but prompts are not modified visually. Styles are injected during generation and appear in image metadata.
-- You can reorder applied styles by dragging their tags in the Selected footer. The prompt field updates to reflect the new order.
-
-<img width="1110" height="776" alt="{7E6AFE9D-ED25-4B17-8AA1-13CC2CEF3528}" src="https://github.com/user-attachments/assets/f0a8a0d8-564b-4a38-b97a-651d0c2a42c8" />
-<img width="921" height="743" alt="{6512EE52-164C-410A-9A19-99EFC3556F05}" src="https://github.com/user-attachments/assets/fb075df3-d3cd-4a10-b36f-f2e2d61da162" />
-
-
-
-### Prompt behavior
-
-- Styles without `{prompt}` have their prompt **appended** (comma-separated).
-- Styles with `{prompt}` **wrap** your existing prompt (e.g. `masterpiece, {prompt}, highres` inserts your text in place of `{prompt}`). These are marked with a ⟳ icon on the card.
-
-<img width="1082" height="760" alt="{610B4A33-E625-4EF2-A5B9-1F52872855E5}" src="https://github.com/user-attachments/assets/4e020754-0cb4-4140-beb9-a54e8366be0d" />
-<img width="1888" height="249" alt="{D3D3176B-838E-4F55-8ED9-381884BD63F5}" src="https://github.com/user-attachments/assets/9c1bbc39-fb7a-45f5-bb99-4b106e3f4904" />
-
-
-
-### Header toolbar
-
-| Button | Function |
-|--------|----------|
-| `👁 Silent` | Toggle silent mode (styles applied at generation time only) |
-| `🎲` | Apply a random style |
-| `📦` | Presets — save/load/delete style combinations |
-| `↕` | Collapse/expand all categories |
-| `▪` | Toggle compact mode (saved in browser) |
-| `🔄` | Refresh styles from CSV files |
-| `➕` | Create a new style |
-| `📥` | Import/Export styles as JSON |
-| `💾` | Manual backup of all CSV files |
-| `Clear` | Deselect and unapply all styles |
-| `✕` | Close the Style Grid |
-
----
-
-## Style CSV format and categories
-
-Use the standard Forge/A1111 CSV format:
-
-```csv
-name,prompt,negative_prompt
-BASE_Illustrious_Quality,"masterpiece, best quality, highres","lowres, bad anatomy"
-STYLE_Watercolor,"watercolor painting, soft edges",""
-myfile_My_Custom_Style,"custom prompt here",""
-```
-
-### How categories are chosen
-
-| Rule | Example | Category |
-|------|---------|----------|
-| Name contains `_` | `BODY_Thicc` | **BODY** (uppercase before first `_`) |
-| Name contains `-` (no `_`) | `sai-anime` | **sai** (before first `-`) |
-| Else | `SomeStyle` | From CSV filename (e.g. **Styles_integrated**) |
-| Fallback | — | **OTHER** |
-
-Category colors are generated from the category name (no fixed palette).
-
----
-
-## Data files
-
-The extension stores its data in the `data/` folder:
-
-| File | Contents |
-|------|----------|
-| `data/presets.json` | Saved style presets |
-| `data/usage.json` | Per-style usage counters and timestamps |
-| `data/category_order.json` | Custom sidebar category ordering (auto-created on drag) |
-| `data/backups/` | Timestamped CSV backups (up to 20) |
-| `data/thumbnails/` | Style preview images (keyed by name hash) |
-
-These files are gitignored and created automatically.
-
----
-
-## Adding more styles
-
-1. Use the CSV format above.
-2. Put it in:
-   - Forge root (next to `styles.csv`), or
-   - The extension's **styles/** folder.
-3. The grid auto-refreshes within 5 seconds, or click 🔄 to reload immediately.
-
-You can also create styles directly from the grid using ➕ or right-click → Edit.
-
----
-
-## CSV Format
-
-Five columns: `name, prompt, negative_prompt, description, category`
-
-The `description` field supports combo suggestions:
-
-Combos: STYLE_X; SCENE_Outdoor; LIGHTING_*
-Conflicts: do not mix with BASE_Pony
-
-## Style Packs
-
-Style packs are distributed separately.
-Find official packs on [CivitAI](https://civitai.com) (search "Style Grid pack").
-Place screenshots in docs/screenshots/.
+# Style Grid for Forge
+
+Style Grid replaces the default style dropdown with a fast, visual interface for browsing, selecting, and applying styles in Stable Diffusion WebUI Forge.
+
+It supports:
+- category-based browsing
+- source-aware filtering
+- deduplicated All Sources view with source picker
+- favorites and recent styles
+- drag reorder of selected styles
+- presets, backup, import/export
+- thumbnail generation/upload and cleanup tools
+
+See `CHANGELOG.md` for full release history.
 
 ---
 
 ## Installation
 
-### From URL (Forge Extensions tab)
+### Install from URL (recommended)
+1. Open **Extensions** in Forge.
+2. Go to **Install from URL**.
+3. Paste this repository URL and install.
+4. Restart Forge UI.
 
-1. **Extensions** → **Install from URL**
-2. Paste the repository URL
-3. **Install**, then restart the UI
-
-### Manual
-
+### Manual install
 ```bash
 cd /path/to/stable-diffusion-webui-forge/extensions
-git clone <this-repo-url>
+git clone <this-repository-url> sd-webui-style-organizer
 ```
-
-Then restart the UI.
+Restart Forge UI after cloning.
 
 ---
 
-## Compatibility
+## Quick Start
 
-- Stable Diffusion WebUI Forge (latest)
-- Dark and light themes (panel, cards, search, source dropdown)
-- txt2img and img2img
+1. Open `txt2img` or `img2img`.
+2. Click the **Style Grid** trigger button to open the panel.
+3. Pick a source (`All Sources` or a specific CSV).
+4. Search or browse categories.
+5. Click a style card to apply/unapply.
+6. Use the **top bar** icon buttons (right of the search box) for presets, backup, import/export, etc.
+
+## img2img support
+
+Style Grid works in both generation tabs:
+- txt2img
+- img2img
+
+Behavior is the same in both modes (source filter, deduplication, favorites/recent, context menus, previews, presets).
+The small tab badge in the panel header shows the active host context.
+
+![Style Grid in img2img](docs/screenshots/img2img-support.png)
+
+---
+
+## Core Workflow
+
+### 1) Browse and filter styles
+- Use the left sidebar for category filtering.
+- Use source dropdown for CSV-level filtering.
+- Use search box for instant name filtering.
+
+![Browse and filter styles](docs/screenshots/browse-and-filter.png)
+
+### Search and autocomplete
+- Type in the search box to filter cards by style name in real time.
+- A suggestion popup appears while you type and shows matching style names with their category.
+- Use arrow keys + Enter to pick a suggestion quickly, or click the item with mouse.
+- Search respects your current source/category view, so results stay relevant to what is on screen.
+
+![Search with autocomplete suggestions](docs/screenshots/search-autocomplete.png)
+
+### 2) Apply styles from cards
+- Card click toggles selection and applies/unapplies style.
+- Selected styles are tracked in the bottom selected bar.
+- Reorder selected styles by dragging chips in the selected bar.
+
+![Apply styles from cards — selection and bottom bar](docs/screenshots/apply-and-reorder.png)
+
+### 3) All Sources and duplicate names (source picker)
+- With **All Sources** selected, the grid shows **one card per style name** even if that name appears in several CSV files.
+- If the same name exists in more than one file, the **first click** on that card does not toggle the style yet — it opens a small **source picker** next to the card.
+- The picker lists each duplicate as the **CSV file name only** (no folder path, no `.csv` extension). Choose the row you want; that variant is applied like a normal selection.
+- Click outside the picker to close it without applying.
+- If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
+
+### 4) Favorites and recent
+- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites** (there is no star icon on the tile itself).
+- **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
+- Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists.
+
+![Recent — last applied styles](docs/screenshots/recent-styles.png)
+
+![Favorites — styles saved via context menu](docs/screenshots/favorites-view.png)
+
+![Browsing a category — tiles show names only; use sidebar or context menu for favorites](docs/screenshots/favorites-in-category.png)
+
+### 5) Category context menu: wildcards and previews
+
+**Where to open it**
+
+- **Right-click** a **category row** in the **left sidebar** (the colored category list).
+- **Right-click** the **category header** in the **main grid** when the view is grouped by category (e.g. **All**, **Favorites**, **Recent** — the sticky row with `▼ CATEGORY (count)` and **Select All**).  
+  *(A normal **left-click** on that header only collapses/expands the section.)*
+
+**Menu actions**
+
+| Item | What it does |
+|---|---|
+| **Add category as wildcard** | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
+| **Generate previews** | Queues **thumbnail generation** for styles in that category (batch job in the host). |
+
+**How `{sg:…}` wildcards work**
+
+- **Syntax:** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `scripts/stylegrid/wildcards.py`).
+- **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal Forge prompt.
+- **What gets inserted:** one **random** style from that category; the replacement text is that style’s **`prompt`** field from CSV (not `negative_prompt`). Category matching is **case-insensitive**.
+- **Where you can put it:** positive or negative prompt box — **both strings are scanned**. If the category is unknown or empty, the `{sg:…}` text is **left as-is** (no error).
+- You can type or paste tokens manually; the context menu only inserts the same format.
+
+**Compatibility with other “wildcard” extensions (e.g. `stable-diffusion-webui-wildcards` / Dynamic Prompts `__file__` style)**
+
+- Those stacks usually recognize **different** syntax — commonly **`__name__`** (double underscores) or other Dynamic Prompts / custom grammar — not `{sg:…}`.
+- Style Grid only looks for **`{sg:…}`**; other extensions only interpret **their** patterns. The two do **not** use the same delimiters, so they **do not fight over the same text** in normal use.
+- **You do not need** the Automatic1111 wildcards extension (or any extra wildcard plugin) **for Style Grid’s `{sg:…}` feature** — it is implemented **inside this extension** (Python `resolve_sg_wildcards` + your style CSV data). Other wildcard extensions remain optional for their own `__…__` / file-based workflows.
+
+**Generate previews — sidebar vs grid**
+
+- From the **grid** header menu, **Generate previews (N missing)** appears only when the UI thinks **N** styles in that category still need a cached preview.
+- From the **sidebar** category menu, **Generate previews…** is always shown for that category (full pass for the category).
+
+![Category header context menu — wildcard and missing previews](docs/screenshots/category-context-wildcard-previews.png)
+
+![Category header context menu (alternate view)](docs/screenshots/category-context-wildcard-previews-2.png)
+
+### 6) Style card context menu
+
+**Where to open it**
+
+- **Right-click** a **style card** in the grid. *(Left-click still applies the normal select / source-picker rules.)*
+
+**Menu actions**
+
+| Item | What it does |
+|---|---|
+| **Select** / **Deselect** | Same as a left-click on the card: applies or removes the style from the active selection (and host prompt), without opening the duplicate-source picker. |
+| **Add to Favorites** / **Remove from Favorites** | Toggles the star list for this style name. |
+| **Copy prompt** | Copies this style’s **`prompt`** text to the clipboard. |
+| **Edit** | Opens the host **style editor** for this style. |
+| **Duplicate** | Opens the host flow to duplicate the style (typically into the same or chosen source). |
+| **Move to category…** | Opens the host dialog to change the style’s **category** field. |
+| **Generate preview (SD)** | Runs **thumbnail generation** for this style (Stable Diffusion–based preview in the host). |
+| **Upload preview image** | Opens the host **file picker** to set a custom thumbnail image. |
+| **Delete** | Removes the style (host confirms and updates CSV). |
+
+Click **outside** the menu, or move the pointer **off** the menu panel, to close it.
+
+![Style card context menu](docs/screenshots/style-card-context-menu.png)
+
+### 7) Thumbnail previews and the hover popup
+
+**Generating a preview**
+
+- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview (SD)**. The host runs an SD render and saves an image under `data/thumbnails/` (see **Data and Persistence**).
+- **Per category:** use the **category** context menu → **Generate previews…** (see §5).
+
+After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.
+
+**What the card shows**
+
+- The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — you see it when you **hover**.
+
+**Hover popup (preview window)**
+
+- **Pause ~300 ms** on a card to open the popup (reduces flicker when moving the mouse quickly).
+- **Top:** the thumbnail image (if the file exists and loads). If the image is missing or fails to load, you still get the **text** below.
+- **Title:** the style display name.
+- **Prompt:** first **120 characters** of the style’s **`prompt`** column, with `...` if longer.
+- **Negative:** first **60 characters** of **`negative_prompt`**, prefixed with **−** and shown in a muted red tone.
+
+The popup is **fixed** near the card and flips **above** or **below** depending on available space.
+
+![Hover popup — thumbnail, prompt snippet, negative line](docs/screenshots/thumbnail-hover-preview.png)
+
+---
+
+### 8) Fullscreen mode
+
+- Click the **Fullscreen** button in the top-right corner of the panel to switch between floating window mode and edge-to-edge view.
+- Fullscreen gives the grid and sidebar more horizontal space, which is useful for large category lists and long browsing sessions.
+- Click the same button again to return to the regular floating panel size.
+
+![Fullscreen mode](docs/screenshots/fullscreen-mode.png)
+
+## Top bar (icon buttons on the right)
+
+**What this means:** not a separate “toolbar” window — it is the **top header row** of the Style Grid panel: logo, `txt2img`/`img2img` tag, **source** dropdown, **search**, then a row of **small icon buttons on the right**. Hover an icon to see its tooltip.
+
+![Top bar — icon buttons (right of search)](docs/screenshots/top-bar-icons.png)
+
+| Control | What it does |
+|---|---|
+| 👁 | **Silent mode** — toggles whether applying styles updates prompts quietly (highlighted when on). |
+| 🎲 | **Random style** — picks a random style (respects the active source filter). |
+| 📦 | **Presets** — save/load/delete style sets. |
+| 💾 | **Backup** — creates CSV backup snapshot(s). |
+| 📥 | **Import / Export** — export/import styles, presets, usage. |
+| 📋 | **CSV table editor** — opens the table editor for CSV sources. |
+| 🧹 | **Clear** — clears all selected styles in the panel and on the host prompt. |
+| ▪ | **Compact mode** — toggles a denser card layout. |
+| ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
+| ➕ | **New style** — creates a style in the **currently selected CSV** (`All Sources` must be switched to a specific file first). |
+| *(number)* | Shows how many styles are selected; **⚠️** may appear if conflicts are detected (hover for details). |
+| Fullscreen | Toggles between the floating panel size and edge-to-edge layout. |
+| ✕ | **Close** — closes the Style Grid panel. |
+
+---
+
+## Data and Persistence
+
+Generated files are stored in `data/`:
+
+| File/Folder | Purpose |
+|---|---|
+| `data/presets.json` | Saved presets |
+| `data/usage.json` | Usage counters |
+| `data/category_order.json` | Persisted category order |
+| `data/backups/` | CSV backups |
+| `data/thumbnails/` | Thumbnail image cache |
+
+Local UI state is also stored in browser localStorage (active source, favorites, recent, compact/collapse preferences).
+
+---
+
+## CSV Format
+
+Primary style fields:
+- `name`
+- `prompt`
+- `negative_prompt`
+- optional metadata: `description`, `category`
+
+Detailed specification: `docs/CSV_FORMAT.md`.
+
+---
+
+## API and Developer Docs
+
+- API reference: `docs/API.md`
+- Development guide: `docs/DEVELOPMENT.md`
 
 ---
 
 ## Troubleshooting
 
-| Issue | What to try |
-|-------|-------------|
-| Trigger button not visible | Enable the extension in the Extensions tab; do a full UI restart; check console for `[Style Grid]` messages. |
-| Styles not loading | Ensure CSVs are in Forge root or the extension's `styles/` folder; check `name,prompt,negative_prompt` header and encoding (UTF-8). |
-| Conflict warning wrong | The detector compares comma-separated tokens. Complex prompts with shared common words may trigger false positives. |
-| Silent mode not working | Ensure the extension's `process()` hook is running — check that `Style Grid` appears in your image metadata after generation. |
-| Drag-and-drop not working | Ensure you're dragging the style tags in the footer area (bottom of Style Grid panel), not the cards in the grid. |
+| Issue | What to check |
+|---|---|
+| Panel does not open | Extension enabled + full Forge restart. |
+| Styles missing | CSV location/encoding/header correctness. |
+| Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
+| Order seems wrong | Check active source and category order persistence rules. |
+| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. |
+
+---
+
+## Screenshots in this repo
+
+PNG files live under `docs/screenshots/` and are named to match sections in this README. If the UI changes, replace the images but **keep the same filenames** (see `docs/screenshots/README.md` for a refresh checklist).
 
 ---
 
 ## License
 
-[AGPL-3.0](LICENSE) (GNU Affero General Public License v3.0)
+AGPL-3.0 (`LICENSE`)

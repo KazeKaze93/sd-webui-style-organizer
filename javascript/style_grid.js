@@ -28,6 +28,9 @@
             userPromptBase: "",
             userPromptBaseNeg: "",
             hasThumbnail: new Set(),
+            sgFrame: null,
+            sgFrameWrapper: null,
+            sgV2HostInitSent: false,
         };
     }
     const state = {};
@@ -189,6 +192,7 @@
         return Array.from(s).sort();
     }
     function findStyleByName(t, n) {
+        // Looks up style by name inside host cache state[tab].categories.
         for (const styles of Object.values(state[t].categories)) {
             const f = styles.find(function (s) { return s.name === n; });
             if (f) return f;
@@ -730,6 +734,11 @@
         });
     }
 
+    // Exposed on window so iframe message handlers can trigger host-side prompt mutations.
+    window._sgApplyStyle = applyStyleImmediate;
+    // Exposed on window so iframe message handlers can trigger host-side prompt rollback.
+    window._sgUnapplyStyle = unapplyStyle;
+
     function unapplyStyle(tabName, styleName) {
         const record = state[tabName].applied.get(styleName);
         if (!record) return;
@@ -923,6 +932,7 @@
                        done++;
                        state[tabName2].hasThumbnail.add(styleName);
                        _thumbVersions[styleName] = Date.now();
+                       localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                        _saveThumbVersions();
                        qsa('.sg-card[data-style-name="' +
                            CSS.escape(styleName) + '"]', state[tabName2].panel)
@@ -947,26 +957,38 @@
        processNext(0);
    }
 
-   function generateThumbnail(tabName, styleName) {
+   function generateThumbnail(tabName, styleName, onDone, onProgress) {
         showStatusMessage(tabName, "🎨 Generating preview for " +
             styleName.split("_").slice(1).join(" ") + "...");
+        if (typeof onProgress === "function") {
+            onProgress("generating", 0);
+        }
 
         apiPost("/style_grid/thumbnail/generate", { name: styleName })
             .then(function (r) {
                 if (r.error) {
                     showStatusMessage(tabName, "Generation failed: " + r.error, true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                     return;
                 }
-                pollGenerationStatus(tabName, styleName, 0);
+                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress);
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
+                if (typeof onProgress === "function") {
+                    onProgress("error");
+                }
             });
     }
 
-    function pollGenerationStatus(tabName, styleName, attempts) {
+    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress) {
         if (attempts > 60) {
             showStatusMessage(tabName, "Generation timed out", true);
+            if (typeof onProgress === "function") {
+                onProgress("error");
+            }
             return;
         }
         apiGet("/style_grid/thumbnail/gen_status?name=" +
@@ -975,11 +997,15 @@
                 // r could be a FastAPI 404 JSON like {"detail": "Not Found"}
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     showStatusMessage(tabName, "Generation endpoint not found", true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                     return;
                 }
                 if (r.status === "done") {
                     state[tabName].hasThumbnail.add(styleName);
                     _thumbVersions[styleName] = Date.now();
+                    localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                     _saveThumbVersions();
                     qsa('.sg-card[data-style-name="' +
                         CSS.escape(styleName) + '"]',
@@ -988,15 +1014,28 @@
                             c.classList.add("sg-has-thumb");
                         });
                     showStatusMessage(tabName, "✓ Preview ready!");
+                    if (typeof onProgress === "function") {
+                        onProgress("done", 100);
+                    }
+                    if (typeof onDone === "function") onDone(_thumbVersions[styleName]);
                 } else if (r.status === "error") {
                     showStatusMessage(tabName,
                         "Generation failed: " + (r.message || "unknown"), true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                 } else if (r.status === "running" || r.status === "idle") {
+                    if (typeof onProgress === "function") {
+                        onProgress("generating", Math.min(90, Math.round((attempts / 60) * 100)));
+                    }
                     setTimeout(function () {
-                        pollGenerationStatus(tabName, styleName, attempts + 1);
+                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress);
                     }, 2000);
                 } else {
                     showStatusMessage(tabName, "Unknown generation status: " + r.status, true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                 }
             })
             .catch(function (err) {
@@ -1004,6 +1043,9 @@
                 // HTTP errors (404, 500) mean something is structurally wrong — stop
                 console.error("[Style Grid] Poll error:", err);
                 showStatusMessage(tabName, "Generation status unavailable", true);
+                if (typeof onProgress === "function") {
+                    onProgress("error");
+                }
             });
     }
 
@@ -1030,6 +1072,7 @@
                                     c.classList.add("sg-has-thumb");
                                 });
                             _thumbVersions[styleName] = Date.now();
+                            localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                             _saveThumbVersions();
                             showStatusMessage(tabName, "Preview saved ✓");
                         } else {
@@ -1109,7 +1152,7 @@
     // -----------------------------------------------------------------------
     // Style editor modal
     // -----------------------------------------------------------------------
-    function openStyleEditor(tabName, existingStyle) {
+    function openStyleEditor(tabName, existingStyle, sourceFile) {
         const isNew = !existingStyle;
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
@@ -1154,10 +1197,12 @@
                     prompt: promptInput.value,
                     negative_prompt: negInput.value,
                     description: descInput.value,
-                    source: existingStyle ? existingStyle.source : null,
+                    source: existingStyle ? existingStyle.source : (sourceFile || null),
                 }).then(assertNoApiError).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
+                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                    if (typeof notify === "function") notify();
                 }).catch(function (err) {
                     console.error("[Style Grid] API error:", err);
                     showStatusMessage(tabName, "Save failed", true);
@@ -1170,7 +1215,16 @@
         }));
         modal.appendChild(btnRow);
         overlay.appendChild(modal);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        var editorOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            editorOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (editorOverlayMouseDownTarget === overlay || editorOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            editorOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
         nameInput.focus();
     }
@@ -1367,6 +1421,8 @@
                 chain.then(function () {
                     closeCsvEditorOverlay();
                     refreshPanel(tabName);
+                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                    if (typeof notify === "function") notify();
                 }).catch(function (e) {
                     console.error("[Style Grid] CSV table save:", e);
                     var x = (e && e._sgCsvSaved !== null && e._sgCsvSaved !== undefined) ? e._sgCsvSaved : 0;
@@ -1607,22 +1663,34 @@
 
         renderTableBody();
         overlay.appendChild(shell);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) requestCloseCsvEditor(); });
+        var csvOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            csvOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (csvOverlayMouseDownTarget === overlay || csvOverlayMouseDownTarget === e.currentTarget) {
+                requestCloseCsvEditor();
+            }
+            csvOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
     }
 
-    function duplicateStyle(tabName, style) {
+    function duplicateStyle(tabName, style, onDone) {
         const newName = style.name + "_copy";
         apiPost("/style_grid/style/save", {
             name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
         }).then(assertNoApiError).then(function () {
             refreshPanel(tabName);
+            var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+            if (typeof notify === "function") notify();
+            if (typeof onDone === "function") onDone();
         }).catch(function (err) {
             console.error("[Style Grid] API error:", err);
         });
     }
 
-    function deleteStyle(tabName, styleName, source) {
+    function deleteStyle(tabName, styleName, source, onDeleted) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
         modal.appendChild(el("h3", {
@@ -1642,7 +1710,12 @@
                 overlay.remove();
                 apiPost("/style_grid/style/delete", { name: styleName, source: source })
                     .then(assertNoApiError)
-                    .then(function () { refreshPanel(tabName); })
+                    .then(function () {
+                        refreshPanel(tabName);
+                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                        if (typeof notify === "function") notify();
+                        if (typeof onDeleted === "function") onDeleted();
+                    })
                     .catch(function (err) {
                         console.error("[Style Grid] Delete failed:", err);
                         showStatusMessage(tabName, "Delete failed", true);
@@ -1656,13 +1729,20 @@
         }));
         modal.appendChild(btns);
         overlay.appendChild(modal);
+        var deleteOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            deleteOverlayMouseDownTarget = e.target;
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) overlay.remove();
+            if (deleteOverlayMouseDownTarget === overlay || deleteOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            deleteOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
     }
 
-    function moveToCategory(tabName, style) {
+    function moveToCategory(tabName, style, onDone) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
 
@@ -1702,6 +1782,9 @@
                 }).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
+                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                    if (typeof notify === "function") notify();
+                    if (typeof onDone === "function") onDone();
                 }).catch(function (err) {
                     console.error("[Style Grid] API error:", err);
                     showStatusMessage(tabName, "Move failed", true);
@@ -1716,8 +1799,15 @@
 
         modal.appendChild(btns);
         overlay.appendChild(modal);
+        var moveOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            moveOverlayMouseDownTarget = e.target;
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) overlay.remove();
+            if (moveOverlayMouseDownTarget === overlay || moveOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            moveOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
     }
@@ -1802,7 +1892,16 @@
         const closeBtn = el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } });
         modal.appendChild(closeBtn);
         overlay.appendChild(modal);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        var presetsOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            presetsOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (presetsOverlayMouseDownTarget === overlay || presetsOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            presetsOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
     }
 
@@ -1842,6 +1941,8 @@
                     apiPost("/style_grid/import", data).then(function () {
                         overlay.remove();
                         refreshPanel(tabName);
+                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                        if (typeof notify === "function") notify();
                     }).catch(function (err) {
                         console.error("[Style Grid] API error:", err);
                     });
@@ -1854,7 +1955,16 @@
 
         modal.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } }));
         overlay.appendChild(modal);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        var importExportOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            importExportOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (importExportOverlayMouseDownTarget === overlay || importExportOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            importExportOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
     }
 
@@ -1916,6 +2026,35 @@
         });
     }
 
+    function applyRandomStyle(tabName) {
+        const allStyles = [];
+        const src = state[tabName].selectedSource;
+        Object.values(state[tabName].categories).forEach(function (arr) {
+            arr.forEach(function (s) {
+                if (src === "All" || s.source === src) allStyles.push(s);
+            });
+        });
+        if (allStyles.length === 0) return;
+        const rand = allStyles[Math.floor(Math.random() * allStyles.length)];
+        if (!state[tabName].selected.has(rand.name)) {
+            state[tabName].selected.add(rand.name);
+            if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
+            applyStyleImmediate(tabName, rand.name);
+            qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
+            updateSelectedUI(tabName);
+        }
+    }
+
+    function runManualStyleBackup(tabName) {
+        apiPost("/style_grid/backup").then(function (r) {
+            if (r && r.ok) alert("Backup saved successfully!");
+            else alert("Nothing to backup or backup failed.");
+        }).catch(function (err) {
+            console.error("[Style Grid] API error:", err);
+            showStatusMessage(tabName, "Backup failed", true);
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Dynamic polling for file changes
     // -----------------------------------------------------------------------
@@ -1925,9 +2064,38 @@
         _pollInterval = setInterval(function () {
             apiGet("/style_grid/check_update").then(function (r) {
                 if (r && r.changed) {
-                    console.log("[Style Grid] CSV files changed, refreshing...");
                     ["txt2img", "img2img"].forEach(function (t) {
                         if (state[t].panel) refreshPanel(t);
+                        apiGet("/style_grid/styles").then(function (data) {
+                            var styles = [];
+                            if (Array.isArray(data)) {
+                                styles = data;
+                            } else if (data.categories) {
+                                styles = Object.values(data.categories).flat();
+                            } else if (data.styles) {
+                                styles = data.styles;
+                            }
+                            state[t].categories = {};
+                            styles.forEach(function (s) {
+                                var cat = s.category || "OTHER";
+                                if (!state[t].categories[cat]) state[t].categories[cat] = [];
+                                state[t].categories[cat].push(s);
+                            });
+                            var frame = state[t] && state[t].sgFrame;
+                            if (frame && frame.contentWindow) {
+                                var v2styles = Object.values(state[t].categories).flat();
+                                var seen = new Set();
+                                v2styles = v2styles.filter(function (s) {
+                                    if (seen.has(s.name)) return false;
+                                    seen.add(s.name);
+                                    return true;
+                                });
+                                frame.contentWindow.postMessage({
+                                    type: "SG_STYLES_UPDATE",
+                                    styles: v2styles
+                                }, "*");
+                            }
+                        });
                     });
                 }
             }).catch(function (err) {
@@ -2170,24 +2338,7 @@
         // Random style
         const btnRandom = el("button", {
             className: "sg-btn sg-btn-secondary", textContent: "🎲", title: "Random style (use at your own risk!)",
-            onClick: function () {
-                const allStyles = [];
-                const src = state[tabName].selectedSource;
-                Object.values(state[tabName].categories).forEach(function (arr) {
-                    arr.forEach(function (s) {
-                        if (src === "All" || s.source === src) allStyles.push(s);
-                    });
-                });
-                if (allStyles.length === 0) return;
-                const rand = allStyles[Math.floor(Math.random() * allStyles.length)];
-                if (!state[tabName].selected.has(rand.name)) {
-                    state[tabName].selected.add(rand.name);
-                    if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
-                    applyStyleImmediate(tabName, rand.name);
-                    qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
-                    updateSelectedUI(tabName);
-                }
-            }
+            onClick: function () { applyRandomStyle(tabName); }
         });
         searchRow.appendChild(btnRandom);
 
@@ -2236,15 +2387,7 @@
         searchRow.appendChild(el("button", {
             className: "sg-btn sg-btn-secondary", textContent: "💾",
             title: "Backup all CSV style files manually. Saves a timestamped copy to data/backups/ (keeps last 20).",
-            onClick: function () {
-                apiPost("/style_grid/backup").then(function (r) {
-                    if (r && r.ok) alert("Backup saved successfully!");
-                    else alert("Nothing to backup or backup failed.");
-                }).catch(function (err) {
-                    console.error("[Style Grid] API error:", err);
-                    showStatusMessage(tabName, "Backup failed", true);
-                });
-            }
+            onClick: function () { runManualStyleBackup(tabName); }
         }));
 
         // Thumbnail cleanup — remove orphaned previews
@@ -3341,8 +3484,15 @@
 
         render();
         overlay.appendChild(modal);
+        var conflictOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            conflictOverlayMouseDownTarget = e.target;
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) overlay.remove();
+            if (conflictOverlayMouseDownTarget === overlay || conflictOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            conflictOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
     }
@@ -3363,48 +3513,82 @@
     }
 
     // -----------------------------------------------------------------------
+    // Style Grid v2 iframe — push SG_INIT to frame when needed
+    // -----------------------------------------------------------------------
+    function postSGInitToFrame(tabName) {
+        var fr = state[tabName].sgFrame;
+        if (!fr || !fr.contentWindow) return;
+        fetch("/style_grid/styles")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var styles = Array.isArray(data) ? data : (data.styles ?? []);
+                fr.contentWindow.postMessage({
+                    type: "SG_INIT",
+                    tab: tabName,
+                    styles: styles,
+                }, "*");
+                state[tabName].sgV2HostInitSent = true;
+            })
+            .catch(function (err) {
+                console.error("[Style Grid] v2: failed to load styles for iframe:", err);
+            });
+    }
+
+    // -----------------------------------------------------------------------
     // Toggle panel visibility
     // -----------------------------------------------------------------------
-    function togglePanel(tabName, show) {
-        var panel = state[tabName].panel;
-        if (typeof show === "undefined")
-            show = !panel || !panel.classList.contains("sg-visible");
-
-        if (!show) {
-            if (panel) panel.classList.remove("sg-visible");
+    var _sgHostPrevBodyOverflow = "";
+    var _sgHostPrevDocOverflow = "";
+    var _sgHostScrollLocked = false;
+    function anySGFrameVisible() {
+        return ["txt2img", "img2img"].some(function (t) {
+            var fr = state[t] && state[t].sgFrame;
+            var wr = state[t] && state[t].sgFrameWrapper;
+            var target = wr || fr;
+            return !!(target && target.style.display === "block");
+        });
+    }
+    function setHostPageScrollLock(lock) {
+        if (lock && !_sgHostScrollLocked) {
+            _sgHostPrevBodyOverflow = document.body ? document.body.style.overflow : "";
+            _sgHostPrevDocOverflow = document.documentElement ? document.documentElement.style.overflow : "";
+            if (document.body) document.body.style.overflow = "hidden";
+            if (document.documentElement) document.documentElement.style.overflow = "hidden";
+            _sgHostScrollLocked = true;
             return;
         }
-
-        var hasData = Object.keys(state[tabName].categories || {}).length > 0;
-        if (!panel || !hasData) {
-            if (!panel) panel = buildPanel(tabName);
-            if (!hasData) {
-                apiGet("/style_grid/styles").then(function (data) {
-                    state[tabName].categories = data.categories || {};
-                    state[tabName].usage = data.usage || {};
-                    if (state[tabName].panel) {
-                        state[tabName].panel.remove();
-                        state[tabName].panel = null;
-                    }
-                    buildPanel(tabName);
-                    state[tabName].panel.classList.add("sg-visible");
-                    filterStyles(tabName);
-                    var s = qs("#sg_search_" + tabName, state[tabName].panel);
-                    if (s) setTimeout(function () { s.focus(); }, 100);
-                    loadThumbnailList(tabName);
-                }).catch(function (err) {
-                    console.error("[Style Grid] Failed to load styles:", err);
-                });
-                return;
-            }
+        if (!lock && _sgHostScrollLocked) {
+            if (document.body) document.body.style.overflow = _sgHostPrevBodyOverflow || "";
+            if (document.documentElement) document.documentElement.style.overflow = _sgHostPrevDocOverflow || "";
+            _sgHostScrollLocked = false;
         }
+    }
 
-        panel.classList.add("sg-visible");
-        filterStyles(tabName);
-        setTimeout(function () {
-            var s = qs("#sg_search_" + tabName, panel);
-            if (s) s.focus();
-        }, 100);
+    function togglePanel(tabName, show) {
+        var panel = state[tabName].panel;
+        if (!state[tabName].sgFrame) ensureSGFramesOnce();
+        var fr = state[tabName].sgFrame;
+        var wr = state[tabName].sgFrameWrapper;
+        if (!fr) {
+            console.error("[Style Grid] iframe failed to initialize for tab:", tabName);
+            return;
+        }
+        if (!wr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tabName) {
+            wr = fr.parentElement;
+            state[tabName].sgFrameWrapper = wr;
+        }
+        var target = wr || fr;
+        if (typeof show === "undefined") show = target.style.display !== "block";
+        if (!show) {
+            if (panel) panel.classList.remove("sg-visible");
+            target.style.display = "none";
+            setHostPageScrollLock(anySGFrameVisible());
+            return;
+        }
+        if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
+        target.style.display = "block";
+        setHostPageScrollLock(true);
+        if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
     }
 
     // -----------------------------------------------------------------------
@@ -3472,6 +3656,15 @@
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
             ["txt2img", "img2img"].forEach(function (t) {
+                var frEsc = state[t].sgFrame;
+                var wrEsc = state[t].sgFrameWrapper || (frEsc && frEsc.parentElement && frEsc.parentElement.id === "sg-panel-wrapper-" + t ? frEsc.parentElement : null);
+                var targetEsc = wrEsc || frEsc;
+                if (targetEsc && targetEsc.style.display === "block") {
+                    targetEsc.style.display = "none";
+                    setHostPageScrollLock(anySGFrameVisible());
+                    e.preventDefault();
+                    return;
+                }
                 if (state[t].panel && state[t].panel.classList.contains("sg-visible")) { togglePanel(t, false); e.preventDefault(); }
             });
         }
@@ -3480,6 +3673,355 @@
     // ════════════════════════════════════════════════════
     // STATE + INIT (boot, triggers, MutationObserver)
     // ════════════════════════════════════════════════════
+    // React iframe bridge (txt2img iframe first; init once via onUiLoaded).
+    // Creates iframe wrapper, wires SG_* message bridge, and hydrates host style cache.
+    function initSGFrame(tab) {
+        var existing = document.getElementById("sg-frame-" + tab);
+        if (existing) {
+            return existing;
+        }
+        const frame = document.createElement("iframe");
+        frame.id = "sg-frame-" + tab;
+        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html";
+        // Wrap iframe in a resizable container div
+        var wrapper = document.createElement("div");
+        wrapper.id = "sg-panel-wrapper-" + tab;
+        wrapper.style.cssText = [
+            "position:fixed",
+            "top:80px",
+            "right:16px",
+            "left:auto",
+            "width:1000px",
+            "height:650px",
+            "min-width:600px",
+            "min-height:400px",
+            "max-width:95vw",
+            "max-height:90vh",
+            "border:none",
+            "border-radius:12px",
+            "box-shadow:0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)",
+            "z-index:10000",
+            "display:none",
+            "overflow:hidden",
+            "resize:both",
+        ].join(";");
+        frame.style.cssText = "width:100%;height:100%;border:none;display:block;";
+        document.body.appendChild(wrapper);
+        wrapper.appendChild(frame);
+        state[tab].sgFrameWrapper = wrapper;
+        // Close panel when clicking anywhere outside the extension window.
+        document.addEventListener("mousedown", function (e) {
+            if (wrapper.style.display !== "block") return;
+            var target = e.target;
+            if (!target) return;
+            // Ignore trigger button clicks to preserve explicit toggle behavior.
+            if (target.closest && target.closest(".sg-trigger-btn")) return;
+            if (!wrapper.contains(target)) {
+                wrapper.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
+            }
+        }, true);
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && wrapper.style.display !== "none") {
+                e.stopPropagation();
+                wrapper.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
+            }
+        }, true);
+
+        frame.addEventListener("load", function () {
+            setTimeout(function () {
+                fetch("/style_grid/styles")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        // Populate host-side style cache for applyStyleImmediate
+                        if (!state[tab]) state[tab] = {};
+                        if (!state[tab].categories) state[tab].categories = {};
+                        allStyles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            var exists = state[tab].categories[cat].some(function (x) {
+                                return x.name === s.name;
+                            });
+                            if (!exists) state[tab].categories[cat].push(s);
+                        });
+                        if (frame.contentWindow) {
+                            frame.contentWindow.postMessage({
+                                type: "SG_INIT",
+                                tab: tab,
+                                styles: allStyles,
+                            }, "*");
+                        }
+                    });
+            }, 500);
+        });
+
+        window.addEventListener("message", function (e) {
+            if (!e.data || !e.data.type) return;
+            if (!e.data.type.startsWith("SG_")) return;
+            const msg = e.data;
+            // Event-driven refresh path used after SG actions that mutate styles on disk.
+            function refreshAndNotifyFrame() {
+                fetch("/style_grid/styles")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        state[tab].categories = {};
+                        allStyles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            state[tab].categories[cat].push(s);
+                        });
+                        var v2frame = document.getElementById("sg-frame-txt2img");
+                        if (v2frame && v2frame.contentWindow) {
+                            v2frame.contentWindow.postMessage({
+                                type: "SG_STYLES_UPDATE",
+                                styles: allStyles
+                            }, "*");
+                        }
+                    });
+            }
+            state[tab].refreshAndNotifyFrame = refreshAndNotifyFrame;
+            function findStyleByName(styleName) {
+                // Searches the tab-local host cache built from state[tab].categories.
+                var cats = (state[tab] && state[tab].categories) || {};
+                for (var cat in cats) {
+                    if (!Object.prototype.hasOwnProperty.call(cats, cat)) continue;
+                    var list = cats[cat] || [];
+                    var found = list.find(function (s) { return s.name === styleName; });
+                    if (found) return found;
+                }
+                return null;
+            }
+            if (msg.type === "SG_READY") {
+                if (state[tab].sgV2HostInitSent) return;
+                fetch("/style_grid/styles")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var allStyles = Array.isArray(data)
+                            ? data
+                            : Object.values(data.categories || {}).flat();
+                        // Populate host-side style cache for applyStyleImmediate
+                        if (!state[tab]) state[tab] = {};
+                        if (!state[tab].categories) state[tab].categories = {};
+                        allStyles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            var exists = state[tab].categories[cat].some(function (x) {
+                                return x.name === s.name;
+                            });
+                            if (!exists) state[tab].categories[cat].push(s);
+                        });
+                        frame.contentWindow.postMessage({
+                            type: "SG_INIT",
+                            tab: tab,
+                            styles: allStyles,
+                        }, "*");
+                        state[tab].sgV2HostInitSent = true;
+                    })
+                    .catch(function (err) {
+                        console.error("[Style Grid] v2: failed to load styles for iframe:", err);
+                    });
+            }
+
+            if (msg.type === "SG_APPLY") {
+                window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
+            }
+
+            if (msg.type === "SG_UNAPPLY") {
+                window._sgUnapplyStyle(tab, msg.styleId);
+            }
+
+            if (msg.type === "SG_REORDER_STYLES") {
+                var ids = Array.isArray(msg.styleIds) ? msg.styleIds : [];
+                state[tab].selectedOrder = ids;
+                
+                // Ensure applied Map has all entries
+                ids.forEach(function (styleId) {
+                    if (!state[tab].applied.has(styleId)) {
+                        var styleObj = findStyleByName(styleId);
+                        if (styleObj) {
+                            state[tab].applied.set(styleId, {
+                                prompt: styleObj.prompt,
+                                negative: styleObj.negative_prompt,
+                                wrapTemplate: null,
+                                negWrapTemplate: null,
+                                originalPrompt: styleObj.prompt,
+                                originalNeg: styleObj.negative_prompt
+                            });
+                        }
+                    }
+                });
+                
+                if (typeof rebuildPromptFromOrder === "function") {
+                    rebuildPromptFromOrder(tab);
+                }
+            }
+
+            if (msg.type === "SG_CLOSE_REQUEST") {
+                var closeTarget = state[tab].sgFrameWrapper || frame;
+                closeTarget.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
+            }
+
+            if (msg.type === "SG_RANDOM") {
+                var allStyles = Object.values((state[tab] && state[tab].categories) || {}).flat();
+                if (allStyles.length > 0) {
+                    var randomStyle = allStyles[Math.floor(Math.random() * allStyles.length)];
+                    window._sgApplyStyle(tab, randomStyle.name);
+                    if (frame.contentWindow) {
+                        frame.contentWindow.postMessage({
+                            type: "SG_STYLE_APPLIED",
+                            style: randomStyle
+                        }, "*");
+                    }
+                }
+            }
+            if (msg.type === "SG_BACKUP") {
+                fetch("/style_grid/backup", { method: "POST" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (frame.contentWindow) {
+                            frame.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: data.error ? ("Backup failed: " + data.error) : "💾 Backup created",
+                                variant: data.error ? "error" : "success"
+                            }, "*");
+                        }
+                    });
+            }
+            if (msg.type === "SG_REFRESH") {
+                refreshPanel(tab);
+                fetch("/style_grid/check_update")
+                    .then(function () { return fetch("/style_grid/styles"); })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        state[tab].categories = {};
+                        allStyles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            state[tab].categories[cat].push(s);
+                        });
+                        if (frame.contentWindow) {
+                            frame.contentWindow.postMessage({
+                                type: "SG_STYLES_UPDATE",
+                                styles: allStyles
+                            }, "*");
+                        }
+                    });
+            }
+            if (msg.type === "SG_CSV_EDITOR") {
+                openCsvTableEditor(tab);
+            }
+            if (msg.type === "SG_CLEAR_ALL") {
+                clearAll(tab);
+            }
+            if (msg.type === "SG_PRESETS") {
+                showPresetsMenu(tab);
+            }
+            if (msg.type === "SG_IMPORT_EXPORT") {
+                showExportImport(tab);
+            }
+            if (msg.type === "SG_NEW_STYLE") {
+                openStyleEditor(tab, null, msg.sourceFile);
+            }
+            if (msg.type === "SG_EDIT_STYLE") {
+                var styleToEdit = findStyleByName(msg.styleId);
+                if (styleToEdit) {
+                    openStyleEditor(tab, styleToEdit);
+                }
+            }
+            if (msg.type === "SG_DUPLICATE_STYLE") {
+                var styleToDup = findStyleByName(msg.styleId);
+                if (styleToDup) {
+                    duplicateStyle(tab, styleToDup, refreshAndNotifyFrame);
+                }
+            }
+            if (msg.type === "SG_MOVE_TO_CATEGORY") {
+                var styleToMove = findStyleByName(msg.styleId);
+                if (styleToMove) {
+                    moveToCategory(tab, styleToMove, refreshAndNotifyFrame);
+                }
+            }
+            if (msg.type === "SG_WILDCARD_CATEGORY") {
+                var catId = msg.category || "";
+                if (catId) {
+                    var wcTag = "{sg:" + String(catId).toLowerCase() + "}";
+                    var promptEl = qs("#" + tab + "_prompt textarea");
+                    if (promptEl) {
+                        var sep = promptEl.value.trim() ? ", " : "";
+                        setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
+                    }
+                }
+            }
+            if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {
+                var catName = msg.category || "";
+                if (catName) {
+                    var stylesInCat = ((state[tab] && state[tab].categories && state[tab].categories[catName]) || []).slice();
+                    var activeSource = (state[tab] && state[tab].selectedSource) || "All";
+                    if (activeSource !== "All") {
+                        stylesInCat = stylesInCat.filter(function (s) { return s.source === activeSource; });
+                    }
+                    startBatchThumbnails(tab, catName, stylesInCat);
+                }
+            }
+            if (msg.type === "SG_GENERATE_PREVIEW") {
+                generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
+                    if (frame.contentWindow) {
+                        frame.contentWindow.postMessage({
+                            type: "SG_THUMB_PROGRESS",
+                            status: status,
+                            styleId: msg.styleId,
+                            progress: progressValue,
+                        }, "*");
+                        if (status === "done") {
+                            frame.contentWindow.postMessage({
+                                type: "SG_THUMB_PROGRESS",
+                                status: "done",
+                                styleId: msg.styleId,
+                                progress: 100,
+                            }, "*");
+                            setTimeout(function () {
+                                if (frame && frame.contentWindow) {
+                                    frame.contentWindow.postMessage({
+                                        type: "SG_THUMB_DONE",
+                                        styleId: msg.styleId,
+                                        version: Date.now(),
+                                    }, "*");
+                                }
+                            }, 300);
+                        }
+                        if (status === "error") {
+                            frame.contentWindow.postMessage({
+                                type: "SG_THUMB_PROGRESS",
+                                status: "error",
+                                styleId: msg.styleId,
+                            }, "*");
+                        }
+                    }
+                });
+            }
+            if (msg.type === "SG_UPLOAD_PREVIEW") {
+                uploadThumbnail(tab, msg.styleId);
+            }
+            if (msg.type === "SG_DELETE_STYLE") {
+                var styleToDelete = findStyleByName(msg.styleId);
+                if (styleToDelete) {
+                    deleteStyle(tab, styleToDelete.name, styleToDelete.source || styleToDelete.source_file, refreshAndNotifyFrame);
+                }
+            }
+        });
+
+        return frame;
+    }
+
+    function ensureSGFramesOnce() {
+        if (!state.txt2img.sgFrame) state.txt2img.sgFrame = initSGFrame("txt2img");
+        if (!state.img2img.sgFrame) state.img2img.sgFrame = initSGFrame("img2img");
+    }
+
     function init() {
         let observer = null;
 
@@ -3529,4 +4071,15 @@
     }
 
     init();
+
+    if (typeof onUiLoaded === "function") {
+        onUiLoaded(function () {
+            state.txt2img.sgFrame = state.txt2img.sgFrame || initSGFrame("txt2img");
+            state.img2img.sgFrame = state.img2img.sgFrame || initSGFrame("img2img");
+        });
+    } else if (document.body) {
+        ensureSGFramesOnce();
+    } else {
+        document.addEventListener("DOMContentLoaded", ensureSGFramesOnce);
+    }
 })();

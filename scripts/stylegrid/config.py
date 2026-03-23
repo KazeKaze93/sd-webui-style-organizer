@@ -15,7 +15,6 @@ THUMBNAILS_DIR = os.path.join(DATA_DIR, "thumbnails")
 for _d in [DATA_DIR, BACKUP_DIR]:
     os.makedirs(_d, exist_ok=True)
 os.makedirs(THUMBNAILS_DIR, exist_ok=True)
-print(f"[Style Grid] Thumbnails dir: {os.path.abspath(THUMBNAILS_DIR)}")
 
 
 def get_styles_dirs():

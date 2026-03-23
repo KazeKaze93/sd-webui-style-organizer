@@ -32,6 +32,7 @@ def _thumbnail_hash_input(style_name, csv_path=""):
 
 
 def get_thumbnail_path(style_name, csv_path=""):
+    """Return deterministic thumbnail file path using md5(name + source path) hash naming."""
     safe = hashlib.md5(_thumbnail_hash_input(style_name, csv_path).encode("utf-8")).hexdigest()
     return os.path.join(THUMBNAILS_DIR, safe + ".webp")
 
@@ -55,17 +56,19 @@ def list_thumbnails():
 
 
 class ThumbnailGenerationManager:
-    """Tracks in-flight SD thumbnail renders and runs them on a worker thread."""
+    """Manages async thumbnail jobs: reserve style, run worker, and expose per-style status."""
 
     def __init__(self):
         self._gen_status = {}
         self._gen_lock = threading.Lock()
 
     def get_status(self, style_name):
+        """Return current generation status dict for a style (idle/running/done/error)."""
         with self._gen_lock:
             return self._gen_status.get(style_name, {"status": "idle"})
 
     def try_begin(self, style_name):
+        """Reserve style generation slot; returns False if same style is already running."""
         with self._gen_lock:
             if self._gen_status.get(style_name, {}).get("status") == "running":
                 return False
@@ -73,6 +76,7 @@ class ThumbnailGenerationManager:
             return True
 
     def spawn_generate(self, style_name):
+        """Start background thumbnail generation thread for a style already marked running."""
         t = threading.Thread(target=self._run_generation, args=(style_name,), daemon=True)
         t.start()
 
@@ -93,13 +97,9 @@ class ThumbnailGenerationManager:
             old_path = get_thumbnail_path(style_name, thumb_csv_path)
             if os.path.isfile(old_path):
                 os.remove(old_path)
-                logger.debug("[Style Grid] Deleted old thumbnail: %s", old_path)
 
             img_path = get_thumbnail_path(style_name, thumb_csv_path)
             tmp_path = img_path + ".tmp"
-            logger.debug("[Style Grid] Generating thumbnail for: %s", style_name)
-            logger.debug("[Style Grid] Target path: %s", img_path)
-            logger.debug("[Style Grid] Old file exists: %s", os.path.isfile(img_path))
 
             prompt = style.get("prompt", "")
             prompt = prompt.replace("{prompt}", "1girl, solo")
@@ -139,11 +139,6 @@ class ThumbnailGenerationManager:
             if os.path.isfile(img_path):
                 os.remove(img_path)
             os.rename(tmp_path, img_path)
-            logger.debug(
-                "[Style Grid] Thumbnail saved: %s (%s bytes)",
-                img_path,
-                os.path.getsize(img_path),
-            )
 
             with self._gen_lock:
                 self._gen_status[style_name] = {"status": "done"}

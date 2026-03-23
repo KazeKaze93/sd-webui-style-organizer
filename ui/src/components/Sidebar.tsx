@@ -19,8 +19,12 @@ function getCategoryColor(c: string): string {
 }
 
 export function Sidebar() {
-  const { activeCategory, setCategory, categories, styles } = useStylesStore()
+  const { activeCategory, setCategory, categories, styles, favorites, recentNames } = useStylesStore()
   const cats = categories()
+  const specialCategories = [
+    { id: '★ Favorites', label: '★ Favorites', count: favorites.size },
+    { id: '🕑 Recent', label: '🕑 Recent', count: recentNames.length },
+  ]
 
   const count = (cat: string | null) =>
     cat ? styles.filter(s => s.category === cat).length : styles.length
@@ -54,6 +58,21 @@ export function Sidebar() {
           {count(null)}
         </span>
       </button>
+      {specialCategories.map(({ id, label, count }) => count > 0 && (
+        <button
+          key={id}
+          type="button"
+          onClick={() => setCategory(activeCategory === id ? null : id)}
+          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors
+      ${activeCategory === id
+        ? 'bg-sg-accent text-white'
+        : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
+        >
+          {label}
+          <span className="ml-auto float-right text-xs opacity-60">{count}</span>
+        </button>
+      ))}
+      <div className="border-t border-sg-border my-1" />
       {cats.map(cat => {
         const isActive = activeCategory === cat
         return (

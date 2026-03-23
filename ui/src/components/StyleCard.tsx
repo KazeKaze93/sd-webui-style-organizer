@@ -5,8 +5,9 @@ import { useStylesStore } from '../store/stylesStore'
 interface Props { style: Style }
 
 export function StyleCard({ style }: Props) {
-  const { selectedStyles, toggleStyle } = useStylesStore()
+  const { selectedStyles, toggleStyle, isFavorite, toggleFavorite } = useStylesStore()
   const isSelected = selectedStyles.some(s => s.name === style.name)
+  const fav = isFavorite(style.name)
   
   const displayName = style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
@@ -30,6 +31,17 @@ export function StyleCard({ style }: Props) {
           : 'border-sg-border bg-sg-surface hover:border-sg-accent/50 hover:bg-sg-surface/80'}
       `}
     >
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleFavorite(style.name)
+        }}
+        className={`absolute top-1.5 right-1.5 text-xs transition-colors z-10
+    ${fav ? 'text-yellow-400' : 'text-sg-border hover:text-sg-muted'}`}
+      >
+        ★
+      </button>
       <div className="text-sm font-medium text-sg-text truncate">
         {displayName}
       </div>
@@ -37,7 +49,7 @@ export function StyleCard({ style }: Props) {
         {style.category}
       </div>
       {isSelected && (
-        <div className="absolute top-2 right-2 w-2 h-2 
+        <div className="absolute bottom-2 right-2 w-2 h-2 
                         rounded-full bg-sg-accent" />
       )}
     </motion.div>

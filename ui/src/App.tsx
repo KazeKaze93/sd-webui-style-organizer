@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { onHostMessage, sendToHost } from './bridge'
 import { useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
+import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
 import { SelectedBar } from './components/SelectedBar'
@@ -71,6 +72,7 @@ export default function App() {
       <div className="flex items-center gap-3 px-4 py-3 
                       border-b border-sg-border shrink-0">
         <span className="text-sg-accent font-semibold">🎨 Style Grid</span>
+        <SourceFilter />
         <div className="flex-1">
           <SearchBar />
         </div>

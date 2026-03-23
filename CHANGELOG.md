@@ -7,23 +7,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
-- Implemented a CSV table editor workflow for style management (`be59ac5`).
-- Added wildcard prompt resolution during generation via `{sg:<category>}` tokens (`d620c60`, `470b249`, `f2c7c28`).
+- React iframe frontend (V2) integrated into Forge panel lifecycle (`dc5f544`, `589ca79`).
+- Shadcn-based UI composition and component library (`ui/src/components/ui/*`) with typed frame bridge (`ui/src/bridge.ts`) (`dc5f544`, `e841334`).
+- New V2 capabilities: favorites/recent, usage counters, conflict checks, toast notifications, thumbnail progress modal, random/backup/import-export actions (`3f042ba`, `5277f8f`, `c8c9c2b`, `9ffda9c`, `0641448`, `e98ab3b`).
+- Category/source UX improvements: source filtering, persisted category ordering, and source-aware style dedup/source selection behavior (`e841334`, `6c2e8e4`, `af23d07`).
+- Fullscreen/windowed interactions with outside-click handling and host scroll lock control (`930f6b6`, `fc9d9dc`, `72c77f2`).
 
 ### Changed
-- Updated autocomplete behavior so selecting a suggestion applied the style immediately in the grid flow (`f1d39c3`, `a784d79`).
+- Style Grid host ↔ frame messaging flow refactored to SG_* postMessage contract and on-demand re-init/update pushes (`589ca79`, `e6276da`).
+- Sidebar/category behavior refined for per-source ordering logic and All Sources fallback handling (`6c2e8e4`, `af23d07`).
+- `docs/API.md` backend route definitions now originate from modular backend route registration (`scripts/stylegrid/routes.py`) instead of monolithic script split assumptions.
 
 ### Fixed
-- Fixed style cache invalidation when CSV files changed (`aba68dc`).
-- Fixed wildcard generation behavior after category-based prompt processing updates (`470b249`, `d620c60`).
+- Improved iframe close/escape behavior and minimized accidental host/page interaction conflicts while V2 panel is open (`930f6b6`, `72c77f2`).
+- Fixed several V2 synchronization issues after backend refresh/update flows (`e6276da`, `589ca79`).
 
 ### Removed
 - None.
 
 ### Security
 - None.
-
-> Note: no Style Strength slider implementation was detected in the current codebase at this point.
 
 ## [5.0.0] - 2026-03-17
 

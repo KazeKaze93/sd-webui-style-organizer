@@ -1,97 +1,86 @@
 # Development Guide
 
-## Project Structure
+## Current Architecture (V2)
 
-Current tree in this worktree:
+The extension now uses a hybrid architecture:
+
+- Host layer: `javascript/style_grid.js` (Forge page integration, iframe lifecycle, prompt-side effects).
+- Backend API: `scripts/stylegrid/routes.py` (+ helpers under `scripts/stylegrid/*`).
+- UI app: `ui/` (React + TypeScript + Vite + shadcn-style components), served inside iframe.
+
+```mermaid
+flowchart LR
+  A[Forge page / Gradio DOM] --> B[javascript/style_grid.js]
+  B -->|postMessage SG_*| C[iframe ui/dist/index.html]
+  C -->|postMessage SG_*| B
+  B -->|fetch /style_grid/*| D[FastAPI routes.py]
+  D --> E[(CSV + data/*.json + thumbnails)]
+```
+
+## Repository Layout
 
 ```text
 .
-├─ .gitignore                  # Ignore rules for repository-local generated files.
-├─ LICENSE                     # AGPL-3.0 license text.
-├─ README.md                   # User-facing documentation.
-├─ install.py                  # Forge extension install hook.
-├─ style.css                   # UI styles for Style Grid frontend.
-├─ javascript/
-│  └─ style_grid.js            # Main frontend logic (IIFE, UI rendering, API calls).
-├─ scripts/
-│  └─ style_grid.py            # Backend + Forge script entrypoint + API route registration.
-├─ config/
-│  └─ sources.json.example     # Example source config file (not loaded by current backend code).
-└─ docs/
-   ├─ API.md                   # Backend endpoint reference.
-   ├─ CSV_FORMAT.md            # CSV format specification.
-   └─ screenshots/
-      └─ .gitkeep             # Keeps screenshots directory tracked.
+├─ javascript/style_grid.js           # Host integration + iframe bridge
+├─ scripts/style_grid.py              # Forge script entrypoint
+├─ scripts/stylegrid/                 # Backend modules (routes/cache/csv_io/etc.)
+├─ ui/                                # React app (builds to ui/dist)
+│  ├─ src/bridge.ts                   # Typed SG_* message contract
+│  ├─ src/store/stylesStore.ts        # Client state/actions/derived filters
+│  └─ src/components/                 # UI building blocks
+├─ docs/API.md
+├─ docs/CSV_FORMAT.md
+└─ docs/DEVELOPMENT.md
 ```
 
-Not present in this snapshot: `tests/`, `package.json`, `pyproject.toml`, `scripts/stylegrid/` package layout.
+## Local Development
 
-## Setup
+### Backend/host script
 
-### Python
-- No virtualenv required (runs in Forge's Python).
-- For tests: `pip install pytest httpx`.
+- Loaded by Forge from extension root; no separate backend server process.
+- Main API registration path: `scripts/stylegrid/routes.py` via `register_api(...)`.
 
-### JavaScript
-- `npm install` (installs eslint + globals).
-- No build step for current version.
+### UI app
 
-Note: `package.json` is not present in this worktree, so npm scripts are currently unavailable here.
-
-## Running Tests
-
-### Python tests
 ```bash
-cd <extension root>
-pytest tests/ -v
+cd ui
+npm install
+npm run build
 ```
 
-Expected output: `18 passed`.
+The host iframe points at `ui/dist/index.html`, so run `npm run build` after UI changes.
 
-Note: PytestConfigWarning from parent `pyproject.toml` is harmless.
+## Message Bridge (Host <-> Frame)
 
-Current snapshot note: `tests/` and `pyproject.toml` are not present in this worktree, so this command cannot run here as-is.
+Bridge types are declared in `ui/src/bridge.ts`.
 
-### JS tests
-- Open `tests/test_js.html` in browser.
-- Check console for `✓`/`✗` results.
-- Limitation: functions are copied from source — keep in sync manually.
+```mermaid
+sequenceDiagram
+  participant H as Host (style_grid.js)
+  participant F as Frame (React UI)
+  participant API as /style_grid/*
 
-Current snapshot note: `tests/test_js.html` is not present in this worktree.
+  F->>H: SG_READY
+  H->>API: GET /style_grid/styles
+  API-->>H: categories + usage
+  H->>F: SG_INIT (styles array)
+  F->>H: SG_APPLY / SG_UNAPPLY / actions
+  H->>API: CRUD/thumbnail/preset/etc requests
+  H->>F: SG_STYLES_UPDATE / SG_TOAST / progress messages
+```
 
-## Linting
+## Data and Persistence
 
-| Command | Description |
-|---|---|
-| `npm run lint` | both linters |
-| `npm run lint:py:fix` | auto-fix import sorting |
-| `npm run check` | lint + pytest (run before commit) |
+- `data/presets.json`: presets storage.
+- `data/usage.json`: usage counters.
+- `data/category_order.json`: backend-persisted category order.
+- `data/thumbnails/`: thumbnail files.
+- `data/backups/`: CSV backups.
 
-Current snapshot note: these scripts require a `package.json` with matching script entries.
+Client-side localStorage keys are also used for UI state (`favorites`, `recent`, source filter, collapsed categories, etc.).
 
-## Architecture Overview
+## Practical Notes
 
-**Python package (`stylegrid/`)**  
-Current branch does not yet contain a split `scripts/stylegrid/` package. Backend logic is centralized in `scripts/style_grid.py`, which currently owns CSV loading/saving, category derivation, wildcard resolution, thumbnail workflow, and API route registration.
-
-**`routes.py`**  
-A dedicated `routes.py` module is not present in this branch. FastAPI endpoints are currently defined inside `register_api()` in `scripts/style_grid.py`. Error signaling commonly uses JSON `{ "error": ... }` in HTTP 200 responses, with notable exceptions such as `304` (ETag match on `/style_grid/styles`) and `404` (`/style_grid/thumbnail` when file is missing).
-
-**`style_grid.js`**  
-Frontend is a single IIFE module (`javascript/style_grid.js`) organized by section headers (state/storage, utility, prompt engine, API layer, conflict detection, UI builders, interactions). Runtime state is tab-scoped via `state[tab]` (`txt2img`, `img2img`) and includes selected styles, order, applied map, categories, source filter, presets, usage, silent mode, and thumbnail flags.
-
-**Bridge between Python and JS**  
-JS communicates with backend via `fetch` to FastAPI routes (`/style_grid/...`) and polling endpoints for long-running operations (for example thumbnail generation status). Backend updates are delivered through route responses, while frontend periodically checks for style file changes using `/style_grid/check_update`.
-
-## Known Constraints
-
-- Forge loads JS from `javascript/` alphabetically.
-- `dynamic import()` is not available without bundler.
-- `sys.path.insert(0, ...)` is required in `style_grid.py` entry point.
-- Gradio's `MutationObserver` fires on every DOM change — guard re-injection with `observer.disconnect()`.
-
-Current snapshot note: the last three constraints describe the intended refactor/development rules; they are not all explicitly implemented in the current monolithic files.
-
-## Planned: UI v2
-
-Planned direction: migrate UI to an iframe + React + shadcn architecture, while keeping FastAPI backend endpoints as the integration boundary. Branch link: not created yet in this repository snapshot.
+- Keep `stylesStore.filteredStyles()` and host-side style payload behavior aligned. If host dedups too early, source-aware UI features (like source picker on dedup cards) cannot work correctly.
+- Category ordering logic should remain source-aware: All Sources behavior and specific-source behavior are intentionally different.
+- When changing bridge messages, update both `ui/src/bridge.ts` and host `window.addEventListener("message", ...)` handlers.

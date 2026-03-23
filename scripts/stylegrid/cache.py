@@ -21,6 +21,7 @@ def _hash_file(path):
 
 
 def check_files_changed():
+    """Re-scan style CSV files and invalidate cached style list on any hash/set change."""
     global _file_hashes
     changed = False
     current = {}
@@ -45,7 +46,7 @@ def check_files_changed():
 
 
 def get_cached_styles():
-    """Return cached styles if CSVs haven't changed, else reload and cache."""
+    """Return cached parsed styles; reload when check_files_changed detects file updates."""
     global _styles_cache
 
     if check_files_changed() or _styles_cache["data"] is None:
@@ -57,10 +58,11 @@ def get_cached_styles():
 
 
 def invalidate_styles_cache():
+    """Drop the in-memory parsed styles so the next read forces a reload from CSV files."""
     global _styles_cache
     _styles_cache["data"] = None
 
 
 def styles_cache_hashes():
-    """Snapshot of file hashes used with cached styles (for ETag)."""
+    """Return file-hash snapshot used to build ETag and detect stale cache consumers."""
     return _styles_cache["hashes"]

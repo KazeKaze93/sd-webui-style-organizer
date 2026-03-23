@@ -70,7 +70,7 @@ export function StyleCard({ style }: Props) {
           }}
           onClick={() => toggleStyle(style)}
           className={`
-            relative cursor-pointer rounded-lg border p-3
+            relative cursor-pointer rounded-lg border p-2.5
             transition-colors duration-150 select-none
             ${isSelected
               ? 'border-sg-accent bg-sg-accent/10'
@@ -95,7 +95,7 @@ export function StyleCard({ style }: Props) {
                   title="Contains {prompt} placeholder">⟳</span>
           )}
 
-          <div className="text-sm font-medium text-sg-text truncate pr-8">
+          <div className="text-sm font-medium text-sg-text truncate pr-6">
             {displayName}
           </div>
 

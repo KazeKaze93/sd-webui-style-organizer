@@ -7,7 +7,6 @@
 (function () {
     "use strict";
     if (typeof window !== "undefined") {
-        window.SG_V2_ENABLED = true; // v2 iframe (React UI); set to false for legacy panel only
         window.__SG_THUMB_VERSION = "2.0.1";
         window.SG = window.SG || {};
     }
@@ -30,6 +29,7 @@
             userPromptBaseNeg: "",
             hasThumbnail: new Set(),
             sgFrame: null,
+            sgFrameWrapper: null,
             sgV2HostInitSent: false,
         };
     }
@@ -2061,7 +2061,6 @@
         _pollInterval = setInterval(function () {
             apiGet("/style_grid/check_update").then(function (r) {
                 if (r && r.changed) {
-                    console.log("[Style Grid] CSV files changed, refreshing...");
                     ["txt2img", "img2img"].forEach(function (t) {
                         if (state[t].panel) refreshPanel(t);
                         apiGet("/style_grid/styles").then(function (data) {
@@ -2080,7 +2079,7 @@
                                 state[t].categories[cat].push(s);
                             });
                             var frame = state[t] && state[t].sgFrame;
-                            if (window.SG_V2_ENABLED && frame && frame.contentWindow) {
+                            if (frame && frame.contentWindow) {
                                 var v2styles = Object.values(state[t].categories).flat();
                                 var seen = new Set();
                                 v2styles = v2styles.filter(function (s) {
@@ -3537,76 +3536,27 @@
     // -----------------------------------------------------------------------
     function togglePanel(tabName, show) {
         var panel = state[tabName].panel;
-
-        // v2: show React iframe when SG_V2_ENABLED is true (default) or any value except explicit false
-        if (window.SG_V2_ENABLED !== false) {
-            // Keep legacy panel DOM initialized for host-side modal logic.
-            if (typeof buildPanel === "function" && !state[tabName].panel) {
-                buildPanel(tabName);
-                if (state[tabName].panel) {
-                    state[tabName].panel.style.display = "none";
-                    state[tabName].panel.classList.remove("sg-visible");
-                }
-            }
-            if (!state.txt2img.sgFrame) ensureSGFramesOnce();
-            var fr = state[tabName].sgFrame || state.txt2img.sgFrame;
-            if (fr) {
-                if (typeof show === "undefined")
-                    show = fr.style.display !== "block";
-                if (!show) {
-                    if (panel) panel.classList.remove("sg-visible");
-                    fr.style.display = "none";
-                    return;
-                }
-                if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
-                fr.style.display = "block";
-                if (!state[tabName].sgV2HostInitSent)
-                    postSGInitToFrame(tabName);
-                return;
-            }
-            console.error("[Style Grid] v2 enabled but iframe failed to initialize.");
+        if (!state[tabName].sgFrame) ensureSGFramesOnce();
+        var fr = state[tabName].sgFrame;
+        var wr = state[tabName].sgFrameWrapper;
+        if (!fr) {
+            console.error("[Style Grid] iframe failed to initialize for tab:", tabName);
             return;
         }
-
-        // Legacy DOM panel only when SG_V2_ENABLED === false
-        if (typeof show === "undefined")
-            show = !panel || !panel.classList.contains("sg-visible");
-
+        if (!wr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tabName) {
+            wr = fr.parentElement;
+            state[tabName].sgFrameWrapper = wr;
+        }
+        var target = wr || fr;
+        if (typeof show === "undefined") show = target.style.display !== "block";
         if (!show) {
             if (panel) panel.classList.remove("sg-visible");
+            target.style.display = "none";
             return;
         }
-
-        var hasDataLegacy = Object.keys(state[tabName].categories || {}).length > 0;
-        if (!panel || !hasDataLegacy) {
-            if (!panel) panel = buildPanel(tabName);
-            if (!hasDataLegacy) {
-                apiGet("/style_grid/styles").then(function (data) {
-                    state[tabName].categories = data.categories || {};
-                    state[tabName].usage = data.usage || {};
-                    if (state[tabName].panel) {
-                        state[tabName].panel.remove();
-                        state[tabName].panel = null;
-                    }
-                    buildPanel(tabName);
-                    state[tabName].panel.classList.add("sg-visible");
-                    filterStyles(tabName);
-                    var s = qs("#sg_search_" + tabName, state[tabName].panel);
-                    if (s) setTimeout(function () { s.focus(); }, 100);
-                    loadThumbnailList(tabName);
-                }).catch(function (err) {
-                    console.error("[Style Grid] Failed to load styles:", err);
-                });
-                return;
-            }
-        }
-
-        panel.classList.add("sg-visible");
-        filterStyles(tabName);
-        setTimeout(function () {
-            var s = qs("#sg_search_" + tabName, panel);
-            if (s) s.focus();
-        }, 100);
+        if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
+        target.style.display = "block";
+        if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
     }
 
     // -----------------------------------------------------------------------
@@ -3674,9 +3624,11 @@
     document.addEventListener("keydown", function (e) {
         if (e.key === "Escape") {
             ["txt2img", "img2img"].forEach(function (t) {
-                var frEsc = state[t].sgFrame || state.txt2img.sgFrame;
-                if (window.SG_V2_ENABLED !== false && frEsc && frEsc.style.display === "block") {
-                    frEsc.style.display = "none";
+                var frEsc = state[t].sgFrame;
+                var wrEsc = state[t].sgFrameWrapper || (frEsc && frEsc.parentElement && frEsc.parentElement.id === "sg-panel-wrapper-" + t ? frEsc.parentElement : null);
+                var targetEsc = wrEsc || frEsc;
+                if (targetEsc && targetEsc.style.display === "block") {
+                    targetEsc.style.display = "none";
                     e.preventDefault();
                     return;
                 }
@@ -3697,12 +3649,32 @@
         const frame = document.createElement("iframe");
         frame.id = "sg-frame-" + tab;
         frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html";
-        frame.style.cssText = [
-            "width:100%", "height:100%", "border:none",
-            "position:fixed", "inset:0", "z-index:1000",
+        // Wrap iframe in a resizable container div
+        var wrapper = document.createElement("div");
+        wrapper.id = "sg-panel-wrapper-" + tab;
+        wrapper.style.cssText = [
+            "position:fixed",
+            "top:0",
+            "left:0",
+            "width:100vw",
+            "height:100vh",
+            "border:none",
+            "border-radius:0",
+            "box-shadow:none",
+            "z-index:10000",
             "display:none",
+            "overflow:hidden",
         ].join(";");
-        document.body.appendChild(frame);
+        frame.style.cssText = "width:100%;height:100%;border:none;display:block;";
+        document.body.appendChild(wrapper);
+        wrapper.appendChild(frame);
+        state[tab].sgFrameWrapper = wrapper;
+        document.addEventListener("keydown", function (e) {
+            if (e.key === "Escape" && wrapper.style.display !== "none") {
+                e.stopPropagation();
+                wrapper.style.display = "none";
+            }
+        }, true);
 
         frame.addEventListener("load", function () {
             setTimeout(function () {
@@ -3748,7 +3720,6 @@
             if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
             function refreshAndNotifyFrame() {
-                if (!window.SG_V2_ENABLED) return;
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
@@ -3831,12 +3802,10 @@
             }
 
             if (msg.type === "SG_APPLY") {
-                console.log("[SG Bridge] applying:", msg.styleId);
                 window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
             }
 
             if (msg.type === "SG_UNAPPLY") {
-                console.log("[SG Bridge] unapplying:", msg.styleId);
                 window._sgUnapplyStyle(tab, msg.styleId);
             }
 
@@ -3867,7 +3836,8 @@
             }
 
             if (msg.type === "SG_CLOSE_REQUEST") {
-                frame.style.display = "none";
+                var closeTarget = state[tab].sgFrameWrapper || frame;
+                closeTarget.style.display = "none";
             }
 
             if (msg.type === "SG_RANDOM") {
@@ -3979,8 +3949,6 @@
                 }
             }
             if (msg.type === "SG_GENERATE_PREVIEW") {
-                console.log("[SG] SG_GENERATE_PREVIEW received:", msg.styleId);
-                console.log("[SG] calling thumbnail fn for:", msg.styleId);
                 generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
                     if (frame.contentWindow) {
                         frame.contentWindow.postMessage({
@@ -4031,8 +3999,8 @@
     }
 
     function ensureSGFramesOnce() {
-        if (state.txt2img.sgFrame) return;
-        state.txt2img.sgFrame = initSGFrame("txt2img");
+        if (!state.txt2img.sgFrame) state.txt2img.sgFrame = initSGFrame("txt2img");
+        if (!state.img2img.sgFrame) state.img2img.sgFrame = initSGFrame("img2img");
     }
 
     function init() {
@@ -4086,7 +4054,10 @@
     init();
 
     if (typeof onUiLoaded === "function") {
-        onUiLoaded(ensureSGFramesOnce);
+        onUiLoaded(function () {
+            state.txt2img.sgFrame = state.txt2img.sgFrame || initSGFrame("txt2img");
+            state.img2img.sgFrame = state.img2img.sgFrame || initSGFrame("img2img");
+        });
     } else if (document.body) {
         ensureSGFramesOnce();
     } else {

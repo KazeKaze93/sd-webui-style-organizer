@@ -14,7 +14,6 @@ export type FrameMessage =
   | { type: 'SG_READY' }
   | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; silent?: boolean }
   | { type: 'SG_UNAPPLY';       styleId: string }
-  | { type: 'SG_SAVE_STYLE';    style: Style }
   | { type: 'SG_EDIT_STYLE';      styleId: string }
   | { type: 'SG_DUPLICATE_STYLE'; styleId: string }
   | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string }
@@ -24,7 +23,6 @@ export type FrameMessage =
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
-  | { type: 'SG_REQUEST_STYLES' }
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_RANDOM' }
   | { type: 'SG_PRESETS' }
@@ -33,7 +31,6 @@ export type FrameMessage =
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }
   | { type: 'SG_CSV_EDITOR' }
   | { type: 'SG_CLEAR_ALL' }
-  | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
 
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'

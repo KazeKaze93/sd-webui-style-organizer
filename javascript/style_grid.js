@@ -929,6 +929,7 @@
                        done++;
                        state[tabName2].hasThumbnail.add(styleName);
                        _thumbVersions[styleName] = Date.now();
+                       localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                        _saveThumbVersions();
                        qsa('.sg-card[data-style-name="' +
                            CSS.escape(styleName) + '"]', state[tabName2].panel)
@@ -953,26 +954,38 @@
        processNext(0);
    }
 
-   function generateThumbnail(tabName, styleName) {
+   function generateThumbnail(tabName, styleName, onDone, onProgress) {
         showStatusMessage(tabName, "🎨 Generating preview for " +
             styleName.split("_").slice(1).join(" ") + "...");
+        if (typeof onProgress === "function") {
+            onProgress("generating", 0);
+        }
 
         apiPost("/style_grid/thumbnail/generate", { name: styleName })
             .then(function (r) {
                 if (r.error) {
                     showStatusMessage(tabName, "Generation failed: " + r.error, true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                     return;
                 }
-                pollGenerationStatus(tabName, styleName, 0);
+                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress);
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
+                if (typeof onProgress === "function") {
+                    onProgress("error");
+                }
             });
     }
 
-    function pollGenerationStatus(tabName, styleName, attempts) {
+    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress) {
         if (attempts > 60) {
             showStatusMessage(tabName, "Generation timed out", true);
+            if (typeof onProgress === "function") {
+                onProgress("error");
+            }
             return;
         }
         apiGet("/style_grid/thumbnail/gen_status?name=" +
@@ -981,11 +994,15 @@
                 // r could be a FastAPI 404 JSON like {"detail": "Not Found"}
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     showStatusMessage(tabName, "Generation endpoint not found", true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                     return;
                 }
                 if (r.status === "done") {
                     state[tabName].hasThumbnail.add(styleName);
                     _thumbVersions[styleName] = Date.now();
+                    localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                     _saveThumbVersions();
                     qsa('.sg-card[data-style-name="' +
                         CSS.escape(styleName) + '"]',
@@ -994,15 +1011,28 @@
                             c.classList.add("sg-has-thumb");
                         });
                     showStatusMessage(tabName, "✓ Preview ready!");
+                    if (typeof onProgress === "function") {
+                        onProgress("done", 100);
+                    }
+                    if (typeof onDone === "function") onDone(_thumbVersions[styleName]);
                 } else if (r.status === "error") {
                     showStatusMessage(tabName,
                         "Generation failed: " + (r.message || "unknown"), true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                 } else if (r.status === "running" || r.status === "idle") {
+                    if (typeof onProgress === "function") {
+                        onProgress("generating", Math.min(90, Math.round((attempts / 60) * 100)));
+                    }
                     setTimeout(function () {
-                        pollGenerationStatus(tabName, styleName, attempts + 1);
+                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress);
                     }, 2000);
                 } else {
                     showStatusMessage(tabName, "Unknown generation status: " + r.status, true);
+                    if (typeof onProgress === "function") {
+                        onProgress("error");
+                    }
                 }
             })
             .catch(function (err) {
@@ -1010,6 +1040,9 @@
                 // HTTP errors (404, 500) mean something is structurally wrong — stop
                 console.error("[Style Grid] Poll error:", err);
                 showStatusMessage(tabName, "Generation status unavailable", true);
+                if (typeof onProgress === "function") {
+                    onProgress("error");
+                }
             });
     }
 
@@ -1036,6 +1069,7 @@
                                     c.classList.add("sg-has-thumb");
                                 });
                             _thumbVersions[styleName] = Date.now();
+                            localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                             _saveThumbVersions();
                             showStatusMessage(tabName, "Preview saved ✓");
                         } else {
@@ -3405,6 +3439,14 @@
 
         // v2: show React iframe when SG_V2_ENABLED is true (default) or any value except explicit false
         if (window.SG_V2_ENABLED !== false) {
+            // Keep legacy panel DOM initialized for host-side modal logic.
+            if (typeof buildPanel === "function" && !state[tabName].panel) {
+                buildPanel(tabName);
+                if (state[tabName].panel) {
+                    state[tabName].panel.style.display = "none";
+                    state[tabName].panel.classList.remove("sg-visible");
+                }
+            }
             if (!state.txt2img.sgFrame) ensureSGFramesOnce();
             var fr = state[tabName].sgFrame || state.txt2img.sgFrame;
             if (fr) {
@@ -3696,6 +3738,49 @@
                 window._sgUnapplyStyle(tab, msg.styleId);
             }
 
+            if (msg.type === "SG_REORDER_STYLES") {
+                // Update host-side order to match new order from React
+                var ids = Array.isArray(msg.styleIds) ? msg.styleIds : [];
+
+                // ids from React are source of truth for selection order.
+                if (state[tab]) {
+                    state[tab].selectedOrder = ids;
+                }
+                console.log("[REORDER] selectedOrder set to:", state[tab] ? state[tab].selectedOrder : undefined);
+                console.log("[REORDER] applied has entries:",
+                    state[tab] && state[tab].applied ? Array.from(state[tab].applied.keys()) : "NO MAP");
+
+                console.log("[reorder] selectedOrder:", state[tab] ? state[tab].selectedOrder : undefined);
+                console.log("[reorder] applied Map size:", state[tab] && state[tab].applied ? state[tab].applied.size : "NO MAP");
+                console.log("[reorder] ids from React:", ids);
+
+                // Ensure applied map contains entries needed by rebuildPromptFromOrder.
+                if (state[tab] && state[tab].applied && typeof state[tab].applied.has === "function") {
+                    ids.forEach(function (styleId) {
+                        if (!state[tab].applied.has(styleId)) {
+                            var styleObj = findStyleByName(styleId);
+                            if (styleObj) {
+                                var isPromptWrap = styleObj.prompt && styleObj.prompt.indexOf("{prompt}") !== -1;
+                                var isNegWrap = styleObj.negative_prompt && styleObj.negative_prompt.indexOf("{prompt}") !== -1;
+                                state[tab].applied.set(styleId, {
+                                    prompt: isPromptWrap ? null : (styleObj.prompt || null),
+                                    negative: isNegWrap ? null : (styleObj.negative_prompt || null),
+                                    wrapTemplate: isPromptWrap ? styleObj.prompt : null,
+                                    negWrapTemplate: isNegWrap ? styleObj.negative_prompt : null,
+                                    originalPrompt: null,
+                                    originalNeg: null
+                                });
+                            }
+                        }
+                    });
+                }
+
+                // Now rebuild prompt from new order
+                if (typeof rebuildPromptFromOrder === "function") {
+                    rebuildPromptFromOrder(tab);
+                }
+            }
+
             if (msg.type === "SG_CLOSE_REQUEST") {
                 frame.style.display = "none";
             }
@@ -3736,8 +3821,65 @@
                     moveToCategory(tab, styleToMove);
                 }
             }
+            if (msg.type === "SG_WILDCARD_CATEGORY") {
+                var catId = msg.category || "";
+                if (catId) {
+                    var wcTag = "{sg:" + String(catId).toLowerCase() + "}";
+                    var promptEl = qs("#" + tab + "_prompt textarea");
+                    if (promptEl) {
+                        var sep = promptEl.value.trim() ? ", " : "";
+                        setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
+                    }
+                }
+            }
+            if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {
+                var catName = msg.category || "";
+                if (catName) {
+                    var stylesInCat = ((state[tab] && state[tab].categories && state[tab].categories[catName]) || []).slice();
+                    var activeSource = (state[tab] && state[tab].selectedSource) || "All";
+                    if (activeSource !== "All") {
+                        stylesInCat = stylesInCat.filter(function (s) { return s.source === activeSource; });
+                    }
+                    startBatchThumbnails(tab, catName, stylesInCat);
+                }
+            }
             if (msg.type === "SG_GENERATE_PREVIEW") {
-                generateThumbnail(tab, msg.styleId);
+                console.log("[SG] SG_GENERATE_PREVIEW received:", msg.styleId);
+                console.log("[SG] calling thumbnail fn for:", msg.styleId);
+                generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
+                    if (frame.contentWindow) {
+                        frame.contentWindow.postMessage({
+                            type: "SG_THUMB_PROGRESS",
+                            status: status,
+                            styleId: msg.styleId,
+                            progress: progressValue,
+                        }, "*");
+                        if (status === "done") {
+                            frame.contentWindow.postMessage({
+                                type: "SG_THUMB_PROGRESS",
+                                status: "done",
+                                styleId: msg.styleId,
+                                progress: 100,
+                            }, "*");
+                            setTimeout(function () {
+                                if (frame && frame.contentWindow) {
+                                    frame.contentWindow.postMessage({
+                                        type: "SG_THUMB_DONE",
+                                        styleId: msg.styleId,
+                                        version: Date.now(),
+                                    }, "*");
+                                }
+                            }, 300);
+                        }
+                        if (status === "error") {
+                            frame.contentWindow.postMessage({
+                                type: "SG_THUMB_PROGRESS",
+                                status: "error",
+                                styleId: msg.styleId,
+                            }, "*");
+                        }
+                    }
+                });
             }
             if (msg.type === "SG_UPLOAD_PREVIEW") {
                 uploadThumbnail(tab, msg.styleId);

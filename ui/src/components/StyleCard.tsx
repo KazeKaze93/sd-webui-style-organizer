@@ -1,16 +1,19 @@
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import type { Style } from '../bridge'
-import { useStylesStore } from '../store/stylesStore'
-import {
-  ContextMenu, ContextMenuContent, ContextMenuItem,
-  ContextMenuSeparator, ContextMenuTrigger
-} from './ui/context-menu'
+import { getCategoryColor, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
+import { ThumbnailPreview } from './ThumbnailPreview'
 
 interface Props { style: Style }
 
+const Portal = ({ children }: { children: React.ReactNode }) =>
+  createPortal(children, document.body)
+
 export function StyleCard({ style }: Props) {
   const { selectedStyles, toggleStyle, isFavorite, toggleFavorite } = useStylesStore()
+  const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const isSelected = selectedStyles.some(s => s.name === style.name)
   const fav = isFavorite(style.name)
 
@@ -19,11 +22,39 @@ export function StyleCard({ style }: Props) {
     : style.name
 
   const hasPromptPlaceholder = style.prompt?.includes('{prompt}')
+  const borderColor = getCategoryColor(style.category || 'OTHER')
+
+  useEffect(() => {
+    if (!menuPos) return
+    const blockNativeContextMenu = (e: MouseEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    const blockRightMouseDown = (e: MouseEvent) => {
+      if (e.button === 2) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+
+    window.addEventListener('contextmenu', blockNativeContextMenu, true)
+    document.addEventListener('contextmenu', blockNativeContextMenu, true)
+    window.addEventListener('mousedown', blockRightMouseDown, true)
+    document.addEventListener('mousedown', blockRightMouseDown, true)
+
+    return () => {
+      window.removeEventListener('contextmenu', blockNativeContextMenu, true)
+      document.removeEventListener('contextmenu', blockNativeContextMenu, true)
+      window.removeEventListener('mousedown', blockRightMouseDown, true)
+      document.removeEventListener('mousedown', blockRightMouseDown, true)
+    }
+  }, [menuPos])
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
+    <>
+      <ThumbnailPreview style={style}>
         <motion.div
+          data-sg-card="true"
           layout
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -31,6 +62,11 @@ export function StyleCard({ style }: Props) {
           transition={{ duration: 0.1 }}
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
+          onContextMenu={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setMenuPos({ x: e.clientX, y: e.clientY })
+          }}
           onClick={() => toggleStyle(style)}
           className={`
             relative cursor-pointer rounded-lg border p-3
@@ -39,6 +75,10 @@ export function StyleCard({ style }: Props) {
               ? 'border-sg-accent bg-sg-accent/10'
               : 'border-sg-border bg-sg-surface hover:border-sg-accent/50'}
           `}
+          style={{
+            borderLeftColor: isSelected ? undefined : borderColor,
+            borderLeftWidth: '3px'
+          }}
         >
           {/* Favorite star */}
           <button
@@ -50,87 +90,95 @@ export function StyleCard({ style }: Props) {
 
           {/* {prompt} indicator */}
           {hasPromptPlaceholder && (
-            <span className="absolute top-1.5 right-2 text-xs text-sg-muted" 
+            <span className="absolute top-1.5 right-2 text-xs text-sg-muted"
                   title="Contains {prompt} placeholder">⟳</span>
           )}
 
           <div className="text-sm font-medium text-sg-text truncate pr-8">
             {displayName}
           </div>
-          <div className="text-xs text-sg-muted mt-0.5 truncate">
-            {style.category}
-          </div>
 
           {/* Selected indicator */}
           {isSelected && (
-            <div className="absolute bottom-2 right-2 w-2 h-2 
+            <div className="absolute bottom-2 right-2 w-2 h-2
                             rounded-full bg-sg-accent" />
           )}
         </motion.div>
-      </ContextMenuTrigger>
+      </ThumbnailPreview>
 
-      <ContextMenuContent className="bg-sg-surface border-sg-border w-48">
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => toggleStyle(style)}
-        >
-          {isSelected ? '✕ Deselect' : '✓ Select'}
-        </ContextMenuItem>
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => toggleFavorite(style.name)}
-        >
-          {fav ? '★ Remove from Favorites' : '☆ Add to Favorites'}
-        </ContextMenuItem>
-        <ContextMenuSeparator className="bg-sg-border" />
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => navigator.clipboard.writeText(style.prompt)}
-        >
-          📋 Copy prompt
-        </ContextMenuItem>
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => sendToHost({ type: 'SG_EDIT_STYLE', 
-                                      styleId: style.name })}
-        >
-          ✏️ Edit
-        </ContextMenuItem>
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => sendToHost({ type: 'SG_DUPLICATE_STYLE', 
-                                      styleId: style.name })}
-        >
-          📄 Duplicate
-        </ContextMenuItem>
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => sendToHost({ type: 'SG_MOVE_TO_CATEGORY', styleId: style.name })}
-        >
-          📂 Move to category...
-        </ContextMenuItem>
-        <ContextMenuSeparator className="bg-sg-border" />
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name })}
-        >
-          🎨 Generate preview (SD)
-        </ContextMenuItem>
-        <ContextMenuItem
-          className="text-sg-text hover:bg-sg-accent/20 cursor-pointer text-sm"
-          onClick={() => sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name })}
-        >
-          🖼️ Upload preview image
-        </ContextMenuItem>
-        <ContextMenuSeparator className="bg-sg-border" />
-        <ContextMenuItem
-          className="text-red-400 hover:bg-red-500/20 cursor-pointer text-sm"
-          onClick={() => sendToHost({ type: 'SG_DELETE_STYLE', 
-                                      styleId: style.name })}
-        >
-          🗑️ Delete
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+      {menuPos && (
+        <Portal>
+          <div
+            className="fixed z-[9999] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1 min-w-48"
+            style={{ left: menuPos.x, top: menuPos.y }}
+            onMouseLeave={() => setMenuPos(null)}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { toggleStyle(style); setMenuPos(null) }}
+            >
+              {isSelected ? '✕ Deselect' : '✓ Select'}
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { toggleFavorite(style.name); setMenuPos(null) }}
+            >
+              {fav ? '★ Remove from Favorites' : '☆ Add to Favorites'}
+            </button>
+            <div className="h-px my-1 bg-sg-border" />
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { navigator.clipboard.writeText(style.prompt); setMenuPos(null) }}
+            >
+              📋 Copy prompt
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { sendToHost({ type: 'SG_EDIT_STYLE', styleId: style.name }); setMenuPos(null) }}
+            >
+              ✏️ Edit
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { sendToHost({ type: 'SG_DUPLICATE_STYLE', styleId: style.name }); setMenuPos(null) }}
+            >
+              📄 Duplicate
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { sendToHost({ type: 'SG_MOVE_TO_CATEGORY', styleId: style.name }); setMenuPos(null) }}
+            >
+              📂 Move to category...
+            </button>
+            <div className="h-px my-1 bg-sg-border" />
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name }); setMenuPos(null) }}
+            >
+              🎨 Generate preview (SD)
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={() => { sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name }); setMenuPos(null) }}
+            >
+              🖼️ Upload preview image
+            </button>
+            <div className="h-px my-1 bg-sg-border" />
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+              onClick={() => { sendToHost({ type: 'SG_DELETE_STYLE', styleId: style.name }); setMenuPos(null) }}
+            >
+              🗑️ Delete
+            </button>
+          </div>
+          <div
+            className="fixed inset-0 z-[9998]"
+            onClick={() => setMenuPos(null)}
+            onContextMenu={(e) => e.preventDefault()}
+          />
+        </Portal>
+      )}
+    </>
   )
 }

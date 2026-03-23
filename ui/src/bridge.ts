@@ -2,6 +2,8 @@
 export type HostMessage =
   | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
+  | { type: 'SG_THUMB_DONE';     styleId: string; version: number }
+  | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
 
@@ -16,6 +18,9 @@ export type FrameMessage =
   | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string }
   | { type: 'SG_GENERATE_PREVIEW'; styleId: string }
   | { type: 'SG_UPLOAD_PREVIEW';   styleId: string }
+  | { type: 'SG_WILDCARD_CATEGORY'; category: string }
+  | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number }
+  | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_REQUEST_STYLES' }
   | { type: 'SG_CLOSE_REQUEST' }

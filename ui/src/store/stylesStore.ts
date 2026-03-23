@@ -1,6 +1,53 @@
 import { create } from 'zustand'
 import { sendToHost, type Style, type Tab } from '../bridge'
 
+export function getCategoryColor(category: string): string {
+  // Fixed palette of visually distinct colors — no duplicates
+  const PALETTE = [
+    '#f472b6', // pink
+    '#fb923c', // orange
+    '#facc15', // yellow
+    '#4ade80', // green
+    '#34d399', // emerald
+    '#22d3ee', // cyan
+    '#60a5fa', // blue
+    '#818cf8', // indigo
+    '#a78bfa', // violet
+    '#e879f9', // fuchsia
+    '#f87171', // red
+    '#a3e635', // lime
+    '#2dd4bf', // teal
+    '#38bdf8', // sky
+    '#c084fc', // purple
+    '#fb7185', // rose
+    '#fdba74', // amber
+    '#86efac', // light green
+    '#93c5fd', // light blue
+    '#fda4af', // light pink
+    '#6ee7b7', // light teal
+    '#fcd34d', // light yellow
+    '#d8b4fe', // light purple
+    '#67e8f9', // light cyan
+    '#bbf7d0', // mint
+    '#fecaca', // salmon
+    '#bfdbfe', // powder blue
+    '#ddd6fe', // lavender
+    '#fed7aa', // peach
+    '#bbf7d0', // seafoam
+  ]
+
+  // Deterministic index based on category name hash
+  let hash = 0
+  for (let i = 0; i < category.length; i++) {
+    hash = category.charCodeAt(i) + ((hash << 5) - hash)
+    hash = hash & hash // Convert to 32bit int
+  }
+
+  // Spread across palette using prime multiplication to avoid clustering
+  const index = Math.abs(hash * 2654435761) % PALETTE.length
+  return PALETTE[index]
+}
+
 interface StylesStore {
   // Data
   styles: Style[]
@@ -14,7 +61,9 @@ interface StylesStore {
   
   // Selection
   selectedStyles: Style[]
+  collapsedCategories: Set<string>
   silentMode: boolean
+  compactMode: boolean
   favorites: Set<string>
   recentNames: string[]
   
@@ -24,7 +73,13 @@ interface StylesStore {
   setCategory: (cat: string | null) => void
   setActiveSource: (src: string | null) => void
   toggleSilent: () => void
+  toggleCompact: () => void
+  toggleCollapse: (cat: string) => void
+  collapseAll: () => void
+  expandAll: () => void
+  selectAllInCategory: (cat: string) => void
   toggleStyle: (style: Style) => void
+  setSelectedStyles: (styles: Style[]) => void
   toggleFavorite: (name: string) => void
   isFavorite: (name: string) => boolean
   addToRecent: (name: string) => void
@@ -42,7 +97,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   activeSource: null,
   sources: [],
   selectedStyles: [],
+  collapsedCategories: new Set(),
   silentMode: false,
+  compactMode: false,
   favorites: new Set(
     JSON.parse(localStorage.getItem('sg_v2_favorites') || '[]')
   ),
@@ -60,6 +117,59 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   setCategory: (activeCategory) => set({ activeCategory }),
   setActiveSource: (activeSource) => set({ activeSource }),
   toggleSilent: () => set((s) => ({ silentMode: !s.silentMode })),
+  toggleCompact: () => set((s) => ({ compactMode: !s.compactMode })),
+  toggleCollapse: (cat) => set((s) => {
+    const next = new Set(s.collapsedCategories)
+    if (next.has(cat)) next.delete(cat)
+    else next.add(cat)
+    return { collapsedCategories: next }
+  }),
+  collapseAll: () => {
+    const { styles, activeSource } = get()
+    const src = activeSource
+      ? styles.filter(s => s.source_file === activeSource)
+      : styles
+    const cats = [...new Set(src.map(s => s.category).filter(Boolean))]
+    set({ collapsedCategories: new Set(cats) })
+  },
+  expandAll: () => set({ collapsedCategories: new Set() }),
+  selectAllInCategory: (cat) => {
+    const { styles, activeSource, selectedStyles, silentMode } = get()
+    const src = activeSource
+      ? styles.filter(s => s.source_file === activeSource)
+      : styles
+    const catStyles = src.filter(s => s.category === cat)
+    const allSelected = catStyles.every(s =>
+      selectedStyles.some(sel => sel.name === s.name)
+    )
+
+    if (allSelected) {
+      const removeNames = new Set(catStyles.map(s => s.name))
+      set({
+        selectedStyles: selectedStyles.filter(s => !removeNames.has(s.name)),
+      })
+      catStyles.forEach((style) => {
+        sendToHost({ type: 'SG_UNAPPLY', styleId: style.name })
+      })
+      return
+    }
+
+    const selectedNames = new Set(selectedStyles.map(s => s.name))
+    const toAdd = catStyles.filter(s => !selectedNames.has(s.name))
+    if (toAdd.length === 0) return
+
+    set({ selectedStyles: [...selectedStyles, ...toAdd] })
+    toAdd.forEach((style) => {
+      get().addToRecent(style.name)
+      sendToHost({
+        type: 'SG_APPLY',
+        styleId: style.name,
+        prompt: style.prompt,
+        neg: style.negative_prompt,
+        silent: silentMode,
+      })
+    })
+  },
   toggleFavorite: (name) => {
     const favs = new Set(get().favorites)
     if (favs.has(name)) favs.delete(name)
@@ -94,6 +204,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       })
     }
   },
+  setSelectedStyles: (styles: Style[]) => set({ selectedStyles: styles }),
 
   categories: () => {
     const { styles, activeSource } = get()

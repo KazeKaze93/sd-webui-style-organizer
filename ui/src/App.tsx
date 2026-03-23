@@ -103,48 +103,52 @@ export default function App() {
   }, [])
 
   const toggleFullscreen = () => {
-    // window.frameElement = the <iframe> tag
-    // wrapper = window.frameElement.parentElement (the resizable div)
     const iframe = window.frameElement as HTMLElement
     if (!iframe) return
     const wrapper = iframe.parentElement as HTMLElement
     if (!wrapper) return
 
-    if (!isFullscreen) {
-      // Save current size
-      wrapper.dataset.prevWidth = wrapper.style.width
-      wrapper.dataset.prevHeight = wrapper.style.height
-      wrapper.dataset.prevTop = wrapper.style.top
-      wrapper.dataset.prevLeft = wrapper.style.left
-      wrapper.dataset.prevMaxH = wrapper.style.maxHeight
-      wrapper.dataset.prevMaxW = wrapper.style.maxWidth
-      // Go fullscreen
-      wrapper.style.width = 'calc(100vw - 16px)'
-      wrapper.style.height = 'calc(100vh - 100px)'
-      wrapper.style.top = '90px'
-      wrapper.style.left = '8px'
-      wrapper.style.maxWidth = 'calc(100vw - 16px)'
-      wrapper.style.maxHeight = 'calc(100vh - 100px)'
-      wrapper.style.resize = 'none'
-      setIsFullscreen(true)
-    } else {
-      // Restore
-      wrapper.style.width = wrapper.dataset.prevWidth || '960px'
-      wrapper.style.height = wrapper.dataset.prevHeight || '600px'
-      wrapper.style.top = wrapper.dataset.prevTop || '130px'
-      wrapper.style.left = wrapper.dataset.prevLeft || '0px'
-      wrapper.style.maxHeight = wrapper.dataset.prevMaxH || 'calc(100vh - 140px)'
-      wrapper.style.maxWidth = wrapper.dataset.prevMaxW || 'calc(100vw - 16px)'
+    if (isFullscreen) {
+      // Windowed mode (master-like): centered and readable
+      wrapper.style.top = '80px'
+      wrapper.style.right = '16px'
+      wrapper.style.left = 'auto'
+      wrapper.style.transform = 'none'
+      wrapper.style.width = '1000px'
+      wrapper.style.height = '650px'
+      wrapper.style.minWidth = '600px'
+      wrapper.style.minHeight = '400px'
+      wrapper.style.maxWidth = '95vw'
+      wrapper.style.maxHeight = '90vh'
+      wrapper.style.borderRadius = '12px'
+      wrapper.style.boxShadow = '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)'
       wrapper.style.resize = 'both'
       setIsFullscreen(false)
+      return
     }
+
+    // Fullscreen mode
+    wrapper.style.top = '0'
+    wrapper.style.right = 'auto'
+    wrapper.style.left = '0'
+    wrapper.style.transform = 'none'
+    wrapper.style.width = '100vw'
+    wrapper.style.height = '100vh'
+    wrapper.style.minWidth = ''
+    wrapper.style.minHeight = ''
+    wrapper.style.maxWidth = ''
+    wrapper.style.maxHeight = ''
+    wrapper.style.borderRadius = '0'
+    wrapper.style.boxShadow = 'none'
+    wrapper.style.resize = 'none'
+    setIsFullscreen(true)
   }
 
   return (
     <div className="flex flex-col bg-sg-bg text-sg-text"
       style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
-      <div className="shrink-0 flex items-center gap-2 px-3 py-2
+      <div className="shrink-0 flex items-center gap-3 px-4 py-2.5
                     border-b border-sg-border">
         <span className="text-sg-accent font-semibold">🎨 Style Grid</span>
         <span className="text-xs text-sg-muted/60 border border-sg-border/50 
@@ -156,15 +160,16 @@ export default function App() {
           <SearchBar />
         </div>
         <TooltipProvider>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={() => toggleSilent()}
               title={silentMode ? 'Silent mode ON' : 'Silent mode OFF'}
-              className={`px-3 py-1.5 rounded text-xs border transition-colors shrink-0
+              className={`w-8 h-8 flex items-center justify-center rounded
+              transition-colors text-sm border border-transparent shrink-0
             ${silentMode 
-              ? 'bg-sg-accent/20 border-sg-accent text-sg-accent' 
-              : 'border-sg-border text-sg-muted hover:text-sg-text'}`}
+              ? 'bg-sg-accent/20 text-sg-accent' 
+              : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface hover:border-sg-border'}`}
             >
               👁
             </button>
@@ -252,7 +257,7 @@ export default function App() {
               </div>
             )}
             <button
-              onClick={() => { /* TODO: windowed mode */ }}
+              onClick={toggleFullscreen}
               className="text-sg-muted hover:text-sg-text transition-colors text-sm w-6 h-6
                flex items-center justify-center"
               title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -276,7 +281,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => sendToHost({ type: 'SG_CLOSE_REQUEST' })}
-              className="text-sg-muted hover:text-sg-text transition-colors text-lg"
+              className="ml-3 text-sg-muted hover:text-sg-text transition-colors text-lg"
             >
               ✕
             </button>
@@ -288,14 +293,14 @@ export default function App() {
       <div className="flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>
         {/* Sidebar */}
         <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
-          style={{ width: '160px', overflowY: 'auto', overflowX: 'auto' }}>
+          style={{ width: isFullscreen ? '170px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
           <Sidebar />
         </div>
 
         {/* Grid */}
         <div className="p-3 min-h-0"
           style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
-          <StyleGrid />
+          <StyleGrid windowed={!isFullscreen} />
         </div>
       </div>
 

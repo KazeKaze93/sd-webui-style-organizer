@@ -48,12 +48,7 @@ export function Sidebar() {
           />
         )}
         <span className="relative z-10 flex items-center gap-2 min-w-0">
-          <span
-            className="w-1.5 h-1.5 rounded-full shrink-0"
-            style={{ backgroundColor: getCategoryColor('All') }}
-            aria-hidden
-          />
-          <span className="truncate">All</span>
+          <span className="truncate" style={{ color: getCategoryColor('All') }}>All</span>
         </span>
         <span className="relative z-10 text-xs opacity-60 shrink-0">
           {count(null)}
@@ -114,11 +109,9 @@ export function Sidebar() {
                   />
                 )}
                 <span className="flex items-center gap-2 relative z-10">
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: getCategoryColor(cat) }}
-                  />
-                  <span className="flex-1 truncate">{cat}</span>
+                  <span className="flex-1 truncate" style={{ color: getCategoryColor(cat) }}>
+                    {cat}
+                  </span>
                   <span className="text-xs opacity-60 shrink-0">{count(cat)}</span>
                 </span>
               </button>

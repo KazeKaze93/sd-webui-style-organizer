@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import type { Style } from '../bridge'
@@ -6,12 +6,15 @@ import { getCategoryColor, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { ThumbnailPreview } from './ThumbnailPreview'
 
-interface Props { style: Style }
+interface Props {
+  style: Style
+  windowed?: boolean
+}
 
 const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
-export function StyleCard({ style }: Props) {
+export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
   const { selectedStyles, toggleStyle, isFavorite, toggleFavorite, usageCounts } = useStylesStore()
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const isSelected = selectedStyles.some(s => s.name === style.name)
@@ -69,7 +72,7 @@ export function StyleCard({ style }: Props) {
           }}
           onClick={() => toggleStyle(style)}
           className={`
-            relative cursor-pointer rounded-lg border p-3
+            relative cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
             transition-colors duration-150 select-none
             ${isSelected
               ? 'border-sg-accent bg-sg-accent/10'
@@ -94,7 +97,7 @@ export function StyleCard({ style }: Props) {
                   title="Contains {prompt} placeholder">⟳</span>
           )}
 
-          <div className="text-sm font-medium text-sg-text truncate pr-8">
+          <div className={`${windowed ? 'text-xs' : 'text-sm'} font-medium text-sg-text truncate ${windowed ? 'pr-6' : 'pr-8'}`}>
             {displayName}
           </div>
 
@@ -187,4 +190,4 @@ export function StyleCard({ style }: Props) {
       )}
     </>
   )
-}
+})

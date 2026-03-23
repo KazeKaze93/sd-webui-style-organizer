@@ -1,14 +1,14 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { sendToHost } from '../bridge'
 import { getCategoryColor, useStylesStore } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 
-export function StyleGrid() {
+export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
-    filteredStyles, activeCategory, compactMode,
+    filteredStyles, activeCategory, activeSource, compactMode,
     collapsedCategories, toggleCollapse,
-    selectedStyles, selectAllInCategory
+    selectedStyles, selectAllInCategory, search, styles
   } = useStylesStore()
   const [catMenu, setCatMenu] = useState<{
     x: number
@@ -17,7 +17,10 @@ export function StyleGrid() {
     missingCount: number
   } | null>(null)
 
-  const filtered = filteredStyles()
+  const filtered = useMemo(
+    () => filteredStyles(),
+    [filteredStyles, styles, search, activeCategory, activeSource]
+  )
 
   if (filtered.length === 0) {
     return (
@@ -35,11 +38,15 @@ export function StyleGrid() {
     return (
       <div className={`grid content-start ${
         compactMode
-          ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
-          : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2'
-      }`}>
+          ? (windowed
+              ? 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-1'
+              : 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1')
+          : (windowed
+              ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
+              : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
+      }`} style={{ contentVisibility: 'auto' }}>
         {filtered.map(style => (
-          <StyleCard key={style.name} style={style} />
+          <StyleCard key={style.name} style={style} windowed={windowed} />
         ))}
       </div>
     )
@@ -118,11 +125,15 @@ export function StyleGrid() {
                 >
                   <div className={`grid ${
                     compactMode
-                      ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
-                      : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2'
-                  }`}>
+                      ? (windowed
+                          ? 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-1'
+                          : 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1')
+                      : (windowed
+                          ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
+                          : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
+                  }`} style={{ contentVisibility: 'auto' }}>
                     {catStyles.map(style => (
-                      <StyleCard key={style.name} style={style} />
+                      <StyleCard key={style.name} style={style} windowed={windowed} />
                     ))}
                   </div>
                 </motion.div>

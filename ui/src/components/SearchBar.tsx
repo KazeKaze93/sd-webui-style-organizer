@@ -47,7 +47,7 @@ export function SearchBar() {
               if (e.key === 'ArrowDown' && open) e.preventDefault()
             }}
             placeholder="Search styles..."
-            className="w-full h-8 px-3 pr-8 rounded border border-sg-border 
+            className="w-full h-9 px-3 pr-8 rounded border border-sg-border 
                        bg-sg-surface text-sg-text text-sm
                        placeholder:text-sg-muted focus:border-sg-accent 
                        focus:outline-none transition-colors"

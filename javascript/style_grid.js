@@ -3684,16 +3684,22 @@
         wrapper.id = "sg-panel-wrapper-" + tab;
         wrapper.style.cssText = [
             "position:fixed",
-            "top:0",
-            "left:0",
-            "width:100vw",
-            "height:100vh",
+            "top:80px",
+            "right:16px",
+            "left:auto",
+            "width:1000px",
+            "height:650px",
+            "min-width:600px",
+            "min-height:400px",
+            "max-width:95vw",
+            "max-height:90vh",
             "border:none",
-            "border-radius:0",
-            "box-shadow:none",
+            "border-radius:12px",
+            "box-shadow:0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)",
             "z-index:10000",
             "display:none",
             "overflow:hidden",
+            "resize:both",
         ].join(";");
         frame.style.cssText = "width:100%;height:100%;border:none;display:block;";
         document.body.appendChild(wrapper);

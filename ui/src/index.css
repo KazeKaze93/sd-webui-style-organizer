@@ -5,10 +5,36 @@
 @tailwind components;
 @tailwind utilities;
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+  overflow: hidden;
+  color-scheme: dark;
+  @apply font-sans;
+}
+
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden !important;
+  background: transparent;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 @layer base {
   .theme {
     --font-heading: var(--font-sans);
-    --font-sans: 'Geist Variable', sans-serif;
+    --font-sans: "Geist Variable", sans-serif;
   }
   :root {
     --background: oklch(1 0 0);
@@ -85,33 +111,27 @@
   body {
     @apply bg-background text-foreground;
   }
-  html {
-    @apply font-sans;
-  }
 }
 
-/* Custom scrollbars */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(99, 102, 241, 0.3);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(99, 102, 241, 0.5);
-}
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-/* Hide horizontal scrollbar on sidebar */
-.sidebar-scroll {
+/* Unified scrollbar for ALL scrollable elements */
+* {
   scrollbar-width: thin;
-  scrollbar-color: rgba(99,102,241,0.3) transparent;
+  scrollbar-color: rgba(99, 102, 241, 0.4) transparent;
 }
-
+*::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 2px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(99, 102, 241, 0.65);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}

@@ -3534,6 +3534,33 @@
     // -----------------------------------------------------------------------
     // Toggle panel visibility
     // -----------------------------------------------------------------------
+    var _sgHostPrevBodyOverflow = "";
+    var _sgHostPrevDocOverflow = "";
+    var _sgHostScrollLocked = false;
+    function anySGFrameVisible() {
+        return ["txt2img", "img2img"].some(function (t) {
+            var fr = state[t] && state[t].sgFrame;
+            var wr = state[t] && state[t].sgFrameWrapper;
+            var target = wr || fr;
+            return !!(target && target.style.display === "block");
+        });
+    }
+    function setHostPageScrollLock(lock) {
+        if (lock && !_sgHostScrollLocked) {
+            _sgHostPrevBodyOverflow = document.body ? document.body.style.overflow : "";
+            _sgHostPrevDocOverflow = document.documentElement ? document.documentElement.style.overflow : "";
+            if (document.body) document.body.style.overflow = "hidden";
+            if (document.documentElement) document.documentElement.style.overflow = "hidden";
+            _sgHostScrollLocked = true;
+            return;
+        }
+        if (!lock && _sgHostScrollLocked) {
+            if (document.body) document.body.style.overflow = _sgHostPrevBodyOverflow || "";
+            if (document.documentElement) document.documentElement.style.overflow = _sgHostPrevDocOverflow || "";
+            _sgHostScrollLocked = false;
+        }
+    }
+
     function togglePanel(tabName, show) {
         var panel = state[tabName].panel;
         if (!state[tabName].sgFrame) ensureSGFramesOnce();
@@ -3552,10 +3579,12 @@
         if (!show) {
             if (panel) panel.classList.remove("sg-visible");
             target.style.display = "none";
+            setHostPageScrollLock(anySGFrameVisible());
             return;
         }
         if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
         target.style.display = "block";
+        setHostPageScrollLock(true);
         if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
     }
 
@@ -3629,6 +3658,7 @@
                 var targetEsc = wrEsc || frEsc;
                 if (targetEsc && targetEsc.style.display === "block") {
                     targetEsc.style.display = "none";
+                    setHostPageScrollLock(anySGFrameVisible());
                     e.preventDefault();
                     return;
                 }
@@ -3673,6 +3703,7 @@
             if (e.key === "Escape" && wrapper.style.display !== "none") {
                 e.stopPropagation();
                 wrapper.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
             }
         }, true);
 
@@ -3838,6 +3869,7 @@
             if (msg.type === "SG_CLOSE_REQUEST") {
                 var closeTarget = state[tab].sgFrameWrapper || frame;
                 closeTarget.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
             }
 
             if (msg.type === "SG_RANDOM") {

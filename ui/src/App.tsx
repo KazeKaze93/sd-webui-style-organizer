@@ -1,4 +1,3 @@
-import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { onHostMessage, sendToHost } from './bridge'
 import { useStylesStore } from './store/stylesStore'
@@ -142,15 +141,11 @@ export default function App() {
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.15 }}
-      className="flex flex-col h-screen bg-sg-bg text-sg-text overflow-hidden"
-    >
+    <div className="flex flex-col bg-sg-bg text-sg-text"
+      style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 
-                      border-b border-sg-border shrink-0">
+      <div className="shrink-0 flex items-center gap-2 px-3 py-2
+                    border-b border-sg-border">
         <span className="text-sg-accent font-semibold">🎨 Style Grid</span>
         <span className="text-xs text-sg-muted/60 border border-sg-border/50 
                    px-1.5 py-0.5 rounded font-mono">
@@ -290,25 +285,27 @@ export default function App() {
       </div>
 
       {/* Body */}
-      <div className="flex flex-1 gap-0 overflow-hidden">
+      <div className="flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>
         {/* Sidebar */}
-        <div className="w-48 shrink-0 border-r border-sg-border 
-                        overflow-y-auto p-3 sidebar-scroll">
+        <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
+          style={{ width: '160px', overflowY: 'auto', overflowX: 'auto' }}>
           <Sidebar />
         </div>
 
         {/* Grid */}
-        <div className="flex-1 overflow-y-auto p-3 sidebar-scroll">
+        <div className="p-3 min-h-0"
+          style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
           <StyleGrid />
         </div>
       </div>
 
-      <StyleInfoPanel />
-
-      {/* Selected bar */}
-      <SelectedBar />
+      {/* Bottom panels — fixed height */}
+      <div className="shrink-0">
+        <StyleInfoPanel />
+        <SelectedBar />
+      </div>
       <ThumbProgressModal />
       <Toast />
-    </motion.div>
+    </div>
   )
 }

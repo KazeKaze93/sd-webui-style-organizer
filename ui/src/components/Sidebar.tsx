@@ -31,7 +31,7 @@ export function Sidebar() {
   }
 
   return (
-    <div className="w-44 shrink-0 flex flex-col gap-1 overflow-y-auto pr-2 sidebar-scroll">
+    <div className="w-44 shrink-0 flex flex-col gap-1 pr-2">
       <button
         type="button"
         onClick={() => setCategory(null)}

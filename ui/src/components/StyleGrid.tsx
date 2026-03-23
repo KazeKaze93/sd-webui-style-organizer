@@ -73,8 +73,9 @@ export function StyleGrid() {
             {/* Category header */}
             <div
               className="flex items-center gap-2 mb-2 sticky top-0 
-                            bg-sg-bg/95 backdrop-blur-sm py-1 z-10 cursor-context-menu hover:bg-sg-surface/30 rounded-md transition-colors -mx-1 px-1"
+                            bg-sg-bg/95 backdrop-blur-sm py-1 z-10 cursor-pointer hover:bg-sg-surface/30 rounded-md transition-colors -mx-1 px-1"
               title="Right-click for options"
+              onClick={() => toggleCollapse(cat)}
               onContextMenu={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -84,12 +85,9 @@ export function StyleGrid() {
                 setCatMenu({ x: e.clientX, y: e.clientY, cat, missingCount: missing })
               }}
             >
-              <button
-                onClick={() => toggleCollapse(cat)}
-                className="text-sg-muted hover:text-sg-text transition-colors"
-              >
+              <span className="text-sg-muted">
                 {isCollapsed ? '▶' : '▼'}
-              </button>
+              </span>
               <span
                 className="text-xs font-bold tracking-wider uppercase"
                 style={{ color }}

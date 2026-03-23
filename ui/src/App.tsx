@@ -8,6 +8,7 @@ import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
 import { SelectedBar } from './components/SelectedBar'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
+import { Toast } from './components/Toast'
 import {
   Tooltip,
   TooltipContent,
@@ -18,10 +19,12 @@ import {
 const ToolBtn = ({
   icon,
   label,
+  title,
   onClick,
 }: {
   icon: string
   label: string
+  title?: string
   onClick?: () => void
 }) => (
   <Tooltip>
@@ -29,6 +32,7 @@ const ToolBtn = ({
       <button
         type="button"
         onClick={onClick}
+        title={title}
         className="w-8 h-8 flex items-center justify-center rounded
                    text-sg-muted hover:text-sg-text hover:bg-sg-surface
                    transition-colors text-sm border border-transparent
@@ -71,6 +75,14 @@ export default function App() {
       if (msg.type === 'SG_CLOSE') {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })
       }
+      if (msg.type === 'SG_STYLE_APPLIED') {
+        const { selectedStyles, addToRecent } = useStylesStore.getState()
+        const exists = selectedStyles.some(s => s.name === msg.style.name)
+        if (!exists) {
+          useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
+          addToRecent(msg.style.name)
+        }
+      }
     })
     sendToHost({ type: 'SG_READY' })
     return unsub
@@ -96,12 +108,13 @@ export default function App() {
             <button
               type="button"
               onClick={() => toggleSilent()}
+              title={silentMode ? 'Silent mode ON' : 'Silent mode OFF'}
               className={`px-3 py-1.5 rounded text-xs border transition-colors shrink-0
             ${silentMode 
               ? 'bg-sg-accent/20 border-sg-accent text-sg-accent' 
               : 'border-sg-border text-sg-muted hover:text-sg-text'}`}
             >
-              👁 Silent
+              👁
             </button>
             <ToolBtn
               icon="🎲"
@@ -124,9 +137,18 @@ export default function App() {
               onClick={() => sendToHost({ type: 'SG_IMPORT_EXPORT' })}
             />
             <ToolBtn
-              icon="🔄"
-              label="Refresh styles"
-              onClick={() => sendToHost({ type: 'SG_REFRESH' })}
+              icon="📋"
+              label="CSV Table Editor"
+              onClick={() => sendToHost({ type: 'SG_CSV_EDITOR' })}
+            />
+            <ToolBtn
+              icon="🧹"
+              label="Clear all selected styles"
+              title="Clear all selected styles"
+              onClick={() => {
+                useStylesStore.getState().clearAll()
+                sendToHost({ type: 'SG_CLEAR_ALL' })
+              }}
             />
             <ToolBtn
               icon="▪"
@@ -143,7 +165,14 @@ export default function App() {
             <ToolBtn
               icon="➕"
               label="New style"
-              onClick={() => sendToHost({ type: 'SG_NEW_STYLE' })}
+              onClick={() => {
+                const { activeSource, showToast } = useStylesStore.getState()
+                if (!activeSource) {
+                  showToast('⚠️ Select a specific CSV source before creating a style', 'info')
+                } else {
+                  sendToHost({ type: 'SG_NEW_STYLE', sourceFile: activeSource })
+                }
+              }}
             />
             <span className="text-xs text-sg-muted">
               {selectedStyles.length > 0 && `${selectedStyles.length} selected`}
@@ -176,6 +205,7 @@ export default function App() {
       {/* Selected bar */}
       <SelectedBar />
       <ThumbProgressModal />
+      <Toast />
     </motion.div>
   )
 }

@@ -2,6 +2,8 @@
 export type HostMessage =
   | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
+  | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
+  | { type: 'SG_STYLE_APPLIED'; style: Style }
   | { type: 'SG_THUMB_DONE';     styleId: string; version: number }
   | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
@@ -28,8 +30,10 @@ export type FrameMessage =
   | { type: 'SG_PRESETS' }
   | { type: 'SG_BACKUP' }
   | { type: 'SG_IMPORT_EXPORT' }
-  | { type: 'SG_REFRESH' }
-  | { type: 'SG_NEW_STYLE' }
+  | { type: 'SG_NEW_STYLE'; sourceFile?: string }
+  | { type: 'SG_CSV_EDITOR' }
+  | { type: 'SG_CLEAR_ALL' }
+  | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
 
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'

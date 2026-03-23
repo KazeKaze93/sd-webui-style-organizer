@@ -49,6 +49,7 @@ export function getCategoryColor(category: string): string {
 }
 
 interface StylesStore {
+  toasts: { id: number; message: string; variant: 'success' | 'error' | 'info' }[]
   // Data
   styles: Style[]
   tab: Tab
@@ -80,6 +81,8 @@ interface StylesStore {
   selectAllInCategory: (cat: string) => void
   toggleStyle: (style: Style) => void
   setSelectedStyles: (styles: Style[]) => void
+  clearAll: () => void
+  showToast: (message: string, variant?: 'success' | 'error' | 'info') => void
   toggleFavorite: (name: string) => void
   isFavorite: (name: string) => boolean
   addToRecent: (name: string) => void
@@ -90,6 +93,7 @@ interface StylesStore {
 }
 
 export const useStylesStore = create<StylesStore>((set, get) => ({
+  toasts: [],
   styles: [],
   tab: 'txt2img',
   search: '',
@@ -205,6 +209,20 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   setSelectedStyles: (styles: Style[]) => set({ selectedStyles: styles }),
+  clearAll: () => {
+    const { selectedStyles } = get()
+    selectedStyles.forEach(s =>
+      sendToHost({ type: 'SG_UNAPPLY', styleId: s.name })
+    )
+    set({ selectedStyles: [] })
+  },
+  showToast: (message, variant = 'info') => {
+    const id = Date.now()
+    set((s) => ({ toasts: [...s.toasts, { id, message, variant }] }))
+    setTimeout(() => set((s) => ({
+      toasts: s.toasts.filter(t => t.id !== id)
+    })), 3000)
+  },
 
   categories: () => {
     const { styles, activeSource } = get()

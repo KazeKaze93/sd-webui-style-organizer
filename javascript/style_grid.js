@@ -1149,7 +1149,7 @@
     // -----------------------------------------------------------------------
     // Style editor modal
     // -----------------------------------------------------------------------
-    function openStyleEditor(tabName, existingStyle) {
+    function openStyleEditor(tabName, existingStyle, sourceFile) {
         const isNew = !existingStyle;
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
@@ -1194,10 +1194,12 @@
                     prompt: promptInput.value,
                     negative_prompt: negInput.value,
                     description: descInput.value,
-                    source: existingStyle ? existingStyle.source : null,
+                    source: existingStyle ? existingStyle.source : (sourceFile || null),
                 }).then(assertNoApiError).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
+                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                    if (typeof notify === "function") notify();
                 }).catch(function (err) {
                     console.error("[Style Grid] API error:", err);
                     showStatusMessage(tabName, "Save failed", true);
@@ -1210,7 +1212,16 @@
         }));
         modal.appendChild(btnRow);
         overlay.appendChild(modal);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        var editorOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            editorOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (editorOverlayMouseDownTarget === overlay || editorOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            editorOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
         nameInput.focus();
     }
@@ -1407,6 +1418,8 @@
                 chain.then(function () {
                     closeCsvEditorOverlay();
                     refreshPanel(tabName);
+                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                    if (typeof notify === "function") notify();
                 }).catch(function (e) {
                     console.error("[Style Grid] CSV table save:", e);
                     var x = (e && e._sgCsvSaved !== null && e._sgCsvSaved !== undefined) ? e._sgCsvSaved : 0;
@@ -1647,16 +1660,28 @@
 
         renderTableBody();
         overlay.appendChild(shell);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) requestCloseCsvEditor(); });
+        var csvOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            csvOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (csvOverlayMouseDownTarget === overlay || csvOverlayMouseDownTarget === e.currentTarget) {
+                requestCloseCsvEditor();
+            }
+            csvOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
     }
 
-    function duplicateStyle(tabName, style) {
+    function duplicateStyle(tabName, style, onDone) {
         const newName = style.name + "_copy";
         apiPost("/style_grid/style/save", {
             name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
         }).then(assertNoApiError).then(function () {
             refreshPanel(tabName);
+            var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+            if (typeof notify === "function") notify();
+            if (typeof onDone === "function") onDone();
         }).catch(function (err) {
             console.error("[Style Grid] API error:", err);
         });
@@ -1684,6 +1709,8 @@
                     .then(assertNoApiError)
                     .then(function () {
                         refreshPanel(tabName);
+                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                        if (typeof notify === "function") notify();
                         if (typeof onDeleted === "function") onDeleted();
                     })
                     .catch(function (err) {
@@ -1699,13 +1726,20 @@
         }));
         modal.appendChild(btns);
         overlay.appendChild(modal);
+        var deleteOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            deleteOverlayMouseDownTarget = e.target;
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) overlay.remove();
+            if (deleteOverlayMouseDownTarget === overlay || deleteOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            deleteOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
     }
 
-    function moveToCategory(tabName, style) {
+    function moveToCategory(tabName, style, onDone) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
 
@@ -1745,6 +1779,9 @@
                 }).then(function () {
                     overlay.remove();
                     refreshPanel(tabName);
+                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                    if (typeof notify === "function") notify();
+                    if (typeof onDone === "function") onDone();
                 }).catch(function (err) {
                     console.error("[Style Grid] API error:", err);
                     showStatusMessage(tabName, "Move failed", true);
@@ -1759,8 +1796,15 @@
 
         modal.appendChild(btns);
         overlay.appendChild(modal);
+        var moveOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            moveOverlayMouseDownTarget = e.target;
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) overlay.remove();
+            if (moveOverlayMouseDownTarget === overlay || moveOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            moveOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
     }
@@ -1845,7 +1889,16 @@
         const closeBtn = el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } });
         modal.appendChild(closeBtn);
         overlay.appendChild(modal);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        var presetsOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            presetsOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (presetsOverlayMouseDownTarget === overlay || presetsOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            presetsOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
     }
 
@@ -1885,6 +1938,8 @@
                     apiPost("/style_grid/import", data).then(function () {
                         overlay.remove();
                         refreshPanel(tabName);
+                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                        if (typeof notify === "function") notify();
                     }).catch(function (err) {
                         console.error("[Style Grid] API error:", err);
                     });
@@ -1897,7 +1952,16 @@
 
         modal.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } }));
         overlay.appendChild(modal);
-        overlay.addEventListener("click", function (e) { if (e.target === overlay) overlay.remove(); });
+        var importExportOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            importExportOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (importExportOverlayMouseDownTarget === overlay || importExportOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            importExportOverlayMouseDownTarget = null;
+        });
         document.body.appendChild(overlay);
     }
 
@@ -2000,6 +2064,36 @@
                     console.log("[Style Grid] CSV files changed, refreshing...");
                     ["txt2img", "img2img"].forEach(function (t) {
                         if (state[t].panel) refreshPanel(t);
+                        apiGet("/style_grid/styles").then(function (data) {
+                            var styles = [];
+                            if (Array.isArray(data)) {
+                                styles = data;
+                            } else if (data.categories) {
+                                styles = Object.values(data.categories).flat();
+                            } else if (data.styles) {
+                                styles = data.styles;
+                            }
+                            state[t].categories = {};
+                            styles.forEach(function (s) {
+                                var cat = s.category || "OTHER";
+                                if (!state[t].categories[cat]) state[t].categories[cat] = [];
+                                state[t].categories[cat].push(s);
+                            });
+                            var frame = state[t] && state[t].sgFrame;
+                            if (window.SG_V2_ENABLED && frame && frame.contentWindow) {
+                                var v2styles = Object.values(state[t].categories).flat();
+                                var seen = new Set();
+                                v2styles = v2styles.filter(function (s) {
+                                    if (seen.has(s.name)) return false;
+                                    seen.add(s.name);
+                                    return true;
+                                });
+                                frame.contentWindow.postMessage({
+                                    type: "SG_STYLES_UPDATE",
+                                    styles: v2styles
+                                }, "*");
+                            }
+                        });
                     });
                 }
             }).catch(function (err) {
@@ -3388,8 +3482,15 @@
 
         render();
         overlay.appendChild(modal);
+        var conflictOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            conflictOverlayMouseDownTarget = e.target;
+        });
         overlay.addEventListener("click", function (e) {
-            if (e.target === overlay) overlay.remove();
+            if (conflictOverlayMouseDownTarget === overlay || conflictOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            conflictOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
     }
@@ -3646,6 +3747,34 @@
             if (!e.data || !e.data.type) return;
             if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
+            function refreshAndNotifyFrame() {
+                if (!window.SG_V2_ENABLED) return;
+                fetch("/style_grid/styles")
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var styles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        var seen = new Set();
+                        styles = styles.filter(function (s) {
+                            if (seen.has(s.name)) return false;
+                            seen.add(s.name);
+                            return true;
+                        });
+                        state[tab].categories = {};
+                        styles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            state[tab].categories[cat].push(s);
+                        });
+                        var v2frame = document.getElementById("sg-frame-txt2img");
+                        if (v2frame && v2frame.contentWindow) {
+                            v2frame.contentWindow.postMessage({
+                                type: "SG_STYLES_UPDATE",
+                                styles: styles
+                            }, "*");
+                        }
+                    });
+            }
+            state[tab].refreshAndNotifyFrame = refreshAndNotifyFrame;
             function findStyleByName(styleName) {
                 var cats = (state[tab] && state[tab].categories) || {};
                 for (var cat in cats) {
@@ -3656,33 +3785,6 @@
                 }
                 return null;
             }
-            function sendStylesUpdateToFrame() {
-                apiGet("/style_grid/styles").then(function (data) {
-                    var styles = [];
-                    if (Array.isArray(data)) {
-                        styles = data;
-                    } else if (data.categories) {
-                        styles = Object.values(data.categories).flat();
-                    } else if (data.styles) {
-                        styles = data.styles;
-                    }
-                    var seen = new Set();
-                    styles = styles.filter(function (s) {
-                        if (seen.has(s.name)) return false;
-                        seen.add(s.name);
-                        return true;
-                    });
-                    if (frame.contentWindow) {
-                        frame.contentWindow.postMessage({
-                            type: "SG_STYLES_UPDATE",
-                            styles: styles,
-                        }, "*");
-                    }
-                }).catch(function (err) {
-                    console.error("[Style Grid] v2: failed to send updated styles:", err);
-                });
-            }
-
             if (msg.type === "SG_READY") {
                 if (state[tab].sgV2HostInitSent) return;
                 fetch("/style_grid/styles")
@@ -3739,43 +3841,26 @@
             }
 
             if (msg.type === "SG_REORDER_STYLES") {
-                // Update host-side order to match new order from React
                 var ids = Array.isArray(msg.styleIds) ? msg.styleIds : [];
-
-                // ids from React are source of truth for selection order.
-                if (state[tab]) {
-                    state[tab].selectedOrder = ids;
-                }
-                console.log("[REORDER] selectedOrder set to:", state[tab] ? state[tab].selectedOrder : undefined);
-                console.log("[REORDER] applied has entries:",
-                    state[tab] && state[tab].applied ? Array.from(state[tab].applied.keys()) : "NO MAP");
-
-                console.log("[reorder] selectedOrder:", state[tab] ? state[tab].selectedOrder : undefined);
-                console.log("[reorder] applied Map size:", state[tab] && state[tab].applied ? state[tab].applied.size : "NO MAP");
-                console.log("[reorder] ids from React:", ids);
-
-                // Ensure applied map contains entries needed by rebuildPromptFromOrder.
-                if (state[tab] && state[tab].applied && typeof state[tab].applied.has === "function") {
-                    ids.forEach(function (styleId) {
-                        if (!state[tab].applied.has(styleId)) {
-                            var styleObj = findStyleByName(styleId);
-                            if (styleObj) {
-                                var isPromptWrap = styleObj.prompt && styleObj.prompt.indexOf("{prompt}") !== -1;
-                                var isNegWrap = styleObj.negative_prompt && styleObj.negative_prompt.indexOf("{prompt}") !== -1;
-                                state[tab].applied.set(styleId, {
-                                    prompt: isPromptWrap ? null : (styleObj.prompt || null),
-                                    negative: isNegWrap ? null : (styleObj.negative_prompt || null),
-                                    wrapTemplate: isPromptWrap ? styleObj.prompt : null,
-                                    negWrapTemplate: isNegWrap ? styleObj.negative_prompt : null,
-                                    originalPrompt: null,
-                                    originalNeg: null
-                                });
-                            }
+                state[tab].selectedOrder = ids;
+                
+                // Ensure applied Map has all entries
+                ids.forEach(function (styleId) {
+                    if (!state[tab].applied.has(styleId)) {
+                        var styleObj = findStyleByName(styleId);
+                        if (styleObj) {
+                            state[tab].applied.set(styleId, {
+                                prompt: styleObj.prompt,
+                                negative: styleObj.negative_prompt,
+                                wrapTemplate: null,
+                                negWrapTemplate: null,
+                                originalPrompt: styleObj.prompt,
+                                originalNeg: styleObj.negative_prompt
+                            });
                         }
-                    });
-                }
-
-                // Now rebuild prompt from new order
+                    }
+                });
+                
                 if (typeof rebuildPromptFromOrder === "function") {
                     rebuildPromptFromOrder(tab);
                 }
@@ -3786,13 +3871,63 @@
             }
 
             if (msg.type === "SG_RANDOM") {
-                applyRandomStyle(tab);
+                var allStyles = Object.values((state[tab] && state[tab].categories) || {}).flat();
+                if (allStyles.length > 0) {
+                    var randomStyle = allStyles[Math.floor(Math.random() * allStyles.length)];
+                    window._sgApplyStyle(tab, randomStyle.name);
+                    if (frame.contentWindow) {
+                        frame.contentWindow.postMessage({
+                            type: "SG_STYLE_APPLIED",
+                            style: randomStyle
+                        }, "*");
+                    }
+                }
             }
             if (msg.type === "SG_BACKUP") {
-                runManualStyleBackup(tab);
+                fetch("/style_grid/backup", { method: "POST" })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (frame.contentWindow) {
+                            frame.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: data.error ? ("Backup failed: " + data.error) : "💾 Backup created",
+                                variant: data.error ? "error" : "success"
+                            }, "*");
+                        }
+                    });
             }
             if (msg.type === "SG_REFRESH") {
                 refreshPanel(tab);
+                fetch("/style_grid/check_update")
+                    .then(function () { return fetch("/style_grid/styles"); })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        var styles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                        var seen = new Set();
+                        styles = styles.filter(function (s) {
+                            if (seen.has(s.name)) return false;
+                            seen.add(s.name);
+                            return true;
+                        });
+                        state[tab].categories = {};
+                        styles.forEach(function (s) {
+                            var cat = s.category || "OTHER";
+                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
+                            state[tab].categories[cat].push(s);
+                        });
+                        if (frame.contentWindow) {
+                            frame.contentWindow.postMessage({
+                                type: "SG_STYLES_UPDATE",
+                                styles: styles
+                            }, "*");
+                        }
+                    });
+            }
+            if (msg.type === "SG_CSV_EDITOR") {
+                openCsvTableEditor(tab);
+            }
+            if (msg.type === "SG_CLEAR_ALL") {
+                clearAll(tab);
             }
             if (msg.type === "SG_PRESETS") {
                 showPresetsMenu(tab);
@@ -3801,7 +3936,7 @@
                 showExportImport(tab);
             }
             if (msg.type === "SG_NEW_STYLE") {
-                openStyleEditor(tab, null);
+                openStyleEditor(tab, null, msg.sourceFile);
             }
             if (msg.type === "SG_EDIT_STYLE") {
                 var styleToEdit = findStyleByName(msg.styleId);
@@ -3812,13 +3947,13 @@
             if (msg.type === "SG_DUPLICATE_STYLE") {
                 var styleToDup = findStyleByName(msg.styleId);
                 if (styleToDup) {
-                    duplicateStyle(tab, styleToDup);
+                    duplicateStyle(tab, styleToDup, refreshAndNotifyFrame);
                 }
             }
             if (msg.type === "SG_MOVE_TO_CATEGORY") {
                 var styleToMove = findStyleByName(msg.styleId);
                 if (styleToMove) {
-                    moveToCategory(tab, styleToMove);
+                    moveToCategory(tab, styleToMove, refreshAndNotifyFrame);
                 }
             }
             if (msg.type === "SG_WILDCARD_CATEGORY") {
@@ -3887,7 +4022,7 @@
             if (msg.type === "SG_DELETE_STYLE") {
                 var styleToDelete = findStyleByName(msg.styleId);
                 if (styleToDelete) {
-                    deleteStyle(tab, styleToDelete.name, styleToDelete.source || styleToDelete.source_file, sendStylesUpdateToFrame);
+                    deleteStyle(tab, styleToDelete.name, styleToDelete.source || styleToDelete.source_file, refreshAndNotifyFrame);
                 }
             }
         });

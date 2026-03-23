@@ -4,6 +4,19 @@ Base URL: `http://127.0.0.1:7860/style_grid`
 
 Gradio/FastAPI. All endpoints return HTTP 200 even on errors unless otherwise noted. Check response body for `{error}` field.
 
+## V2 Integration Notes
+
+Style Grid V2 UI (React iframe) communicates with the host script first, then the host calls these API routes.
+
+```mermaid
+flowchart LR
+  UI[React iframe UI] -->|SG_* postMessage| HOST[javascript/style_grid.js]
+  HOST -->|fetch /style_grid/*| API[FastAPI routes]
+  API --> DATA[(CSV + data files)]
+```
+
+The API contract in this document reflects `scripts/stylegrid/routes.py`.
+
 ## Styles
 
 ## GET /styles
@@ -38,7 +51,7 @@ Style object fields include:
 | `negative_prompt`   | string  | Negative prompt fragment.                                   |
 | `description`       | string  | Freeform description.                                       |
 | `category_explicit` | string  | Raw category column value from CSV.                         |
-| `source`            | string  | Source CSV filename.                                        |
+| `source_file`       | string  | Source CSV filename/path as provided by loader.             |
 | `category`          | string  | Resolved category.                                          |
 | `display_name`      | string  | Display label derived from name.                            |
 | `has_placeholder`   | boolean | True if `{prompt}` is present in prompt or negative prompt. |
@@ -607,5 +620,24 @@ Success:
 | case                  | response body                         |
 | --------------------- | ------------------------------------- |
 | `order` is not a list | `{ "error": "order must be a list" }` |
+
+## DELETE /thumbnail
+
+**Method:** DELETE  
+**Description:** Deletes a single thumbnail by style name.
+
+**Parameters:**
+
+| name   | in    | required | type   | description                                |
+| ------ | ----- | -------- | ------ | ------------------------------------------ |
+| `name` | query | No       | string | Style name used to resolve thumbnail path. |
+
+**Response:**
+
+| field | type    | description              |
+| ----- | ------- | ------------------------ |
+| `ok`  | boolean | `true` after completion. |
+
+**Error cases:** None explicitly returned as `{error}`.
 
 

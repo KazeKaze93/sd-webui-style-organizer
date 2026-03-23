@@ -56,7 +56,6 @@ export function StyleCard({ style }: Props) {
       <ThumbnailPreview style={style}>
         <motion.div
           data-sg-card="true"
-          layout
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -70,7 +69,7 @@ export function StyleCard({ style }: Props) {
           }}
           onClick={() => toggleStyle(style)}
           className={`
-            relative cursor-pointer rounded-lg border p-2.5
+            relative cursor-pointer rounded-lg border p-3
             transition-colors duration-150 select-none
             ${isSelected
               ? 'border-sg-accent bg-sg-accent/10'
@@ -95,7 +94,7 @@ export function StyleCard({ style }: Props) {
                   title="Contains {prompt} placeholder">⟳</span>
           )}
 
-          <div className="text-sm font-medium text-sg-text truncate pr-6">
+          <div className="text-sm font-medium text-sg-text truncate pr-8">
             {displayName}
           </div>
 

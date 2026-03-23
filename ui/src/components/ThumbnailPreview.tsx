@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { onHostMessage, type Style } from '../bridge'
 
@@ -10,6 +11,7 @@ export function ThumbnailPreview({ style, children }: Props) {
   const [visible, setVisible] = useState(false)
   const [imgOk, setImgOk] = useState(false)
   const [above, setAbove] = useState(true)
+  const [popupPos, setPopupPos] = useState({ left: 0, top: 0 })
   const [localVersion, setLocalVersion] = useState(
     localStorage.getItem(`sg_thumb_v_${style.name}`) || '1'
   )
@@ -27,6 +29,13 @@ export function ThumbnailPreview({ style, children }: Props) {
       if (containerRef.current) {
         const rect = containerRef.current.getBoundingClientRect()
         setAbove(rect.top > 200)
+        const popupWidth = 240
+        const left = Math.max(
+          8,
+          Math.min(rect.left + rect.width / 2, window.innerWidth - popupWidth - 8)
+        )
+        const top = rect.top > 200 ? rect.top - 8 : rect.bottom + 8
+        setPopupPos({ left, top })
       }
       setVisible(true)
     }, 300)
@@ -68,25 +77,27 @@ export function ThumbnailPreview({ style, children }: Props) {
     >
       {children}
 
-      {visible && (
+      {visible && createPortal(
         <div
-          className={`absolute z-50 ${above
-            ? 'bottom-full mb-2'
-            : 'top-full mt-2'} left-1/2 -translate-x-1/2`}
+          className="fixed z-[10050]"
           onMouseEnter={() => {
             if (enterTimer.current) clearTimeout(enterTimer.current)
             if (leaveTimer.current) clearTimeout(leaveTimer.current)
           }}
           onMouseLeave={handleLeave}
-          style={{ minWidth: '200px', maxWidth: '280px' }}
+          style={{
+            minWidth: '200px',
+            maxWidth: '280px',
+            left: `${popupPos.left}px`,
+            top: `${popupPos.top}px`,
+            transform: above ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
+          }}
         >
-          <div className="bg-[#0f172a] border border-sg-border rounded-lg 
-                          shadow-xl overflow-hidden">
+          <div className="bg-[#0f172a] border border-sg-border rounded-lg shadow-xl overflow-hidden">
             <img
               src={thumbUrl}
               alt=""
-              className={`w-full object-cover transition-opacity
-                ${imgOk ? 'opacity-100' : 'hidden'}`}
+              className={`w-full object-cover transition-opacity ${imgOk ? 'opacity-100' : 'hidden'}`}
               style={{ maxHeight: '160px' }}
               onLoad={() => setImgOk(true)}
               onError={() => setImgOk(false)}
@@ -96,8 +107,7 @@ export function ThumbnailPreview({ style, children }: Props) {
                 {displayName}
               </div>
               {style.prompt && (
-                <div className="text-xs text-slate-400 mt-1 line-clamp-3 
-                                leading-relaxed">
+                <div className="text-xs text-slate-400 mt-1 line-clamp-3 leading-relaxed">
                   {style.prompt.slice(0, 120)}
                   {style.prompt.length > 120 ? '...' : ''}
                 </div>
@@ -109,7 +119,8 @@ export function ThumbnailPreview({ style, children }: Props) {
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

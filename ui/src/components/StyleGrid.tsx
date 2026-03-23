@@ -35,14 +35,12 @@ export function StyleGrid() {
     return (
       <div className={`grid content-start ${
         compactMode
-          ? 'grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-1.5'
-          : 'grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2'
+          ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
+          : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2'
       }`}>
-        <AnimatePresence mode="popLayout">
-          {filtered.map(style => (
-            <StyleCard key={style.name} style={style} />
-          ))}
-        </AnimatePresence>
+        {filtered.map(style => (
+          <StyleCard key={style.name} style={style} />
+        ))}
       </div>
     )
   }
@@ -120,14 +118,12 @@ export function StyleGrid() {
                 >
                   <div className={`grid ${
                     compactMode
-                      ? 'grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-1.5'
-                      : 'grid-cols-[repeat(auto-fill,minmax(130px,1fr))] gap-2'
+                      ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
+                      : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2'
                   }`}>
-                    <AnimatePresence mode="popLayout">
-                      {catStyles.map(style => (
-                        <StyleCard key={style.name} style={style} />
-                      ))}
-                    </AnimatePresence>
+                    {catStyles.map(style => (
+                      <StyleCard key={style.name} style={style} />
+                    ))}
                   </div>
                 </motion.div>
               )}

@@ -1,7 +1,11 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { sendToHost } from '../bridge'
-import { getCategoryColor, useStylesStore } from '../store/stylesStore'
+import {
+  getCategoryColor,
+  styleRowKey,
+  useStylesStore,
+} from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
@@ -43,7 +47,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
       }`} style={{ contentVisibility: 'auto' }}>
         {filtered.map(style => (
-          <StyleCard key={style.name} style={style} windowed={windowed} />
+          <StyleCard key={styleRowKey(style)} style={style} windowed={windowed} />
         ))}
       </div>
     )
@@ -130,7 +134,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
                           : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
                   }`} style={{ contentVisibility: 'auto' }}>
                     {catStyles.map(style => (
-                      <StyleCard key={style.name} style={style} windowed={windowed} />
+                      <StyleCard key={styleRowKey(style)} style={style} windowed={windowed} />
                     ))}
                   </div>
                 </motion.div>

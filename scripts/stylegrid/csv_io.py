@@ -45,13 +45,15 @@ def parse_styles_csv(filepath):
                 description = row[3].strip() if len(row) > 3 else ""
                 category_explicit = row[4].strip() if len(row) > 4 else ""
                 if name:
+                    base = os.path.basename(filepath)
                     styles.append({
                         "name": name,
                         "prompt": prompt,
                         "negative_prompt": negative,
                         "description": description,
                         "category_explicit": category_explicit,
-                        "source": os.path.basename(filepath),
+                        "source": base,
+                        "_source": base,
                         "source_file": os.path.abspath(filepath),
                     })
     except Exception:
@@ -60,6 +62,7 @@ def parse_styles_csv(filepath):
 
 
 def load_all_styles():
+    """Merge CSVs from all style dirs; uniqueness is (source_file abspath, name), not basename."""
     all_styles = []
     seen_keys = set()
     for d in get_styles_dirs():
@@ -69,14 +72,14 @@ def load_all_styles():
             if fname.lower().endswith(".csv"):
                 filepath = os.path.join(d, fname)
                 for s in parse_styles_csv(filepath):
-                    key = (s.get("source", ""), s["name"])
+                    key = (s.get("source_file", ""), s["name"])
                     if key not in seen_keys:
                         seen_keys.add(key)
                         all_styles.append(s)
     root_csv = os.path.join(os.getcwd(), "styles.csv")
     if os.path.isfile(root_csv):
         for s in parse_styles_csv(root_csv):
-            key = (s.get("source", ""), s["name"])
+            key = (s.get("source_file", ""), s["name"])
             if key not in seen_keys:
                 seen_keys.add(key)
                 all_styles.append(s)

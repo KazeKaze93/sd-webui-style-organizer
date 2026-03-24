@@ -1,5 +1,9 @@
 import { useState, useRef } from 'react'
-import { useStylesStore } from '../store/stylesStore'
+import {
+  dedupeStylesByNameForAllSources,
+  styleRowKey,
+  useStylesStore,
+} from '../store/stylesStore'
 import {
   Command, CommandEmpty, CommandGroup,
   CommandItem, CommandList
@@ -17,7 +21,7 @@ export function SearchBar() {
   // - All Sources selected: search across all loaded styles
   const searchableStyles = activeSource
     ? styles.filter(s => s.source_file === activeSource)
-    : styles
+    : dedupeStylesByNameForAllSources(styles)
 
   // Top 8 matches by name
   const suggestions = inputValue.length > 0
@@ -85,7 +89,7 @@ export function SearchBar() {
             <CommandGroup>
               {suggestions.map(style => (
                 <CommandItem
-                  key={style.name}
+                  key={styleRowKey(style)}
                   value={style.name}
                   onSelect={() => handleSelect(style)}
                   className="cursor-pointer flex items-center justify-between

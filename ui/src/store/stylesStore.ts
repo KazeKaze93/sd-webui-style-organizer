@@ -55,6 +55,21 @@ export function getCategoryColor(category: string): string {
   return PALETTE[index]
 }
 
+/** Stable React key when the same name can appear from different CSV rows. */
+export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
+  return `${s.source_file}\0${s.name}`
+}
+
+/** First occurrence wins; use only when the active source is "All sources". */
+export function dedupeStylesByNameForAllSources(styles: Style[]): Style[] {
+  const seen = new Set<string>()
+  return styles.filter((s) => {
+    if (seen.has(s.name)) return false
+    seen.add(s.name)
+    return true
+  })
+}
+
 /** Central UI state for style filtering, selection, and host-side actions. */
 interface StylesStore {
   toasts: { id: number; message: string; variant: 'success' | 'error' | 'info' }[]
@@ -388,14 +403,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       return matchSource && matchCat && matchSearch
     })
 
-    // All Sources keeps one card per style name to avoid cross-source duplicates.
     if (!activeSource) {
-      const seen = new Set<string>()
-      filtered = filtered.filter(s => {
-        if (seen.has(s.name)) return false
-        seen.add(s.name)
-        return true
-      })
+      filtered = dedupeStylesByNameForAllSources(filtered)
     }
 
     return filtered

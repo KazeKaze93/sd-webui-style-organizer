@@ -22,8 +22,10 @@ def test_parse_returns_expected_fields(tmp_csv):
         "description",
         "category_explicit",
         "source",
+        "_source",
         "source_file",
     }
+    assert by_name["Test Style A"]["source"] == by_name["Test Style A"]["_source"] == "styles.csv"
     # CSV column "category" is stored as category_explicit; "category" is added by categorize_styles().
     assert "category" not in by_name["Test Style A"]
     assert by_name["Test Style A"]["category_explicit"] == "BASE"
@@ -42,6 +44,29 @@ def test_parse_empty_prompt_and_negative_are_empty_strings(tmp_csv):
     assert b["negative_prompt"] == ""
     assert isinstance(b["negative_prompt"], str)
     assert isinstance(spaces["description"], str)
+
+
+def test_load_all_keeps_same_basename_in_different_dirs(tmp_path, monkeypatch):
+    """Two styles.csv in different scanned dirs must not collapse by name."""
+    d1 = tmp_path / "ext"
+    d2 = tmp_path / "root"
+    d1.mkdir()
+    d2.mkdir()
+    (d1 / "styles.csv").write_text(
+        "name,prompt,negative_prompt,description,category\n"
+        "SharedName,from_ext,,,\n",
+        encoding="utf-8",
+    )
+    (d2 / "styles.csv").write_text(
+        "name,prompt,negative_prompt,description,category\n"
+        "SharedName,from_root,,,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(csv_io, "get_styles_dirs", lambda: [str(d1), str(d2)])
+    styles = csv_io.load_all_styles()
+    prompts = {s["prompt"] for s in styles if s["name"] == "SharedName"}
+    assert prompts == {"from_ext", "from_root"}
+    assert all(s.get("_source") == "styles.csv" for s in styles)
 
 
 def test_parse_row_count_matches_data_rows(tmp_path):

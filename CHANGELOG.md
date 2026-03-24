@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- CSV parse/load: optional `_source` field (basename, aligned with `source`) and tests for loading the same filename from different scan directories (`3488b64`).
 - React iframe frontend (V2) integrated into Forge panel lifecycle (`dc5f544`, `589ca79`).
 - Shadcn-based UI composition and component library (`ui/src/components/ui/*`) with typed frame bridge (`ui/src/bridge.ts`) (`dc5f544`, `e841334`).
 - New V2 capabilities: favorites/recent, usage counters, conflict checks, toast notifications, thumbnail progress modal, random/backup/import-export actions (`3f042ba`, `5277f8f`, `c8c9c2b`, `9ffda9c`, `0641448`, `e98ab3b`).
@@ -14,18 +15,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fullscreen/windowed interactions with outside-click handling and host scroll lock control (`930f6b6`, `fc9d9dc`, `72c77f2`).
 
 ### Changed
+- **Styles merge (`load_all_styles`):** uniqueness when combining CSVs is `(absolute source_file, style name)` instead of `(basename, name)`, so two `styles.csv` in different folders no longer drop each other’s rows (`3488b64`).
+- **V2 deduplication by name** applies only when **All sources** is active: shared helper `dedupeStylesByNameForAllSources` drives `filteredStyles` and search suggestions; a single selected CSV lists every row from that file (`3488b64`).
+- **V2 host → iframe:** periodic refresh sends the full merged style list to the frame (no host-side name filter); `postSGInitToFrame` builds the initial list from API `categories` like other init paths (`3488b64`).
+- V2 grid and search items use stable React keys from `source_file` + `name` so duplicate names within one CSV do not clash (`3488b64`).
+- Production build artifacts under `ui/dist/` updated in-repo for the current V2 bundle (`8a38e31`).
 - Style Grid host ↔ frame messaging flow refactored to SG_* postMessage contract and on-demand re-init/update pushes (`589ca79`, `e6276da`).
 - Sidebar/category behavior refined for per-source ordering logic and All Sources fallback handling (`6c2e8e4`, `af23d07`).
 - `docs/API.md` backend route definitions now originate from modular backend route registration (`scripts/stylegrid/routes.py`) instead of monolithic script split assumptions.
 - **Documentation:** README expanded (workflows, wildcards compatibility, search, fullscreen, img2img, testing notes); `docs/screenshots/README.md` explains screenshot maintenance; PNG assets under `docs/screenshots/` refreshed for the current UI (no tile stars, img2img, search autocomplete, fullscreen, etc.).
+- **Repo hygiene:** `.gitignore` extended for Python virtualenvs, caches, and coverage output (`2a9d7b8`).
 
 ### Removed
 - **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.
 
 ### Fixed
+- Selecting one source (CSV) no longer hides styles that only collide **by name** with another file: backend keeps both rows, and the V2 refresh path no longer re-deduplicates by name before `SG_STYLES_UPDATE` (`3488b64`).
 - Improved iframe close/escape behavior and minimized accidental host/page interaction conflicts while V2 panel is open (`930f6b6`, `72c77f2`).
 - Fixed several V2 synchronization issues after backend refresh/update flows (`e6276da`, `589ca79`).
-- **Search autocomplete:** suggestion list now respects the active source filter — when a specific CSV is selected, matches are limited to that file; with **All Sources**, suggestions span all loaded styles (aligned with `filteredStyles()` / grid behavior).
+- **Search autocomplete:** suggestions respect the active source filter (matches only the selected CSV when one is chosen). With **All Sources**, the list spans loaded styles and **dedupes by style name** like the grid (`b93de7a`, `3488b64`).
 
 ### Security
 - None.

@@ -2083,13 +2083,8 @@
                             });
                             var frame = state[t] && state[t].sgFrame;
                             if (frame && frame.contentWindow) {
+                                // Full list for v2: dedupe by name only in iframe when "All sources" (stylesStore.filteredStyles).
                                 var v2styles = Object.values(state[t].categories).flat();
-                                var seen = new Set();
-                                v2styles = v2styles.filter(function (s) {
-                                    if (seen.has(s.name)) return false;
-                                    seen.add(s.name);
-                                    return true;
-                                });
                                 frame.contentWindow.postMessage({
                                     type: "SG_STYLES_UPDATE",
                                     styles: v2styles
@@ -3521,7 +3516,9 @@
         fetch("/style_grid/styles")
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                var styles = Array.isArray(data) ? data : (data.styles ?? []);
+                var styles = Array.isArray(data)
+                    ? data
+                    : Object.values(data.categories || {}).flat();
                 fr.contentWindow.postMessage({
                     type: "SG_INIT",
                     tab: tabName,

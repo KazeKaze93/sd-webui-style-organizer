@@ -157,7 +157,11 @@
         const l = 48 + (hashString(c + "l") % 12);
         return "hsl(" + h + "," + s + "%," + l + "%)";
     }
-    function qs(sel, root) { return (root || document).querySelector(sel); }
+    function qs(sel, root) {
+        if (root) return root.querySelector(sel);
+        var ga = (typeof gradioApp === "function") ? gradioApp() : null;
+        return (ga || document).querySelector(sel);
+    }
     function qsa(sel, root) { return (root || document).querySelectorAll(sel); }
     function el(tag, attrs, children) {
         const e = document.createElement(tag);
@@ -441,6 +445,7 @@
     function setSilentGradio(tabName) {
         // Update the hidden Gradio textbox with silent mode style names
         const silentEl = qs("#style_grid_silent_" + tabName + " textarea");
+        console.log("[Style Grid] setSilentGradio silentEl:", tabName, silentEl);
         if (!silentEl) return;
         const names = state[tabName].silentMode ? [...state[tabName].selected] : [];
         setPromptValue(silentEl, JSON.stringify(names));
@@ -678,6 +683,7 @@
                 prompt = style.prompt.replace("{prompt}", prompt);
                 addedPrompt = null;
             } else {
+                if (prompt == null) prompt = "";
                 const existingNorm = {};
                 (prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNorm[t.toLowerCase()] = true; });
                 const toAdd = [];
@@ -696,6 +702,7 @@
                 neg = style.negative_prompt.replace("{prompt}", neg);
                 addedNeg = null;
             } else {
+                if (neg == null) neg = "";
                 const existingNegNorm = {};
                 (neg.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNegNorm[t.toLowerCase()] = true; });
                 const toAddNeg = [];

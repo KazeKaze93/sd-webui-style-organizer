@@ -175,7 +175,22 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
     set({ activeSource })
   },
-  toggleSilent: () => set((s) => ({ silentMode: !s.silentMode })),
+  toggleSilent: () => {
+    const newVal = !get().silentMode
+    if (!newVal) {
+      set({ silentMode: newVal, selectedStyles: [], conflicts: [] })
+    } else {
+      set({ silentMode: newVal })
+    }
+    window.parent.postMessage(
+      { type: 'SG_TOGGLE_SILENT', tab: 'txt2img', value: newVal },
+      '*'
+    )
+    window.parent.postMessage(
+      { type: 'SG_TOGGLE_SILENT', tab: 'img2img', value: newVal },
+      '*'
+    )
+  },
   toggleCompact: () => set((s) => ({ compactMode: !s.compactMode })),
   toggleCollapse: (cat) => set((s) => {
     const next = new Set(s.collapsedCategories)

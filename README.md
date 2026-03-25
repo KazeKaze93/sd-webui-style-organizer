@@ -201,7 +201,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 | Control | What it does |
 |---|---|
-| 👁 | **Silent mode** — toggles whether applying styles updates prompts quietly (highlighted when on). |
+| 👁 | **Silent mode** — styles are applied **at generate time** (hidden JSON on the Forge host), not in the prompt text fields. Turning silent **off** clears that host list, so **the next generation no longer uses silent injection**. The V2 grid may still **look** as if styles are selected (highlight/chips/count) until you click them or use Clear — that is **visual only** and does not change what silent mode already cleared for generation. Toggling a style off while silent still updates the host list. |
 | 🎲 | **Random style** — picks a random style (respects the active source filter). |
 | 📦 | **Presets** — save/load/delete style sets. |
 | 💾 | **Backup** — creates CSV backup snapshot(s). |

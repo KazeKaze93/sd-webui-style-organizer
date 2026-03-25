@@ -57,7 +57,7 @@ class StyleGridScript(scripts.Script):
             gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")
         with gr.Group(visible=False):
             gr.Textbox(value=json.dumps(category_order), visible=False, elem_id=f"style_grid_cat_order_{tab_prefix}")
-        return [styles_data, selected_styles, silent_styles]
+        return [silent_styles]
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Silent mode: inject styles into prompt at generation time."""
@@ -72,9 +72,9 @@ class StyleGridScript(scripts.Script):
         for i in range(len(p.all_negative_prompts)):
             p.all_negative_prompts[i] = resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat)
 
-        if len(args) < 3:
+        if len(args) < 1:
             return
-        silent_json = args[2]
+        silent_json = args[0]
         if not silent_json or silent_json == "[]":
             return
         try:

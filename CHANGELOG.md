@@ -30,6 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.
 
 ### Fixed
+- **Silent mode (V2):** fixed generate-time styles sticking after manual deselect — `SG_UNAPPLY` now clears the same host `selected` set that feeds `style_grid_silent_*` for `process()`, and silent iframe apply keeps `selectedOrder` aligned. Turning silent off clears host silent-only entries and notifies iframes (`SG_CLEAR_SELECTION`); **iframe highlight/chips may still appear selected until interaction** — that is cosmetic; generation follows the cleared host silent input.
 - Selecting one source (CSV) no longer hides styles that only collide **by name** with another file: backend keeps both rows, and the V2 refresh path no longer re-deduplicates by name before `SG_STYLES_UPDATE` (`3488b64`).
 - Improved iframe close/escape behavior and minimized accidental host/page interaction conflicts while V2 panel is open (`930f6b6`, `72c77f2`).
 - Fixed several V2 synchronization issues after backend refresh/update flows (`e6276da`, `589ca79`).

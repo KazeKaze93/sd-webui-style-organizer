@@ -196,7 +196,6 @@
         return Array.from(s).sort();
     }
     function findStyleByName(t, n) {
-        // Looks up style by name inside host cache state[tab].categories.
         for (const styles of Object.values(state[t].categories)) {
             const f = styles.find(function (s) { return s.name === n; });
             if (f) return f;
@@ -329,7 +328,7 @@
     }
 
     // Canonical copy in javascript/sg_prompt_utils.js — keep in sync (Forge loads this file only).
-    /* eslint-disable no-unused-vars -- Duplicated prompt helpers; call sites TBD; single source: sg_prompt_utils.js */
+    /* eslint-disable no-unused-vars */
     function splitTopLevelCommas(s) {
         if (!s || !String(s).trim()) return [];
         var str = String(s);
@@ -460,7 +459,7 @@
             state[tabName].usage = data.usage || {};
             state[tabName].presets = data.presets || {};
             return data.categories || {};
-        } catch (e) { console.error("[Style Grid] Parse error:", e); return {}; }
+        } catch (_) { return {}; }
     }
     function getCategoryOrder(tabName) {
         const el = qs("#style_grid_cat_order_" + tabName + " textarea");
@@ -519,7 +518,6 @@
         });
     }
 
-    /** Reject when API returns HTTP 200 with { error: "..." } (style routes, etc.). Thumbnail generate keeps soft errors in .then handlers. */
     function assertNoApiError(result) {
         if (result && result.error) {
             return Promise.reject(new Error(result.error));
@@ -547,9 +545,7 @@
                     );
                 });
             })
-            .catch(function (err) {
-                console.error("[Style Grid] Thumbnail list error:", err);
-            });
+            .catch(function () {});
     }
 
     function showStatusMessage(tabName, text, isError = false) {
@@ -739,17 +735,24 @@
         });
     }
 
-    // Exposed on window so iframe message handlers can trigger host-side prompt mutations.
     window._sgApplyStyle = applyStyleImmediate;
-    // Exposed on window so iframe message handlers can trigger host-side prompt rollback.
     window._sgUnapplyStyle = unapplyStyle;
 
     function unapplyStyle(tabName, styleName) {
         const record = state[tabName].applied.get(styleName);
-        if (!record) return;
+        if (!record) {
+            if (state[tabName].selected && state[tabName].selected.has(styleName)) {
+                state[tabName].selected.delete(styleName);
+                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+                setSilentGradio(tabName);
+            }
+            return;
+        }
 
         if (record.silent || state[tabName].silentMode) {
             state[tabName].applied.delete(styleName);
+            if (state[tabName].selected) state[tabName].selected.delete(styleName);
+            state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
             setSilentGradio(tabName);
             qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
             return;
@@ -793,6 +796,27 @@
 
         state[tabName].applied.delete(styleName);
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+    }
+
+    function clearHostSilentSelection(tabName) {
+        state[tabName].selected = new Set();
+        state[tabName].selectedOrder = [];
+        var toClear = [];
+        state[tabName].applied.forEach(function (rec, name) {
+            if (rec.silent) toClear.push(name);
+        });
+        for (var i = 0; i < toClear.length; i++) {
+            unapplyStyle(tabName, toClear[i]);
+        }
+    }
+
+    function postClearSelectionToIframes() {
+        ["sg-frame-txt2img", "sg-frame-img2img"].forEach(function (id) {
+            var fr = document.getElementById(id);
+            if (fr && fr.contentWindow) {
+                fr.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
+            }
+        });
     }
 
    // THUMBNAILS (batch / generate / upload — context menu entry points below)
@@ -999,7 +1023,6 @@
         apiGet("/style_grid/thumbnail/gen_status?name=" +
             encodeURIComponent(styleName))
             .then(function (r) {
-                // r could be a FastAPI 404 JSON like {"detail": "Not Found"}
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     showStatusMessage(tabName, "Generation endpoint not found", true);
                     if (typeof onProgress === "function") {
@@ -1043,10 +1066,7 @@
                     }
                 }
             })
-            .catch(function (err) {
-                // Only retry on actual network errors, not HTTP error responses
-                // HTTP errors (404, 500) mean something is structurally wrong — stop
-                console.error("[Style Grid] Poll error:", err);
+            .catch(function () {
                 showStatusMessage(tabName, "Generation status unavailable", true);
                 if (typeof onProgress === "function") {
                     onProgress("error");
@@ -1208,8 +1228,7 @@
                     refreshPanel(tabName);
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
-                }).catch(function (err) {
-                    console.error("[Style Grid] API error:", err);
+                }).catch(function () {
                     showStatusMessage(tabName, "Save failed", true);
                 });
             }
@@ -1429,7 +1448,6 @@
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
                 }).catch(function (e) {
-                    console.error("[Style Grid] CSV table save:", e);
                     var x = (e && e._sgCsvSaved !== null && e._sgCsvSaved !== undefined) ? e._sgCsvSaved : 0;
                     var n = (e && e._sgCsvTotal !== null && e._sgCsvTotal !== undefined) ? e._sgCsvTotal : totalDirty;
                     var nm = (e && e._sgCsvRowName) ? e._sgCsvRowName : "?";
@@ -1583,8 +1601,7 @@
                         renderTableBody();
                         refreshDirtyUi();
                     })
-                    .catch(function (err) {
-                        console.error("[Style Grid] Delete failed:", err);
+                    .catch(function () {
                         alert("Delete failed");
                     });
             } else {
@@ -1690,9 +1707,7 @@
             var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
             if (typeof notify === "function") notify();
             if (typeof onDone === "function") onDone();
-        }).catch(function (err) {
-            console.error("[Style Grid] API error:", err);
-        });
+        }).catch(function () {});
     }
 
     function deleteStyle(tabName, styleName, source, onDeleted) {
@@ -1721,8 +1736,7 @@
                         if (typeof notify === "function") notify();
                         if (typeof onDeleted === "function") onDeleted();
                     })
-                    .catch(function (err) {
-                        console.error("[Style Grid] Delete failed:", err);
+                    .catch(function () {
                         showStatusMessage(tabName, "Delete failed", true);
                     });
             }
@@ -1790,8 +1804,7 @@
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
                     if (typeof onDone === "function") onDone();
-                }).catch(function (err) {
-                    console.error("[Style Grid] API error:", err);
+                }).catch(function () {
                     showStatusMessage(tabName, "Move failed", true);
                 });
             }
@@ -1840,9 +1853,7 @@
                     state[tabName].presets = r.presets || {};
                     renderPresetsList();
                     nameIn.value = "";
-                }).catch(function (err) {
-                    console.error("[Style Grid] API error:", err);
-                });
+                }).catch(function () {});
             }
         });
         saveRow.appendChild(nameIn);
@@ -1862,7 +1873,6 @@
                 row.appendChild(el("button", {
                     className: "sg-btn sg-btn-secondary", textContent: "Load",
                     onClick: function () {
-                        // Clear current and load preset
                         clearAll(tabName);
                         const presetStyles = p.styles || [];
                         presetStyles.forEach(function (sn) {
@@ -1881,9 +1891,7 @@
                         apiPost("/style_grid/presets/delete", { name: name }).then(function (r) {
                             state[tabName].presets = r.presets || {};
                             renderPresetsList();
-                        }).catch(function (err) {
-                            console.error("[Style Grid] API error:", err);
-                        });
+                        }).catch(function () {});
                     }
                 }));
                 list.appendChild(row);
@@ -1927,9 +1935,7 @@
                     a.href = URL.createObjectURL(blob);
                     a.download = "style_grid_export_" + new Date().toISOString().slice(0, 10) + ".json";
                     a.click();
-                }).catch(function (err) {
-                    console.error("[Style Grid] API error:", err);
-                });
+                }).catch(function () {});
             }
         });
         modal.appendChild(btnExport);
@@ -1948,9 +1954,7 @@
                         refreshPanel(tabName);
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
-                    }).catch(function (err) {
-                        console.error("[Style Grid] API error:", err);
-                    });
+                    }).catch(function () {});
                 } catch (_e) { alert("Invalid JSON file"); }
             };
             reader.readAsText(file);
@@ -2025,8 +2029,7 @@
             if (wasVisible) {
                 state[tabName].panel.classList.add("sg-visible");
             }
-        }).catch(function (err) {
-            console.error("[Style Grid] API error:", err);
+        }).catch(function () {
             showStatusMessage(tabName, "Refresh failed", true);
         });
     }
@@ -2054,8 +2057,7 @@
         apiPost("/style_grid/backup").then(function (r) {
             if (r && r.ok) alert("Backup saved successfully!");
             else alert("Nothing to backup or backup failed.");
-        }).catch(function (err) {
-            console.error("[Style Grid] API error:", err);
+        }).catch(function () {
             showStatusMessage(tabName, "Backup failed", true);
         });
     }
@@ -2098,9 +2100,7 @@
                         });
                     });
                 }
-            }).catch(function (err) {
-                console.error("[Style Grid] API error:", err);
-            });
+            }).catch(function () {});
         }, 5000);
     }
 
@@ -2329,6 +2329,10 @@
             onClick: function () {
                 state[tabName].silentMode = !state[tabName].silentMode;
                 setSilentMode(tabName, state[tabName].silentMode);
+                if (!state[tabName].silentMode) {
+                    clearHostSilentSelection(tabName);
+                    postClearSelectionToIframes();
+                }
                 silentBtn.classList.toggle("sg-active", state[tabName].silentMode);
                 setSilentGradio(tabName);
             }
@@ -3531,9 +3535,7 @@
                 }, "*");
                 state[tabName].sgV2HostInitSent = true;
             })
-            .catch(function (err) {
-                console.error("[Style Grid] v2: failed to load styles for iframe:", err);
-            });
+            .catch(function () {});
     }
 
     // -----------------------------------------------------------------------
@@ -3572,7 +3574,6 @@
         var fr = state[tabName].sgFrame;
         var wr = state[tabName].sgFrameWrapper;
         if (!fr) {
-            console.error("[Style Grid] iframe failed to initialize for tab:", tabName);
             return;
         }
         if (!wr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tabName) {
@@ -3675,8 +3676,6 @@
     // ════════════════════════════════════════════════════
     // STATE + INIT (boot, triggers, MutationObserver)
     // ════════════════════════════════════════════════════
-    // React iframe bridge (txt2img iframe first; init once via onUiLoaded).
-    // Creates iframe wrapper, wires SG_* message bridge, and hydrates host style cache.
     function initSGFrame(tab) {
         var existing = document.getElementById("sg-frame-" + tab);
         if (existing) {
@@ -3685,7 +3684,6 @@
         const frame = document.createElement("iframe");
         frame.id = "sg-frame-" + tab;
         frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html";
-        // Wrap iframe in a resizable container div
         var wrapper = document.createElement("div");
         wrapper.id = "sg-panel-wrapper-" + tab;
         wrapper.style.cssText = [
@@ -3711,12 +3709,10 @@
         document.body.appendChild(wrapper);
         wrapper.appendChild(frame);
         state[tab].sgFrameWrapper = wrapper;
-        // Close panel when clicking anywhere outside the extension window.
         document.addEventListener("mousedown", function (e) {
             if (wrapper.style.display !== "block") return;
             var target = e.target;
             if (!target) return;
-            // Ignore trigger button clicks to preserve explicit toggle behavior.
             if (target.closest && target.closest(".sg-trigger-btn")) return;
             if (!wrapper.contains(target)) {
                 wrapper.style.display = "none";
@@ -3737,7 +3733,6 @@
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        // Populate host-side style cache for applyStyleImmediate
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};
                         allStyles.forEach(function (s) {
@@ -3763,7 +3758,6 @@
             if (!e.data || !e.data.type) return;
             if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
-            // Event-driven refresh path used after SG actions that mutate styles on disk.
             function refreshAndNotifyFrame() {
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
@@ -3822,15 +3816,17 @@
                         }, "*");
                         state[tab].sgV2HostInitSent = true;
                     })
-                    .catch(function (err) {
-                        console.error("[Style Grid] v2: failed to load styles for iframe:", err);
-                    });
+                    .catch(function () {});
             }
 
             if (msg.type === "SG_APPLY") {
                 if (msg.silent) {
                     if (!state[tab].selected) state[tab].selected = new Set();
                     state[tab].selected.add(msg.styleId);
+                    state[tab].selectedOrder = state[tab].selectedOrder || [];
+                    if (state[tab].selectedOrder.indexOf(msg.styleId) === -1) {
+                        state[tab].selectedOrder.push(msg.styleId);
+                    }
                     state[tab].silentMode = true;
                 } else {
                     state[tab].silentMode = false;
@@ -3849,6 +3845,10 @@
                 if (state[t]) {
                     state[t].silentMode = msg.value;
                     setSilentMode(t, msg.value);
+                    if (!msg.value) {
+                        clearHostSilentSelection(t);
+                        postClearSelectionToIframes();
+                    }
                     setSilentGradio(t);
                 }
             }
@@ -3856,8 +3856,6 @@
             if (msg.type === "SG_REORDER_STYLES") {
                 var ids = Array.isArray(msg.styleIds) ? msg.styleIds : [];
                 state[tab].selectedOrder = ids;
-                
-                // Ensure applied Map has all entries
                 ids.forEach(function (styleId) {
                     if (!state[tab].applied.has(styleId)) {
                         var styleObj = findStyleByName(styleId);

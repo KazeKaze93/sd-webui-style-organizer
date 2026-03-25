@@ -70,6 +70,8 @@ sequenceDiagram
   H->>F: SG_STYLES_UPDATE / SG_TOAST / progress messages
 ```
 
+**Silent mode:** injection for `scripts/style_grid.py` `process()` reads the hidden Gradio component `style_grid_silent_<tab>` (JSON array of style names). The host keeps that in sync via `setSilentGradio()` from `state[tab].selected` while `silentMode` is on. `SG_UNAPPLY` must remove the id from both `applied` and `selected`; `SG_TOGGLE_SILENT` with `value: false` runs `clearHostSilentSelection` and `postClearSelectionToIframes` (`SG_CLEAR_SELECTION`).
+
 ## Data and Persistence
 
 - `data/presets.json`: presets storage.

@@ -79,6 +79,9 @@ export default function App() {
       if (msg.type === 'SG_CLOSE') {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })
       }
+      if (msg.type === 'SG_CLEAR_SELECTION') {
+        useStylesStore.setState({ selectedStyles: [], conflicts: [] })
+      }
       if (msg.type === 'SG_STYLE_APPLIED') {
         const { selectedStyles, addToRecent } = useStylesStore.getState()
         const exists = selectedStyles.some(s => s.name === msg.style.name)

@@ -201,7 +201,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 | Control | What it does |
 |---|---|
-| 👁 | **Silent mode** — toggles whether applying styles updates prompts quietly (highlighted when on). |
+| 👁 | **Silent mode** — styles are applied **at generate time** (hidden JSON inputs), not in the prompt text fields. Turning silent **off** clears that list and resets the V2 selection; toggling a style off while silent also removes it from generate-time injection. |
 | 🎲 | **Random style** — picks a random style (respects the active source filter). |
 | 📦 | **Presets** — save/load/delete style sets. |
 | 💾 | **Backup** — creates CSV backup snapshot(s). |

@@ -443,11 +443,9 @@
         el.dispatchEvent(new Event("change", { bubbles: true }));
     }
     function setSilentGradio(tabName) {
-        // Update the hidden Gradio textbox with silent mode style names
-        const silentEl = qs("#style_grid_silent_" + tabName + " textarea");
-        console.log("[Style Grid] setSilentGradio silentEl:", tabName, silentEl);
+        var silentEl = qs("#style_grid_silent_" + tabName + " textarea");
+        var names = state[tabName].silentMode ? [...state[tabName].selected] : [];
         if (!silentEl) return;
-        const names = state[tabName].silentMode ? [...state[tabName].selected] : [];
         setPromptValue(silentEl, JSON.stringify(names));
     }
 
@@ -3830,11 +3828,29 @@
             }
 
             if (msg.type === "SG_APPLY") {
+                if (msg.silent) {
+                    if (!state[tab].selected) state[tab].selected = new Set();
+                    state[tab].selected.add(msg.styleId);
+                    state[tab].silentMode = true;
+                } else {
+                    state[tab].silentMode = false;
+                    state[tab].selected = new Set();
+                }
                 window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
+                setSilentGradio(tab);
             }
 
             if (msg.type === "SG_UNAPPLY") {
                 window._sgUnapplyStyle(tab, msg.styleId);
+            }
+
+            if (msg.type === "SG_TOGGLE_SILENT") {
+                var t = msg.tab || tab;
+                if (state[t]) {
+                    state[t].silentMode = msg.value;
+                    setSilentMode(t, msg.value);
+                    setSilentGradio(t);
+                }
             }
 
             if (msg.type === "SG_REORDER_STYLES") {

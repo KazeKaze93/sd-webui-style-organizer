@@ -2,6 +2,7 @@
 export type HostMessage =
   | { type: 'SG_CLEAR_SELECTION' }
   | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
+  | { type: 'SG_HOST_TAB';       tab: Tab }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
   | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
   | { type: 'SG_STYLE_APPLIED'; style: Style }

@@ -1255,9 +1255,27 @@
 
     var CSV_TABLE_FIELDS = ["name", "prompt", "negative_prompt", "description", "category"];
 
+    function isAllSourcesSourceFilter(value, domLabelTrimmed) {
+        if (value == null || value === "") return true;
+        var s = String(value);
+        if (s === "All" || s === "all" || s === "All Sources" || s === "__all__") return true;
+        if (domLabelTrimmed === "All Sources") return true;
+        return false;
+    }
+
+    function getEffectiveCsvEditorSourceAtClick(tabName) {
+        // getStoredSource is the only reliable source of truth —
+        // state may be stale if _buildSourceList ran after the last pick.
+        var stored = getStoredSource(tabName);
+        var selectedSource = (stored && stored !== "" && stored !== "All") ? stored : "All";
+        return { selectedSource: selectedSource, domText: selectedSource };
+    }
+
     function openCsvTableEditor(tabName) {
-        var selectedSource = state[tabName].selectedSource || "All";
-        if (selectedSource === "All") {
+        var eff = getEffectiveCsvEditorSourceAtClick(tabName);
+        var selectedSource = eff.selectedSource;
+        console.log("[SG] CSV table editor click", { tab: tabName, domText: eff.domText || "(empty)", selectedSource: selectedSource });
+        if (isAllSourcesSourceFilter(selectedSource, eff.domText)) {
             alert("Choose a single CSV in the source filter (not “All Sources”) to edit that file as a table.");
             return;
         }
@@ -2374,12 +2392,21 @@
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "🔄", title: "Refresh styles", onClick: function () { refreshPanel(tabName); } }));
 
         // Table editor (current source CSV)
-        searchRow.appendChild(el("button", {
+        var btnCsvTable = el("button", {
             className: "sg-btn sg-btn-secondary",
             textContent: "📋",
             title: "Edit all styles in the selected CSV (table)",
-            onClick: function () { openCsvTableEditor(tabName); },
-        }));
+        });
+        var btn = btnCsvTable;
+        if (btn._sgCsvEditorBound) {
+            btn.removeEventListener("click", btn._sgCsvEditorBound);
+        }
+        btn._sgCsvEditorBound = function (e) {
+            e.stopPropagation();
+            openCsvTableEditor(tabName);
+        };
+        btn.addEventListener("click", btn._sgCsvEditorBound);
+        searchRow.appendChild(btnCsvTable);
 
         // New style
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "➕", title: "Create new style", onClick: function () { openStyleEditor(tabName, null); } }));
@@ -3539,6 +3566,147 @@
     }
 
     // -----------------------------------------------------------------------
+    // A1111 / Gradio: visible txt2img vs img2img main tab → v2 iframe header badge
+    // -----------------------------------------------------------------------
+    var _sgForgeTabSyncInstalled = false;
+    var _sgLastBroadcastForgeTab = null;
+    var _sgForgeTabsObserver = null;
+    var _sgForgeTabsPendingRetry = null;
+
+    function getForgeUiRoot() {
+        if (typeof gradioApp === "function") {
+            try {
+                var g = gradioApp();
+                if (g) return g;
+            } catch (_) { /* ignore */ }
+        }
+        return document;
+    }
+
+    function forgeTabPanelVisible(root, sel) {
+        var el = root.querySelector(sel);
+        if (!el) return false;
+        var st = window.getComputedStyle(el);
+        if (st.display === "none" || st.visibility === "hidden") return false;
+        if (sel.indexOf("tab_txt2img") !== -1 || sel.indexOf("tab_img2img") !== -1) {
+            if (el.classList && el.classList.contains("tabitem")) {
+                var hidden = el.getAttribute("style") || "";
+                if (hidden.indexOf("display: none") !== -1 || hidden.indexOf("display:none") !== -1) return false;
+            }
+        }
+        return true;
+    }
+
+    function detectActiveForgeMainTab() {
+        var root = getForgeUiRoot();
+        var txtOn = forgeTabPanelVisible(root, "#tab_txt2img");
+        var imgOn = forgeTabPanelVisible(root, "#tab_img2img");
+        if (txtOn && !imgOn) return "txt2img";
+        if (imgOn && !txtOn) return "img2img";
+
+        var nav = root.querySelector("#tabs > .tab-nav") || root.querySelector("#tabs .tab-nav") || root.querySelector(".tab-nav");
+        if (nav) {
+            var btns = nav.querySelectorAll("button");
+            var i;
+            for (i = 0; i < btns.length; i++) {
+                var b = btns[i];
+                var sel = b.classList && b.classList.contains("selected");
+                var aria = b.getAttribute("aria-selected") === "true";
+                if (!sel && !aria) continue;
+                var label = ((b.textContent || "") + " " + (b.getAttribute("data-testid") || "")).toLowerCase();
+                if (label.indexOf("img2img") !== -1) return "img2img";
+                if (label.indexOf("txt2img") !== -1) return "txt2img";
+            }
+            if (btns.length >= 2) {
+                for (i = 0; i < btns.length; i++) {
+                    if (btns[i].classList && btns[i].classList.contains("selected")) {
+                        return i === 0 ? "txt2img" : "img2img";
+                    }
+                }
+            }
+        }
+        if (imgOn) return "img2img";
+        return "txt2img";
+    }
+
+    function postForgeHostTabToV2Frames(hostTab) {
+        if (hostTab !== "txt2img" && hostTab !== "img2img") return;
+        ["txt2img", "img2img"].forEach(function (t) {
+            var fr = state[t] && state[t].sgFrame;
+            if (fr && fr.contentWindow) {
+                fr.contentWindow.postMessage({ type: "SG_HOST_TAB", tab: hostTab }, "*");
+            }
+        });
+    }
+
+    function syncForgeHostTabToV2Frames() {
+        var tab = detectActiveForgeMainTab();
+        if (_sgLastBroadcastForgeTab === tab) return;
+        _sgLastBroadcastForgeTab = tab;
+        postForgeHostTabToV2Frames(tab);
+    }
+
+    function scheduleSyncForgeHostTabToV2Frames() {
+        syncForgeHostTabToV2Frames();
+        setTimeout(syncForgeHostTabToV2Frames, 0);
+        setTimeout(syncForgeHostTabToV2Frames, 120);
+    }
+
+    function installForgeMainTabSyncForV2() {
+        if (_sgForgeTabSyncInstalled) return;
+        _sgForgeTabSyncInstalled = true;
+
+        document.addEventListener("click", function (e) {
+            var t = e.target;
+            if (!t || !t.closest) return;
+            if (t.closest("#tabs > .tab-nav") || t.closest("#tabs .tab-nav") || (t.closest && t.closest(".tab-nav"))) {
+                scheduleSyncForgeHostTabToV2Frames();
+            }
+        }, true);
+
+        function observeTabsEl(tabsEl) {
+            if (!tabsEl || _sgForgeTabsObserver) return;
+            _sgForgeTabsObserver = new MutationObserver(function () {
+                scheduleSyncForgeHostTabToV2Frames();
+            });
+            _sgForgeTabsObserver.observe(tabsEl, {
+                attributes: true,
+                childList: true,
+                subtree: true,
+                attributeFilter: ["class", "style", "aria-selected"],
+            });
+        }
+
+        function tryAttachTabsObserver() {
+            var r = getForgeUiRoot();
+            var tabsEl = r.querySelector("#tabs");
+            if (tabsEl) {
+                observeTabsEl(tabsEl);
+                if (_sgForgeTabsPendingRetry) {
+                    clearInterval(_sgForgeTabsPendingRetry);
+                    _sgForgeTabsPendingRetry = null;
+                }
+                return true;
+            }
+            return false;
+        }
+
+        if (!tryAttachTabsObserver()) {
+            _sgForgeTabsPendingRetry = setInterval(function () {
+                tryAttachTabsObserver();
+            }, 500);
+            setTimeout(function () {
+                if (_sgForgeTabsPendingRetry) {
+                    clearInterval(_sgForgeTabsPendingRetry);
+                    _sgForgeTabsPendingRetry = null;
+                }
+            }, 30000);
+        }
+
+        scheduleSyncForgeHostTabToV2Frames();
+    }
+
+    // -----------------------------------------------------------------------
     // Toggle panel visibility
     // -----------------------------------------------------------------------
     var _sgHostPrevBodyOverflow = "";
@@ -3592,6 +3760,8 @@
         target.style.display = "block";
         setHostPageScrollLock(true);
         if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
+        _sgLastBroadcastForgeTab = null;
+        scheduleSyncForgeHostTabToV2Frames();
     }
 
     // -----------------------------------------------------------------------
@@ -3628,6 +3798,14 @@
         return btn;
     }
 
+    function getStyleGridToolbarHost() {
+        var root = (typeof gradioApp === "function" ? gradioApp() : null) || document;
+        return root.querySelector(".forge-toolbar-container")
+            || root.querySelector("#quicksettings")
+            || root.querySelector(".gradio-container .top-row")
+            || null;
+    }
+
     function injectButton(tabName) {
         const selectors = [
             "#" + tabName + "_tools",
@@ -3645,7 +3823,14 @@
             const tab = qs("#tab_" + tabName);
             if (tab) { const btns = tab.querySelectorAll(".tool"); if (btns.length > 0) target = btns[btns.length - 1].parentElement; }
         }
-        if (!target) return false;
+        if (!target) {
+            var toolbarHost = getStyleGridToolbarHost();
+            if (!toolbarHost) return false;
+            const btnToolbar = createTriggerButton(tabName);
+            btnToolbar.classList.add("sg-trigger-btn--toolbar-host");
+            toolbarHost.appendChild(btnToolbar);
+            return true;
+        }
         const btn = createTriggerButton(tabName);
         if (target.id && target.id.includes("tools")) target.appendChild(btn);
         else if (target.classList.contains("style_create_row")) target.appendChild(btn);
@@ -3931,7 +4116,19 @@
                     });
             }
             if (msg.type === "SG_CSV_EDITOR") {
-                openCsvTableEditor(tab);
+                if (window._sgCsvEditorOpening) return;
+                window._sgCsvEditorOpening = true;
+                setTimeout(function () { window._sgCsvEditorOpening = false; }, 300);
+                var activeTab = (function() {
+                    // Forge/A1111: find which tab panel is currently visible
+                    var tabs = ["txt2img", "img2img"];
+                    for (var i = 0; i < tabs.length; i++) {
+                        var wrapper = document.getElementById("style_grid_wrapper_" + tabs[i]);
+                        if (wrapper && wrapper.offsetParent !== null) return tabs[i];
+                    }
+                    return "txt2img"; // fallback
+                })();
+                openCsvTableEditor(activeTab);
             }
             if (msg.type === "SG_CLEAR_ALL") {
                 clearAll(tab);
@@ -4038,6 +4235,7 @@
     function ensureSGFramesOnce() {
         if (!state.txt2img.sgFrame) state.txt2img.sgFrame = initSGFrame("txt2img");
         if (!state.img2img.sgFrame) state.img2img.sgFrame = initSGFrame("img2img");
+        installForgeMainTabSyncForV2();
     }
 
     function init() {
@@ -4094,6 +4292,7 @@
         onUiLoaded(function () {
             state.txt2img.sgFrame = state.txt2img.sgFrame || initSGFrame("txt2img");
             state.img2img.sgFrame = state.img2img.sgFrame || initSGFrame("img2img");
+            installForgeMainTabSyncForV2();
         });
     } else if (document.body) {
         ensureSGFramesOnce();

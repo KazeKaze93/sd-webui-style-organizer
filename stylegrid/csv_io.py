@@ -156,13 +156,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         else:
             cat_cell = str(category).strip()
             cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
-        return [
-            _sanitize_csv_cell(name),
-            _sanitize_csv_cell(prompt),
-            _sanitize_csv_cell(negative_prompt),
-            _sanitize_csv_cell(description),
-            cat_cell,
-        ]
+        return [name, prompt, negative_prompt, _sanitize_csv_cell(description), cat_cell]
 
     found = False
     for i, row in enumerate(rows):

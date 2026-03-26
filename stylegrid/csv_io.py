@@ -5,6 +5,7 @@ import os
 
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import EXT_DIR, get_all_styles_file_paths
+from modules import shared
 
 # Canonical CSV column order used when writing style rows back to disk.
 FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]
@@ -172,6 +173,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         for row in rows:
             writer.writerow(row)
     invalidate_styles_cache()
+    shared.prompt_styles.reload()
     return True
 
 
@@ -215,4 +217,5 @@ def delete_style_from_csv(name, source_file=None):
             }
             writer.writerow(row_dict)
     invalidate_styles_cache()
+    shared.prompt_styles.reload()
     return True

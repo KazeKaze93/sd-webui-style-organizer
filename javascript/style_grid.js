@@ -1274,7 +1274,6 @@
     function openCsvTableEditor(tabName) {
         var eff = getEffectiveCsvEditorSourceAtClick(tabName);
         var selectedSource = eff.selectedSource;
-        console.log("[SG] CSV table editor click", { tab: tabName, domText: eff.domText || "(empty)", selectedSource: selectedSource });
         if (isAllSourcesSourceFilter(selectedSource, eff.domText)) {
             alert("Choose a single CSV in the source filter (not “All Sources”) to edit that file as a table.");
             return;
@@ -3832,8 +3831,11 @@
             return true;
         }
         const btn = createTriggerButton(tabName);
-        if (target.id && target.id.includes("tools")) target.appendChild(btn);
-        else if (target.classList.contains("style_create_row")) target.appendChild(btn);
+        if (target.id && target.id.includes("tools")) {
+            var toolsEl = target;
+            var formEl = toolsEl.querySelector(":scope > div.form, :scope > div[style*='flex']");
+            (formEl || toolsEl).appendChild(btn);
+        } else if (target.classList.contains("style_create_row")) target.appendChild(btn);
         else target.parentNode.insertBefore(btn, target.nextSibling);
         return true;
     }

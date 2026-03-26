@@ -74,7 +74,15 @@ export default function App() {
             : (raw as { categories?: Record<string, unknown[]> } | null)?.categories
               ? Object.values((raw as { categories: Record<string, unknown[]> }).categories).flat()
               : []
-        setStyles(arr, msg.type === 'SG_INIT' ? msg.tab : 'txt2img')
+        setStyles(
+          arr,
+          msg.type === 'SG_INIT'
+            ? msg.tab
+            : useStylesStore.getState().tab,
+        )
+      }
+      if (msg.type === 'SG_HOST_TAB') {
+        useStylesStore.setState({ tab: msg.tab })
       }
       if (msg.type === 'SG_CLOSE') {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })

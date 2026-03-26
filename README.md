@@ -1,6 +1,6 @@
 # Style Grid for Forge
 
-Style Grid replaces the default style dropdown with a fast, visual interface for browsing, selecting, and applying styles in Stable Diffusion WebUI Forge.
+Style Grid replaces the default style dropdown with a fast, visual interface for browsing, selecting, and applying styles in all major Stable Diffusion WebUI builds.
 
 It supports:
 - category-based browsing

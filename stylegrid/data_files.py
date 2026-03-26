@@ -5,7 +5,7 @@ import os
 import shutil
 import time
 
-from stylegrid.config import BACKUP_DIR, PRESETS_FILE, USAGE_FILE, get_styles_dirs
+from stylegrid.config import BACKUP_DIR, PRESETS_FILE, USAGE_FILE, get_all_styles_file_paths
 
 
 def load_presets():
@@ -53,15 +53,14 @@ def backup_csv_files():
     ts = time.strftime("%Y%m%d_%H%M%S")
     backup_subdir = os.path.join(BACKUP_DIR, ts)
     backed_up = False
-    for d in get_styles_dirs():
-        if not os.path.isdir(d):
-            continue
-        for fname in os.listdir(d):
-            if fname.lower().endswith(".csv"):
-                if not backed_up:
-                    os.makedirs(backup_subdir, exist_ok=True)
-                    backed_up = True
-                shutil.copy2(os.path.join(d, fname), os.path.join(backup_subdir, fname))
+
+    for fp in get_all_styles_file_paths():
+        if not backed_up:
+            os.makedirs(backup_subdir, exist_ok=True)
+            backed_up = True
+        fname = os.path.basename(fp)
+        shutil.copy2(fp, os.path.join(backup_subdir, fname))
+
     if os.path.isdir(BACKUP_DIR):
         backups = sorted(os.listdir(BACKUP_DIR))
         while len(backups) > 20:

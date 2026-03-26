@@ -4,7 +4,7 @@ import csv
 import os
 
 from stylegrid.cache import invalidate_styles_cache
-from stylegrid.config import EXT_DIR, get_styles_dirs
+from stylegrid.config import EXT_DIR, get_all_styles_file_paths
 
 # Canonical CSV column order used when writing style rows back to disk.
 FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]
@@ -65,20 +65,8 @@ def load_all_styles():
     """Merge CSVs from all style dirs; uniqueness is (source_file abspath, name), not basename."""
     all_styles = []
     seen_keys = set()
-    for d in get_styles_dirs():
-        if not os.path.isdir(d):
-            continue
-        for fname in sorted(os.listdir(d)):
-            if fname.lower().endswith(".csv"):
-                filepath = os.path.join(d, fname)
-                for s in parse_styles_csv(filepath):
-                    key = (s.get("source_file", ""), s["name"])
-                    if key not in seen_keys:
-                        seen_keys.add(key)
-                        all_styles.append(s)
-    root_csv = os.path.join(os.getcwd(), "styles.csv")
-    if os.path.isfile(root_csv):
-        for s in parse_styles_csv(root_csv):
+    for filepath in get_all_styles_file_paths():
+        for s in parse_styles_csv(filepath):
             key = (s.get("source_file", ""), s["name"])
             if key not in seen_keys:
                 seen_keys.add(key)
@@ -139,9 +127,8 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
     if not source_file:
         source_file = "styles.csv"
     target_path = None
-    for d in get_styles_dirs():
-        fp = os.path.join(d, source_file)
-        if os.path.isfile(fp):
+    for fp in get_all_styles_file_paths():
+        if os.path.basename(fp) == source_file:
             target_path = fp
             break
     if not target_path:
@@ -208,9 +195,8 @@ def delete_style_from_csv(name, source_file=None):
         if not source_file.lower().endswith('.csv'):
             source_file = source_file + '.csv'
     target_path = None
-    for d in get_styles_dirs():
-        fp = os.path.join(d, source_file)
-        if os.path.isfile(fp):
+    for fp in get_all_styles_file_paths():
+        if os.path.basename(fp) == source_file:
             target_path = fp
             break
     if not target_path:

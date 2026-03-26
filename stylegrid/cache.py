@@ -1,9 +1,8 @@
 """CSV file hash tracking and styles list cache."""
 
 import hashlib
-import os
 
-from stylegrid.config import get_styles_dirs
+from stylegrid.config import get_all_styles_file_paths
 
 _file_hashes = {}
 _styles_cache = {"data": None, "hashes": {}}
@@ -25,16 +24,12 @@ def check_files_changed():
     global _file_hashes
     changed = False
     current = {}
-    for d in get_styles_dirs():
-        if not os.path.isdir(d):
-            continue
-        for fname in os.listdir(d):
-            if fname.lower().endswith(".csv"):
-                fp = os.path.join(d, fname)
-                h = _hash_file(fp)
-                current[fp] = h
-                if fp not in _file_hashes or _file_hashes[fp] != h:
-                    changed = True
+    for fp in get_all_styles_file_paths():
+        h = _hash_file(fp)
+        current[fp] = h
+        if fp not in _file_hashes or _file_hashes[fp] != h:
+            changed = True
+
     if set(_file_hashes.keys()) != set(current.keys()):
         changed = True
     _file_hashes = current

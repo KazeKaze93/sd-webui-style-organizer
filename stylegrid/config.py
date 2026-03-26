@@ -19,7 +19,24 @@ os.makedirs(THUMBNAILS_DIR, exist_ok=True)
 
 def get_styles_dirs():
     ext_styles_dir = os.path.join(EXT_DIR, "styles")
-    root_dir = os.path.abspath(
-        getattr(shared.cmd_opts, "data_path", None) or os.getcwd()
-    )
-    return [ext_styles_dir, root_dir]
+    all_styles_parent_dirs_paths = [ext_styles_dir]
+    seen = {ext_styles_dir}
+    for p in shared.prompt_styles.all_styles_files:
+        p_abs_str = str(p.parent.absolute())
+        if p_abs_str not in seen:
+            all_styles_parent_dirs_paths.append(p_abs_str)
+            seen.add(p_abs_str)
+    return all_styles_parent_dirs_paths
+
+
+def get_all_styles_file_paths():
+    ext_styles_dir = os.path.join(EXT_DIR, "styles")
+    all_styles_file_paths = []
+    if not os.path.isdir(ext_styles_dir):
+        for fname in sorted(os.listdir(ext_styles_dir)):
+            if fname.lower().endswith(".csv"):
+                filepath = os.path.join(ext_styles_dir, fname)
+                all_styles_file_paths.append(filepath)
+
+    all_styles_file_paths.extend(str(p.absolute()) for p in shared.prompt_styles.all_styles_files)
+    return all_styles_file_paths

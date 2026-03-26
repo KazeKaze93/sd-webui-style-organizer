@@ -5,7 +5,7 @@ import os
 from modules import shared  # type: ignore[reportMissingImports]
 
 # Extension root (parent of scripts/)
-EXT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+EXT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(EXT_DIR, "data")
 PRESETS_FILE = os.path.join(DATA_DIR, "presets.json")
 USAGE_FILE = os.path.join(DATA_DIR, "usage.json")

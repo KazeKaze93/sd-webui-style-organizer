@@ -172,7 +172,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
             break
     if not found:
         rows.append(make_row())
-    with open(target_path, "w", encoding="utf-8", newline="") as f:
+    with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(header)
         for row in rows:
@@ -211,7 +211,7 @@ def delete_style_from_csv(name, source_file=None):
                 continue
             if row and row[0].strip() != name:
                 rows.append(row)
-    with open(target_path, "w", encoding="utf-8", newline="") as f:
+    with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
         writer.writeheader()
         for row in rows:

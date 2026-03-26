@@ -15,6 +15,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fullscreen/windowed interactions with outside-click handling and host scroll lock control (`930f6b6`, `fc9d9dc`, `72c77f2`).
 
 ### Changed
+- **Forge script `process()` inputs:** `StyleGridScript.ui()` now returns only the hidden `style_grid_silent_*` textbox to the script runner; `process()` reads silent JSON from `args[0]` (wildcard expansion still runs first). `styles_data` / `selected_styles` / apply trigger remain in the DOM for the host script only (`a8819d6`).
+- **CSV table editor:** source file is taken from the **persisted** source filter (same as the dropdown); **All Sources** shows a prompt to pick one CSV first. Opening from the iframe uses the **visible** Forge tab (`style_grid_wrapper_*` visibility) as the host context (`c0dff77`, `62b083d`).
+- **Host toolbar:** icon row vertical alignment; Style Grid trigger button placement follows the target control row structure (`c0dff77`, `6ad888e`).
+- **DOM helper `qs`:** optional root element with `gradioApp()` fallback for Gradio-scoped queries (`d0c135b`).
+- **Host → iframe:** `SG_HOST_TAB` updates the React store when the visible txt2img/img2img context changes so non-init style pushes keep the correct tab (`c0dff77`).
 - **Styles merge (`load_all_styles`):** uniqueness when combining CSVs is `(absolute source_file, style name)` instead of `(basename, name)`, so two `styles.csv` in different folders no longer drop each other’s rows (`3488b64`).
 - **V2 deduplication by name** applies only when **All sources** is active: shared helper `dedupeStylesByNameForAllSources` drives `filteredStyles` and search suggestions; a single selected CSV lists every row from that file (`3488b64`).
 - **V2 host → iframe:** periodic refresh sends the full merged style list to the frame (no host-side name filter); `postSGInitToFrame` builds the initial list from API `categories` like other init paths (`3488b64`).
@@ -30,7 +35,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.
 
 ### Fixed
-- **Silent mode (V2):** fixed generate-time styles sticking after manual deselect — `SG_UNAPPLY` now clears the same host `selected` set that feeds `style_grid_silent_*` for `process()`, and silent iframe apply keeps `selectedOrder` aligned. Turning silent off clears host silent-only entries and notifies iframes (`SG_CLEAR_SELECTION`); **iframe highlight/chips may still appear selected until interaction** — that is cosmetic; generation follows the cleared host silent input.
+- **Silent mode (V2):** fixed generate-time styles sticking after manual deselect — `SG_UNAPPLY` now clears the same host `selected` set that feeds `style_grid_silent_*` for `process()`, and silent iframe apply keeps `selectedOrder` aligned. Turning silent off clears host silent-only entries and notifies iframes (`SG_CLEAR_SELECTION`); **iframe highlight/chips may still appear selected until interaction** — that is cosmetic; generation follows the cleared host silent input. Follow-up: cross-tab silent toggling, `setSilentGradio`, and `process()` arg indexing aligned with the reduced `ui()` return tuple (`19918f1`, `c8d41d2`, `a8819d6`).
+- **Wildcard pass:** positive/negative strings default to empty when null before `{sg:…}` resolution (`d0c135b`).
 - Selecting one source (CSV) no longer hides styles that only collide **by name** with another file: backend keeps both rows, and the V2 refresh path no longer re-deduplicates by name before `SG_STYLES_UPDATE` (`3488b64`).
 - Improved iframe close/escape behavior and minimized accidental host/page interaction conflicts while V2 panel is open (`930f6b6`, `72c77f2`).
 - Fixed several V2 synchronization issues after backend refresh/update flows (`e6276da`, `589ca79`).

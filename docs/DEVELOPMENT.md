@@ -65,12 +65,19 @@ sequenceDiagram
   H->>API: GET /style_grid/styles
   API-->>H: categories + usage
   H->>F: SG_INIT (styles array)
+  H->>F: SG_HOST_TAB (when visible txt2img/img2img changes)
   F->>H: SG_APPLY / SG_UNAPPLY / actions
   H->>API: CRUD/thumbnail/preset/etc requests
   H->>F: SG_STYLES_UPDATE / SG_TOAST / progress messages
 ```
 
 **Silent mode:** injection for `scripts/style_grid.py` `process()` reads the hidden Gradio component `style_grid_silent_<tab>` (JSON array of style names). The host keeps that in sync via `setSilentGradio()` from `state[tab].selected` while `silentMode` is on. `SG_UNAPPLY` must remove the id from both `applied` and `selected`; `SG_TOGGLE_SILENT` with `value: false` runs `clearHostSilentSelection` and `postClearSelectionToIframes` (`SG_CLEAR_SELECTION`). **Source of truth for generation is the host textbox**, not the iframe selection UI: after silent turns off, V2 may still show tiles/chips as selected until the user toggles or clears — that mismatch is visual-only and must not imply silent styles are still injected.
+
+**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, but **`return` is only `[silent_styles]`** so `process(*args)` receives a single argument (silent JSON). Wildcard resolution uses `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not those hidden textboxes.
+
+**CSV table editor:** `openCsvTableEditor` resolves the target file from `getStoredSource(tab)` (localStorage-backed), not from a stale in-memory dropdown snapshot. **All Sources** is rejected up front. When the iframe sends `SG_CSV_EDITOR`, the host picks `txt2img` vs `img2img` by which `style_grid_wrapper_*` is visible.
+
+**DOM:** `qs(sel, root?)` queries from `root` when provided, otherwise falls back to `gradioApp()` when available.
 
 ## Data and Persistence
 

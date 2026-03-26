@@ -33,6 +33,7 @@ export type FrameMessage =
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }
   | { type: 'SG_CSV_EDITOR' }
   | { type: 'SG_CLEAR_ALL' }
+  | { type: 'SG_TOGGLE_SILENT'; tab: Tab; value: boolean }
 
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'

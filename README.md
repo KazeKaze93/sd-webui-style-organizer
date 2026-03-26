@@ -206,7 +206,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 | 📦 | **Presets** — save/load/delete style sets. |
 | 💾 | **Backup** — creates CSV backup snapshot(s). |
 | 📥 | **Import / Export** — export/import styles, presets, usage. |
-| 📋 | **CSV table editor** — opens the table editor for CSV sources. |
+| 📋 | **CSV table editor** — opens a spreadsheet-style editor for the **currently selected CSV** (same rule as **New style**: choose a file in the source dropdown, not **All Sources**). Uses the saved source filter so it matches what you see in the panel. |
 | 🧹 | **Clear** — clears all selected styles in the panel and on the host prompt. |
 | ▪ | **Compact mode** — toggles a denser card layout. |
 | ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
@@ -261,6 +261,7 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
 | Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. |
+| CSV editor says to pick one CSV | Source filter must be a **single file**, not **All Sources** (same as creating a new style). |
 
 ---
 

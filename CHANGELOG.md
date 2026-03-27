@@ -16,7 +16,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Forge script `process()` inputs:** `StyleGridScript.ui()` now returns only the hidden `style_grid_silent_*` textbox to the script runner; `process()` reads silent JSON from `args[0]` (wildcard expansion still runs first). `styles_data` / `selected_styles` / apply trigger remain in the DOM for the host script only (`a8819d6`).
-- **CSV table editor:** source file is taken from the **persisted** source filter (same as the dropdown); **All Sources** shows a prompt to pick one CSV first. Opening from the iframe uses the **visible** Forge tab (`style_grid_wrapper_*` visibility) as the host context (`c0dff77`, `62b083d`).
+- **CSV table editor:** **disabled** in the product UI (📋 inactive in React and host toolbars; EN/RU tooltips and native `title` explain temporary unavailability). Full implementation preserved as a **block comment** in `javascript/style_grid.js`; live `openCsvTableEditor` is a no-op stub. `SG_CSV_EDITOR` remains in `ui/src/bridge.ts` for typing; the host responds with an informational **`SG_TOAST`** instead of opening the overlay (legacy handler body left commented beside the active branch). Full-screen editor styles (`.sg-csv-*`, `.sg-csv-editor-btn-disabled`) live in `style.css` for future re-enable. *When previously enabled:* target CSV followed **`getStoredSource(tab)`**; **All Sources** was rejected; iframe-triggered open used the visible `style_grid_wrapper_*` tab (`c0dff77`, `62b083d`).
+- **V2 iframe document cache:** host sets `frame.src` to `ui/dist/index.html?sgui=…` so users pick up rebuilt `ui/dist` after updating the extension without a stale `index.html` sticking in cache.
 - **Host toolbar:** icon row vertical alignment; Style Grid trigger button placement follows the target control row structure (`c0dff77`, `6ad888e`).
 - **DOM helper `qs`:** optional root element with `gradioApp()` fallback for Gradio-scoped queries (`d0c135b`).
 - **Host → iframe:** `SG_HOST_TAB` updates the React store when the visible txt2img/img2img context changes so non-init style pushes keep the correct tab (`c0dff77`).
@@ -28,7 +29,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Style Grid host ↔ frame messaging flow refactored to SG_* postMessage contract and on-demand re-init/update pushes (`589ca79`, `e6276da`).
 - Sidebar/category behavior refined for per-source ordering logic and All Sources fallback handling (`6c2e8e4`, `af23d07`).
 - `docs/API.md` backend route definitions now originate from modular backend route registration (`scripts/stylegrid/routes.py`) instead of monolithic script split assumptions.
-- **Documentation:** README expanded (workflows, wildcards compatibility, search, fullscreen, img2img, testing notes); `docs/screenshots/README.md` explains screenshot maintenance; PNG assets under `docs/screenshots/` refreshed for the current UI (no tile stars, img2img, search autocomplete, fullscreen, etc.).
+- **Documentation:** README expanded (workflows, wildcards, search, fullscreen, img2img, testing; Quick Start / top-bar table / troubleshooting include the **disabled** CSV table editor); `docs/DEVELOPMENT.md` documents maintainer re-enable steps, `SG_CSV_EDITOR` toast behavior, and related host/React/CSS layout; `docs/screenshots/README.md` explains screenshot maintenance; PNG assets under `docs/screenshots/` refreshed for the current UI.
 - **Repo hygiene:** `.gitignore` extended for Python virtualenvs, caches, and coverage output (`2a9d7b8`).
 
 ### Removed

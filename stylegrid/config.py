@@ -38,5 +38,12 @@ def get_all_styles_file_paths():
                 filepath = os.path.join(ext_styles_dir, fname)
                 all_styles_file_paths.append(filepath)
 
+    samples_dir = os.path.join(EXT_DIR, "samples")
+    if os.path.isdir(samples_dir):
+        for fname in sorted(os.listdir(samples_dir)):
+            if fname.lower().endswith(".csv"):
+                filepath = os.path.join(samples_dir, fname)
+                all_styles_file_paths.append(filepath)
+
     all_styles_file_paths.extend(str(p.absolute()) for p in shared.prompt_styles.all_styles_files)
     return all_styles_file_paths

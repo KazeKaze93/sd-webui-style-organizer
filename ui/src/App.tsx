@@ -15,37 +15,52 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './components/ui/tooltip'
+import { cn } from './lib/utils'
 
 const ToolBtn = ({
   icon,
   label,
   title,
   onClick,
+  disabled,
 }: {
   icon: string
   label: string
   title?: string
   onClick?: () => void
-}) => (
-  <Tooltip>
-    <TooltipTrigger asChild>
-      <button
-        type="button"
-        onClick={onClick}
-        title={title}
-        className="w-8 h-8 flex items-center justify-center rounded
-                   text-sg-muted hover:text-sg-text hover:bg-sg-surface
-                   transition-colors text-sm border border-transparent
-                   hover:border-sg-border"
-      >
-        {icon}
-      </button>
-    </TooltipTrigger>
-    <TooltipContent side="bottom">
-      <p className="text-xs">{label}</p>
-    </TooltipContent>
-  </Tooltip>
-)
+  disabled?: boolean
+}) => {
+  const button = (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      title={title}
+      className={cn(
+        'w-8 h-8 flex items-center justify-center rounded transition-colors text-sm border',
+        disabled
+          ? 'opacity-45 cursor-not-allowed text-sg-muted border-transparent [filter:grayscale(0.35)]'
+          : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface border-transparent hover:border-sg-border',
+      )}
+    >
+      {icon}
+    </button>
+  )
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        {disabled ? (
+          <span className="inline-flex rounded">{button}</span>
+        ) : (
+          button
+        )}
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        <p className="text-xs max-w-[240px] whitespace-pre-line">{label}</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
 
 export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -206,8 +221,8 @@ export default function App() {
             />
             <ToolBtn
               icon="📋"
-              label="CSV Table Editor"
-              onClick={() => sendToHost({ type: 'SG_CSV_EDITOR' })}
+              label={'CSV table editor is temporarily unavailable.\nРедактор таблицы CSV временно недоступен.'}
+              disabled
             />
             <ToolBtn
               icon="🧹"

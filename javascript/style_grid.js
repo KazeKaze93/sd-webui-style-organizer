@@ -1253,6 +1253,10 @@
         nameInput.focus();
     }
 
+
+    /*
+CSV table editor — full implementation kept for restoration; currently inactive.
+
     var CSV_TABLE_FIELDS = ["name", "prompt", "negative_prompt", "description", "category"];
 
     function isAllSourcesSourceFilter(value, domLabelTrimmed) {
@@ -1714,6 +1718,12 @@
         });
         document.body.appendChild(overlay);
     }
+    */
+
+    function openCsvTableEditor(tabName) {
+        void tabName;
+    }
+
 
     function duplicateStyle(tabName, style, onDone) {
         const newName = style.name + "_copy";
@@ -2390,22 +2400,14 @@
         // Refresh
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "🔄", title: "Refresh styles", onClick: function () { refreshPanel(tabName); } }));
 
-        // Table editor (current source CSV)
-        var btnCsvTable = el("button", {
-            className: "sg-btn sg-btn-secondary",
+        // CSV table editor — disabled (implementation kept commented above openCsvTableEditor stub)
+        searchRow.appendChild(el("button", {
+            type: "button",
+            className: "sg-btn sg-btn-secondary sg-csv-editor-btn-disabled",
             textContent: "📋",
-            title: "Edit all styles in the selected CSV (table)",
-        });
-        var btn = btnCsvTable;
-        if (btn._sgCsvEditorBound) {
-            btn.removeEventListener("click", btn._sgCsvEditorBound);
-        }
-        btn._sgCsvEditorBound = function (e) {
-            e.stopPropagation();
-            openCsvTableEditor(tabName);
-        };
-        btn.addEventListener("click", btn._sgCsvEditorBound);
-        searchRow.appendChild(btnCsvTable);
+            title: "CSV table editor is temporarily unavailable — редактор таблицы CSV временно недоступен",
+            disabled: true,
+        }));
 
         // New style
         searchRow.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "➕", title: "Create new style", onClick: function () { openStyleEditor(tabName, null); } }));
@@ -3870,7 +3872,8 @@
         }
         const frame = document.createElement("iframe");
         frame.id = "sg-frame-" + tab;
-        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html";
+        // Query string busts stale index.html / iframe document cache after ui/dist updates (bump when shipping UI changes).
+        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html?sgui=3";
         var wrapper = document.createElement("div");
         wrapper.id = "sg-panel-wrapper-" + tab;
         wrapper.style.cssText = [
@@ -4117,20 +4120,30 @@
                         }
                     });
             }
+            /*
             if (msg.type === "SG_CSV_EDITOR") {
                 if (window._sgCsvEditorOpening) return;
                 window._sgCsvEditorOpening = true;
                 setTimeout(function () { window._sgCsvEditorOpening = false; }, 300);
                 var activeTab = (function() {
-                    // Forge/A1111: find which tab panel is currently visible
                     var tabs = ["txt2img", "img2img"];
                     for (var i = 0; i < tabs.length; i++) {
                         var wrapper = document.getElementById("style_grid_wrapper_" + tabs[i]);
                         if (wrapper && wrapper.offsetParent !== null) return tabs[i];
                     }
-                    return "txt2img"; // fallback
+                    return "txt2img";
                 })();
                 openCsvTableEditor(activeTab);
+            }
+            */
+            if (msg.type === "SG_CSV_EDITOR") {
+                if (frame.contentWindow) {
+                    frame.contentWindow.postMessage({
+                        type: "SG_TOAST",
+                        message: "CSV table editor is temporarily unavailable.",
+                        variant: "info"
+                    }, "*");
+                }
             }
             if (msg.type === "SG_CLEAR_ALL") {
                 clearAll(tab);

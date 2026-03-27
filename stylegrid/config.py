@@ -45,5 +45,15 @@ def get_all_styles_file_paths():
                 filepath = os.path.join(samples_dir, fname)
                 all_styles_file_paths.append(filepath)
 
-    all_styles_file_paths.extend(str(p.absolute()) for p in shared.prompt_styles.all_styles_files)
+    try:
+        shared_paths = [str(p.absolute()) for p in shared.prompt_styles.all_styles_files]
+        all_styles_file_paths.extend(shared_paths)
+    except Exception:
+        shared_paths = []
+    webui_root = os.getcwd()
+    for fname in sorted(os.listdir(webui_root)):
+        if fname.lower().endswith(".csv"):
+            fp = os.path.join(webui_root, fname)
+            if fp not in all_styles_file_paths:
+                all_styles_file_paths.append(fp)
     return all_styles_file_paths

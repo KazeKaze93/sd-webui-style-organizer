@@ -673,7 +673,7 @@
 .sg-editor-textarea:focus { border-color: var(--color-accent, #6366f1); }
 .sg-editor-btns { display: flex; gap: 8px; margin-top: 6px; }
 
-/* ---- CSV table editor (full-screen) ---- */
+/* ---- CSV table editor (full-screen) — used when implementation is re-enabled ---- */
 .sg-csv-editor-overlay {
     position: fixed;
     inset: 0;
@@ -848,6 +848,12 @@
 }
 .sg-csv-data-row.sg-csv-dirty {
     background: rgba(99, 102, 241, 0.08);
+}
+button.sg-csv-editor-btn-disabled,
+.sg-btn.sg-csv-editor-btn-disabled:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    filter: grayscale(0.35);
 }
 
 /* ---- Presets ---- */

@@ -127,6 +127,19 @@ class ThumbnailGenerationManager:
                 override_settings={"samples_filename_pattern": ""},
             )
 
+            # Empty ScriptRunner — thumbnail generation must not trigger
+            # extension scripts (Regional Prompter, ControlNet, etc.)
+            # We only need p.scripts to not be None so Reforge's
+            # process_images_inner can safely iterate alwayson_scripts.
+            try:
+                from modules.scripts import ScriptRunner
+                p.scripts = ScriptRunner()
+                p.scripts.scripts = []
+                p.scripts.alwayson_scripts = []
+                p.script_args = []
+            except Exception:
+                pass
+
             try:
                 processed = processing.process_images(p)
             finally:

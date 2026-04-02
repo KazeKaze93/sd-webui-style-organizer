@@ -22,7 +22,7 @@ export type FrameMessage =
   | { type: 'SG_GENERATE_PREVIEW'; styleId: string }
   | { type: 'SG_UPLOAD_PREVIEW';   styleId: string }
   | { type: 'SG_WILDCARD_CATEGORY'; category: string }
-  | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number }
+  | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
@@ -33,6 +33,7 @@ export type FrameMessage =
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }
   | { type: 'SG_CSV_EDITOR' }
   | { type: 'SG_CLEAR_ALL' }
+  | { type: 'SG_SOURCE_CHANGE'; source: string | null }
   | { type: 'SG_TOGGLE_SILENT'; tab: Tab; value: boolean }
 
 // ── Shared types ──────────────────────────────────────────────

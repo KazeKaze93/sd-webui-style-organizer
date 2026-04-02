@@ -226,6 +226,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       catStyles.forEach((style) => {
         sendToHost({ type: 'SG_UNAPPLY', styleId: style.name })
       })
+      get().detectConflicts()
       return
     }
 
@@ -288,7 +289,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     selectedStyles.forEach(s =>
       sendToHost({ type: 'SG_UNAPPLY', styleId: s.name })
     )
-    set({ selectedStyles: [] })
+    set({ selectedStyles: [], conflicts: [] })
   },
   showToast: (message, variant = 'info') => {
     const id = Date.now()

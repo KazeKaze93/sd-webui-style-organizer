@@ -174,6 +174,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       localStorage.removeItem('sg_v2_last_source')
     }
     set({ activeSource })
+    sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
   toggleSilent: () => {
     const newVal = !get().silentMode

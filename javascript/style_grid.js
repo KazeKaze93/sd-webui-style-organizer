@@ -3873,7 +3873,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         const frame = document.createElement("iframe");
         frame.id = "sg-frame-" + tab;
         // Query string busts stale index.html / iframe document cache after ui/dist updates (bump when shipping UI changes).
-        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html?sgui=3";
+        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html?v=" + Date.now();
         var wrapper = document.createElement("div");
         wrapper.id = "sg-panel-wrapper-" + tab;
         wrapper.style.cssText = [
@@ -3948,6 +3948,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (!e.data || !e.data.type) return;
             if (!e.data.type.startsWith("SG_")) return;
             const msg = e.data;
+
             function refreshAndNotifyFrame() {
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
@@ -4184,6 +4185,16 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         var sep = promptEl.value.trim() ? ", " : "";
                         setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
                     }
+                }
+            }
+            if (msg.type === "SG_SOURCE_CHANGE") {
+                var src = msg.source;
+                if (src) {
+                    // Normalize source_file path to basename to match s.source format
+                    var normalized = src.replace(/\\/g, "/");
+                    state[tab].selectedSource = normalized.split("/").pop() || src;
+                } else {
+                    state[tab].selectedSource = "All";
                 }
             }
             if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {

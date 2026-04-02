@@ -223,7 +223,7 @@ export default function App() {
             />
             <ToolBtn
               icon="📋"
-              label={'CSV table editor is temporarily unavailable.\nРедактор таблицы CSV временно недоступен.'}
+              label={'CSV table editor is temporarily unavailable.'}
               disabled
             />
             <ToolBtn

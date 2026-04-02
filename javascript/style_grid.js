@@ -2405,7 +2405,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             type: "button",
             className: "sg-btn sg-btn-secondary sg-csv-editor-btn-disabled",
             textContent: "📋",
-            title: "CSV table editor is temporarily unavailable — редактор таблицы CSV временно недоступен",
+            title: "CSV table editor is temporarily unavailable",
             disabled: true,
         }));
 

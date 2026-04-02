@@ -26,6 +26,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **V2 host → iframe:** periodic refresh sends the full merged style list to the frame (no host-side name filter); `postSGInitToFrame` builds the initial list from API `categories` like other init paths (`3488b64`).
 - V2 grid and search items use stable React keys from `source_file` + `name` so duplicate names within one CSV do not clash (`3488b64`).
 - Production build artifacts under `ui/dist/` updated in-repo for the current V2 bundle (`8a38e31`).
+- **V2 bundle:** `ui/dist/` rebuilt for conflict popover and conflict-list store fixes (PR #53, `51e19b8`).
 - Style Grid host ↔ frame messaging flow refactored to SG_* postMessage contract and on-demand re-init/update pushes (`589ca79`, `e6276da`).
 - Sidebar/category behavior refined for per-source ordering logic and All Sources fallback handling (`6c2e8e4`, `af23d07`).
 - `docs/API.md` backend route definitions now originate from modular backend route registration (`scripts/stylegrid/routes.py`) instead of monolithic script split assumptions.
@@ -42,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Improved iframe close/escape behavior and minimized accidental host/page interaction conflicts while V2 panel is open (`930f6b6`, `72c77f2`).
 - Fixed several V2 synchronization issues after backend refresh/update flows (`e6276da`, `589ca79`).
 - **Search autocomplete:** suggestions respect the active source filter (matches only the selected CSV when one is chosen). With **All Sources**, the list spans loaded styles and **dedupes by style name** like the grid (`b93de7a`, `3488b64`).
+- **V2 style conflicts (PR #53, `51e19b8`):** clearing **all** selections or **deselecting an entire category** now resets or recomputes conflicts — `clearAll` also clears `conflicts`, and the bulk-unapply branch in `selectAllInCategory` calls `detectConflicts()` after `SG_UNAPPLY`.
+- **V2 conflict popover (PR #53, `51e19b8`):** each row shows a **✕** control to remove the conflicting style (`styleB`) via `toggleStyle`, resolving the `Style` from `selectedStyles` first then the full `styles` list; the panel uses `max-w-[min(20rem,calc(100vw-2.5rem))]`, wrapped text (`min-w-0`, `break-words`), and `pt-1` instead of `mt-1` so the action stays visible and easier to reach under hover.
 
 ### Security
 - None.

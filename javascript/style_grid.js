@@ -22,6 +22,8 @@
             categories: {},
             panel: null,
             selectedSource: "All",
+            /** Normalized path (forward slashes) when known — matches V2 `source_file`; same basename can exist in multiple dirs */
+            selectedSourceFile: null,
             usage: {},
             presets: {},
             silentMode: false,
@@ -2201,6 +2203,18 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             item.addEventListener("click", function (e) {
                 e.stopPropagation();
                 state[tabName].selectedSource = opt.value;
+                if (opt.value === "All") {
+                    state[tabName].selectedSourceFile = null;
+                } else {
+                    var _pickedFile = null;
+                    Object.values(state[tabName].categories || {}).forEach(function (arr) {
+                        arr.forEach(function (st) {
+                            if (_pickedFile) return;
+                            if (st.source === opt.value) _pickedFile = st.source_file;
+                        });
+                    });
+                    state[tabName].selectedSourceFile = _pickedFile ? String(_pickedFile).replace(/\\/g, "/") : null;
+                }
                 setStoredSource(tabName, opt.value);
                 srcBtn.textContent = opt.label;
                 srcList.classList.remove("sg-open");
@@ -2691,7 +2705,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
            var stylesInCat = styles || [];
            var activeSource = state[tabName].selectedSource || "All";
            if (activeSource !== "All") {
-               stylesInCat = stylesInCat.filter(function (s) { return s.source === activeSource; });
+               var batchKey = function (str) {
+                   if (!str) return "";
+                   var base = String(str).replace(/\\/g, "/").split("/").pop() || "";
+                   return base.replace(/\.csv$/i, "").toLowerCase();
+               };
+               var ak = batchKey(activeSource);
+               stylesInCat = stylesInCat.filter(function (s) { return batchKey(s.source || s.source_file) === ak; });
            }
            var missingCount = 0;
            stylesInCat.forEach(function (s) {
@@ -3947,6 +3967,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         window.addEventListener("message", function (e) {
             if (!e.data || !e.data.type) return;
             if (!e.data.type.startsWith("SG_")) return;
+            // Two iframes (txt2img / img2img) each register this listener; only handle messages from THIS frame.
+            // Otherwise the other tab's handler runs with wrong tab closure → e.g. batch uses All while iframe shows a chosen source.
+            if (e.source !== frame.contentWindow) return;
             const msg = e.data;
 
             function refreshAndNotifyFrame() {
@@ -3960,9 +3983,8 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
                             state[tab].categories[cat].push(s);
                         });
-                        var v2frame = document.getElementById("sg-frame-txt2img");
-                        if (v2frame && v2frame.contentWindow) {
-                            v2frame.contentWindow.postMessage({
+                        if (frame && frame.contentWindow) {
+                            frame.contentWindow.postMessage({
                                 type: "SG_STYLES_UPDATE",
                                 styles: allStyles
                             }, "*");
@@ -4188,24 +4210,88 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 }
             }
             if (msg.type === "SG_SOURCE_CHANGE") {
+                if (!state[tab]) return;
+                if (msg.source === state[tab].selectedSourceFile) return;
                 var src = msg.source;
                 if (src) {
-                    // Normalize source_file path to basename to match s.source format
                     var normalized = src.replace(/\\/g, "/");
                     state[tab].selectedSource = normalized.split("/").pop() || src;
+                    // Full path for batch/API — same filter as V2 (`source_file`), not basename-only
+                    state[tab].selectedSourceFile = (normalized.indexOf("/") !== -1 || src.indexOf("\\") !== -1)
+                        ? normalized
+                        : null;
                 } else {
                     state[tab].selectedSource = "All";
+                    state[tab].selectedSourceFile = null;
+                }
+                var syncBtn = document.getElementById("sg_source_" + tab);
+                if (syncBtn) {
+                    syncBtn.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
                 }
             }
             if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {
                 var catName = msg.category || "";
                 if (catName) {
-                    var stylesInCat = ((state[tab] && state[tab].categories && state[tab].categories[catName]) || []).slice();
-                    var activeSource = (state[tab] && state[tab].selectedSource) || "All";
-                    if (activeSource !== "All") {
-                        stylesInCat = stylesInCat.filter(function (s) { return s.source === activeSource; });
+                    if (msg.source !== undefined) {
+                        state[tab].selectedSourceFile = msg.source;
                     }
-                    startBatchThumbnails(tab, catName, stylesInCat);
+                    var batchSource = msg.source || state[tab].selectedSourceFile || "";
+                    var sourceMatchKey = function (str) {
+                        if (!str) return "";
+                        var base = String(str).replace(/\\/g, "/").split("/").pop() || "";
+                        return base.replace(/\.csv$/i, "").toLowerCase();
+                    };
+                    var rawState = (state[tab] && state[tab].selectedSource) || "All";
+                    var srcBtn = document.getElementById("sg_source_" + tab);
+                    var btnText = srcBtn ? srcBtn.textContent.trim() : "";
+                    var fromBtn = (btnText && btnText !== "All Sources") ? btnText : "All";
+                    var activeSource = (rawState && rawState !== "All") ? rawState : fromBtn;
+                    var activeKey = null;
+                    var exactPath = null;
+                    if (batchSource) {
+                        var ns = String(batchSource).replace(/\\/g, "/");
+                        activeSource = ns.split("/").pop() || String(batchSource);
+                        if (ns.indexOf("/") !== -1 || String(batchSource).indexOf("\\") !== -1) {
+                            exactPath = ns;
+                            activeKey = null;
+                        } else {
+                            exactPath = null;
+                            activeKey = sourceMatchKey(String(batchSource));
+                        }
+                        state[tab].selectedSource = activeSource;
+                        state[tab].selectedSourceFile = exactPath;
+                        var syncBtnBatch = document.getElementById("sg_source_" + tab);
+                        if (syncBtnBatch) {
+                            syncBtnBatch.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
+                        }
+                    } else {
+                        activeKey = activeSource !== "All" ? sourceMatchKey(activeSource) : null;
+                        exactPath = null;
+                    }
+                    // state[tab].categories dedupes by name only on first load — use API list; filter like V2 (source_file), not basename-only
+                    fetch("/style_grid/styles")
+                        .then(function (r) { return r.json(); })
+                        .then(function (data) {
+                            var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
+                            var inCat = allStyles.filter(function (s) {
+                                return (s.category || "OTHER") === catName;
+                            });
+                            var stylesInCat = inCat;
+                            if (exactPath) {
+                                stylesInCat = inCat.filter(function (s) {
+                                    var sf = String(s.source_file || "").replace(/\\/g, "/");
+                                    return sf === exactPath || sf.toLowerCase() === exactPath.toLowerCase();
+                                });
+                            } else if (activeKey) {
+                                stylesInCat = inCat.filter(function (s) {
+                                    return sourceMatchKey(s.source || s.source_file) === activeKey;
+                                });
+                            }
+                            startBatchThumbnails(tab, catName, stylesInCat);
+                        })
+                        .catch(function () {
+                            showStatusMessage(tab, "Could not load styles for batch generation", true);
+                        });
                 }
             }
             if (msg.type === "SG_GENERATE_PREVIEW") {

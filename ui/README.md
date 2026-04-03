@@ -27,5 +27,5 @@ npm run build
 ```mermaid
 flowchart LR
   H[javascript/style_grid.js] <-->|SG_* postMessage| UI[src/App.tsx]
-  H -->|fetch /style_grid/*| API[scripts/stylegrid/routes.py]
+  H -->|fetch /style_grid/*| API[stylegrid/routes.py]
 ```

@@ -2896,8 +2896,16 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             return;
         }
 
+        var srcFile = "";
+        if (card._styleRef && card._styleRef.source_file) {
+            srcFile = card._styleRef.source_file;
+        } else if (state[tabName] && state[tabName].selectedSourceFile) {
+            srcFile = state[tabName].selectedSourceFile;
+        }
         var url = "/style_grid/thumbnail?name=" +
-            encodeURIComponent(styleName) + "&t=" +
+            encodeURIComponent(styleName) +
+            (srcFile ? "&source=" + encodeURIComponent(srcFile) : "") +
+            "&t=" +
             (_thumbVersions[styleName] || Date.now());
         img.onload = function () {
             svg.style.display = "none";

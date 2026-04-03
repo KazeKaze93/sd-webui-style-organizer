@@ -149,7 +149,7 @@ export function Sidebar() {
                   category: catMenu.cat,
                   missingCount: 0,
                   ...(rawSrc ? { source: rawSrc } : {}),
-                } as any)
+                })
                 setCatMenu(null)
               }}
             >

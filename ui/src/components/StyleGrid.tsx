@@ -177,7 +177,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
                     category: catMenu.cat,
                     missingCount: catMenu.missingCount,
                     ...(rawSrc ? { source: rawSrc } : {}),
-                  } as any)
+                  })
                   setCatMenu(null)
                 }}
               >

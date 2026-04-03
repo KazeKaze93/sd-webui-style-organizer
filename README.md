@@ -114,7 +114,7 @@ The small tab badge in the panel header shows the active host context.
 
 **How `{sg:…}` wildcards work**
 
-- **Syntax:** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `scripts/stylegrid/wildcards.py`).
+- **Syntax:** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `stylegrid/wildcards.py`).
 - **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal Forge prompt.
 - **What gets inserted:** one **random** style from that category; the replacement text is that style’s **`prompt`** field from CSV (not `negative_prompt`). Category matching is **case-insensitive**.
 - **Where you can put it:** positive or negative prompt box — **both strings are scanned**. If the category is unknown or empty, the `{sg:…}` text is **left as-is** (no error).
@@ -167,6 +167,8 @@ Click **outside** the menu, or move the pointer **off** the menu panel, to close
 - **Per category:** use the **category** context menu → **Generate previews…** (see §5).
 
 After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.
+
+Thumbnail image URLs include the style’s **source file** when needed so the server resolves the same cached file as generation (important when the same style name exists in more than one CSV).
 
 **What the card shows**
 
@@ -261,7 +263,7 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | Styles missing | CSV location/encoding/header correctness. |
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
-| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. |
+| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. If previews exist on disk but the hover image still fails, ensure you are on a build where thumbnail URLs pass the active CSV (`source`) for duplicate names across files. |
 | CSV table editor grayed out / toast “temporarily unavailable” | Expected: the feature is **disabled** by design. Edit styles per row via the **style editor** or CSV on disk; see `docs/DEVELOPMENT.md` to restore the table editor from the commented source. |
 
 ---

@@ -70,6 +70,19 @@ export function dedupeStylesByNameForAllSources(styles: Style[]): Style[] {
   })
 }
 
+/** Map persisted or UI source string to an entry in `sources` (exact match, else basename). */
+function resolveSourceInList(sources: string[], preferred: string | null): string | null {
+  if (!preferred || sources.length === 0) return null
+  if (sources.includes(preferred)) return preferred
+  const key = (s: string) => {
+    const base = s.replace(/\\/g, '/').split('/').pop() ?? s
+    return base.replace(/\.csv$/i, '').toLowerCase()
+  }
+  const k = key(preferred)
+  const found = sources.find((s) => key(s) === k)
+  return found ?? null
+}
+
 /** Central UI state for style filtering, selection, and host-side actions. */
 interface StylesStore {
   toasts: { id: number; message: string; variant: 'success' | 'error' | 'info' }[]
@@ -156,14 +169,19 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const sources = [...new Set(
       styles.map(s => s.source_file).filter(Boolean)
     )].sort()
-    
-    // Restore last selected source if it still exists
+
+    // Restore selection: exact match can fail when host path strings differ from LS (basename must match)
     const lastSource = localStorage.getItem('sg_v2_last_source')
-    const activeSource = lastSource && sources.includes(lastSource)
-      ? lastSource
-      : null
-    
+    const prevActive = get().activeSource
+    const activeSource =
+      resolveSourceInList(sources, prevActive) ??
+      resolveSourceInList(sources, lastSource)
+
     set({ styles, tab, sources, activeSource })
+    if (activeSource) {
+      localStorage.setItem('sg_v2_last_source', activeSource)
+      sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
+    }
   },
   setSearch: (search) => set({ search }),
   setCategory: (activeCategory) => set({ activeCategory }),

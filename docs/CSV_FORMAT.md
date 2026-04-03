@@ -74,6 +74,10 @@ Category wildcard insertion and resolution:
 
 Note: `{CATEGORY_NAME}` (without `sg:`) is not handled by this resolver.
 
+## Thumbnail cache vs. `source_file`
+
+Preview images are stored under `data/thumbnails/` with filenames derived from the style **`name`** and the CSV **`source_file`** (see `stylegrid/thumbnails.py`). The HTTP endpoint `GET /style_grid/thumbnail` accepts an optional **`source`** query parameter so clients load the file that matches generation/upload for that row. If the same `name` appears in more than one CSV, omitting `source` can resolve the wrong file or 404 when only a source-aware hash exists on disk — see `docs/API.md`.
+
 ### Compatibility with other wildcard extensions
 
 - Extensions such as **stable-diffusion-webui-wildcards** or **Dynamic Prompts** usually recognize **`__name__`** (or other grammar), not `{sg:…}`.
@@ -114,6 +118,7 @@ Painterly-Soft,"painterly strokes, soft brushwork","","Painterly look. Combos: F
 | Mistake | What actually happens in current code |
 |---|---|
 | Duplicate names in same source CSV | Load dedup key is `(source, name)`, so first occurrence is kept. Save update also rewrites first matching row and stops (first match wins). |
+| Same `name` in **different** CSV files | Both rows can load; thumbnails and UI use `source_file` to tell them apart. Image URLs must include `source` when requesting `/style_grid/thumbnail` (see **Thumbnail cache** above). |
 | Spaces in category names | Not rejected. Category strings are used as-is; only DOM IDs replace spaces with `_`. |
 | Weights above `2.0` in prompts | No numeric validation exists in CSV parser/saver; values pass through unchanged. |
 | Missing third column delimiter for `negative_prompt` | If a row has fewer than 3 columns, `negative_prompt` becomes empty string; parser does not raise an error for this case. |

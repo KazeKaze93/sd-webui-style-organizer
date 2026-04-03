@@ -6,7 +6,9 @@ Gradio/FastAPI. All endpoints return HTTP 200 even on errors unless otherwise no
 
 ## V2 Integration Notes
 
-Style Grid V2 UI (React iframe) communicates with the host script first, then the host calls these API routes.
+Style Grid V2 UI (React iframe) communicates with the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`), then the host calls these API routes. The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
+
+Thumbnail **image** requests from the UI include query parameter `source` when the style row has `source_file`, so `GET /style_grid/thumbnail` resolves the same hashed filename as `stylegrid.thumbnails.get_thumbnail_path(name, source_file)` used when saving generated or uploaded previews.
 
 ```mermaid
 flowchart LR
@@ -15,11 +17,11 @@ flowchart LR
   API --> DATA[(CSV + data files)]
 ```
 
-The API contract in this document reflects `scripts/stylegrid/routes.py`.
+The API contract in this document reflects `stylegrid/routes.py` (registered from `scripts/style_grid.py`).
 
 ## Generation-time: `{sg:…}` wildcards
 
-This is **not** an HTTP API. During each generation, `scripts/style_grid.py` runs `resolve_sg_wildcards` from `scripts/stylegrid/wildcards.py` over the positive and negative prompt strings.
+This is **not** an HTTP API. During each generation, `scripts/style_grid.py` runs `resolve_sg_wildcards` from `stylegrid/wildcards.py` over the positive and negative prompt strings.
 
 | Topic | Behavior |
 |---|---|
@@ -324,15 +326,17 @@ Success:
 ## GET /thumbnail
 
 **Method:** GET  
-**Description:** Returns a single thumbnail image by style name.
+**Description:** Returns a single cached thumbnail image. On-disk filenames are derived from an MD5 of `style_name` and, when present, the style’s CSV path (see `stylegrid/thumbnails.py` — `source_file` participates in the hash). Callers that know which CSV row they mean should pass **`source`** so the correct file is returned when the same `name` exists in more than one file.
 
 **Parameters:**
 
 
-| name   | in    | required | type   | description                                |
-| ------ | ----- | -------- | ------ | ------------------------------------------ |
-| `name` | query | No       | string | Style name used to resolve thumbnail path. |
+| name     | in    | required | type   | description |
+| -------- | ----- | -------- | ------ | ----------- |
+| `name`   | query | Yes      | string | Style name (same as in `/styles`). |
+| `source` | query | No       | string | Source CSV path string (`source_file` from `/styles`), as used by `get_thumbnail_path(name, source)`. When set, the handler uses that path only (no name-only fallback). |
 
+When **`source` is omitted**, the server first tries the legacy name-only hash (`get_thumbnail_path(name)`). If that file does not exist, it scans cached styles for the first row with matching `name` and retries with that row’s `source_file` so older clients still resolve thumbnails that were stored with a source-aware hash.
 
 **Response:**
 
@@ -637,7 +641,7 @@ Success:
 ## DELETE /thumbnail
 
 **Method:** DELETE  
-**Description:** Deletes a single thumbnail by style name.
+**Description:** Deletes a single thumbnail using the **name-only** hash (`get_thumbnail_path(name)`). It does **not** accept `source`; if multiple CSVs share a name with different cached files, prefer deleting via host/UI flows that target the correct file, or remove the file under `data/thumbnails/` by hash.
 
 **Parameters:**
 

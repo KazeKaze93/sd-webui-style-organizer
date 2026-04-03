@@ -234,11 +234,15 @@ def _register_thumbnail_routes(app):
         return {"has_thumbnail": list(list_thumbnails())}
 
     @app.get("/style_grid/thumbnail")
-    async def api_get_thumbnail(name: str = ""):
-        path = get_thumbnail_path(name)
-        exists = os.path.isfile(path)
+    async def api_get_thumbnail(name: str = "", source: str = ""):
+        if source:
+            path = get_thumbnail_path(name, source)
+            exists = os.path.isfile(path)
+        else:
+            path = get_thumbnail_path(name)
+            exists = os.path.isfile(path)
 
-        if not exists:
+        if not exists and not source:
             # Generation hashes include source_file when available; resolve the same way.
             style = next((s for s in get_cached_styles() if s.get("name") == name), None)
             if style:

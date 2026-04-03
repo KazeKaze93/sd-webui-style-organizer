@@ -141,10 +141,14 @@ export function Sidebar() {
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
               onClick={() => {
+                const rawSrc =
+                  useStylesStore.getState().activeSource ??
+                  (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
                 sendToHost({
                   type: 'SG_GENERATE_CATEGORY_PREVIEWS',
                   category: catMenu.cat,
-                  missingCount: 0
+                  missingCount: 0,
+                  ...(rawSrc ? { source: rawSrc } : {}),
                 })
                 setCatMenu(null)
               }}

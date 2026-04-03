@@ -1,6 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { onHostMessage, type Style } from '../bridge'
+import { useStylesStore } from '../store/stylesStore'
 
 interface Props {
   style: Style
@@ -22,9 +23,10 @@ export function ThumbnailPreview({ style, children }: Props) {
   const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-
-  const thumbUrl = `/style_grid/thumbnail?name=${
-    encodeURIComponent(style.name)
+  const activeSource = useStylesStore((s) => s.activeSource)
+  const sourceForThumb = style.source_file || activeSource || ''
+  const thumbUrl = `/style_grid/thumbnail?name=${encodeURIComponent(style.name)}${
+    sourceForThumb ? `&source=${encodeURIComponent(sourceForThumb)}` : ''
   }&v=${localVersion}`
 
   const handleEnter = () => {

@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `GET /style_grid/thumbnail` accepts an optional `source` query parameter (CSV path string) so the server looks up the cached file with the same `(name, source_file)` key as thumbnail generation.
 - CSV parse/load: optional `_source` field (basename, aligned with `source`) and tests for loading the same filename from different scan directories (`3488b64`).
 - React iframe frontend (V2) integrated into Forge panel lifecycle (`dc5f544`, `589ca79`).
 - Shadcn-based UI composition and component library (`ui/src/components/ui/*`) with typed frame bridge (`ui/src/bridge.ts`) (`dc5f544`, `e841334`).
@@ -31,7 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Sidebar/category behavior refined for per-source ordering logic and All Sources fallback handling (`6c2e8e4`, `af23d07`).
 - `docs/API.md` backend route definitions now originate from modular backend route registration (`scripts/stylegrid/routes.py`) instead of monolithic script split assumptions.
 - **Documentation:** README expanded (workflows, wildcards, search, fullscreen, img2img, testing; Quick Start / top-bar table / troubleshooting include the **disabled** CSV table editor); `docs/DEVELOPMENT.md` documents maintainer re-enable steps, `SG_CSV_EDITOR` toast behavior, and related host/React/CSS layout; `docs/screenshots/README.md` explains screenshot maintenance; PNG assets under `docs/screenshots/` refreshed for the current UI.
+- **Documentation (paths + API):** References to backend modules now use the `stylegrid/` package layout (`stylegrid/routes.py`, `stylegrid/wildcards.py`). `docs/API.md` documents optional `source` on `GET /style_grid/thumbnail`, iframe routing notes, and limitations of `DELETE /style_grid/thumbnail`; `docs/DEVELOPMENT.md` covers `SG_SOURCE_CHANGE` / `SG_GENERATE_CATEGORY_PREVIEWS` and thumbnail query params; `docs/CSV_FORMAT.md` adds thumbnail vs `source_file`; root `README.md` and `ui/README.md` wildcards/API paths aligned.
 - **Repo hygiene:** `.gitignore` extended for Python virtualenvs, caches, and coverage output (`2a9d7b8`).
+- **V2 store:** restoring `activeSource` from persistence matches stored values against loaded sources via basename-aware `resolveSourceInList`; `setStyles` sends `SG_SOURCE_CHANGE` to the host only when a non-empty source is active.
 
 ### Removed
 - **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.
@@ -45,6 +48,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Search autocomplete:** suggestions respect the active source filter (matches only the selected CSV when one is chosen). With **All Sources**, the list spans loaded styles and **dedupes by style name** like the grid (`b93de7a`, `3488b64`).
 - **V2 style conflicts (PR #53, `51e19b8`):** clearing **all** selections or **deselecting an entire category** now resets or recomputes conflicts — `clearAll` also clears `conflicts`, and the bulk-unapply branch in `selectAllInCategory` calls `detectConflicts()` after `SG_UNAPPLY`.
 - **V2 conflict popover (PR #53, `51e19b8`):** each row shows a **✕** control to remove the conflicting style (`styleB`) via `toggleStyle`, resolving the `Style` from `selectedStyles` first then the full `styles` list; the panel uses `max-w-[min(20rem,calc(100vw-2.5rem))]`, wrapped text (`min-w-0`, `break-words`), and `pt-1` instead of `mt-1` so the action stays visible and easier to reach under hover.
+- **Thumbnails:** hover and inline preview requests append `source` when the style has `source_file` (host `style_grid.js` popup, React `ThumbnailPreview`), so the correct file is loaded when names overlap across CSVs or when the on-disk hash is keyed by source path.
+- **V2 ↔ host (source + batch previews):** category batch thumbnail jobs use the iframe-posted `source` and a fresh `/style_grid/styles` list filtered by category and source; `window` `message` handlers for txt2img/img2img only handle events from their own iframe (`e.source === frame.contentWindow`); redundant `SG_SOURCE_CHANGE` updates with the same path are skipped after the tab state exists.
 
 ### Security
 - None.

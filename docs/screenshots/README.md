@@ -15,7 +15,7 @@ Images in this folder are referenced from the root **`README.md`**. After UI cha
 | 5 | `recent-styles.png` | **Recent** in the sidebar. |
 | 6 | `img2img-support.png` | Style Grid open on **img2img** tab (if layout differs from txt2img). |
 | 7 | `search-autocomplete.png` | Search with autocomplete dropdown open. |
-| 8 | `thumbnail-hover-preview.png` | Hover popup with thumb + prompt snippet (thumbnail URL must match `source_file` when names repeat across CSVs). |
+| 8 | `thumbnail-hover-preview.png` | Hover popup with thumb + prompt snippet (duplicate names across CSVs rely on server thumbnail resolution + optional `source` on generate). |
 | 9 | `fullscreen-mode.png` | Fullscreen toggle result — edge‑to‑edge panel. |
 
 **Usually still valid** (no stars on tiles): `style-card-context-menu.png`, `category-context-wildcard-previews*.png`, `top-bar-icons.png` — re-shoot only if those UIs change.

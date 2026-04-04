@@ -168,7 +168,7 @@ Click **outside** the menu, or move the pointer **off** the menu panel, to close
 
 After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.
 
-Thumbnail image URLs include the style’s **source file** when needed so the server resolves the same cached file as generation (important when the same style name exists in more than one CSV).
+Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…` (the server picks the on-disk file from the legacy hash or from cached rows with that name). Preview URLs may still include `source` / version for browser cache. When **generating** a preview for a specific CSV row, the host sends the active source in **`POST /style_grid/thumbnail/generate`** so the correct row is used if names overlap.
 
 **What the card shows**
 
@@ -263,7 +263,7 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | Styles missing | CSV location/encoding/header correctness. |
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
-| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. If previews exist on disk but the hover image still fails, ensure you are on a build where thumbnail URLs pass the active CSV (`source`) for duplicate names across files. |
+| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. If a name exists in several CSVs, generation must target the intended row (body `source` on `POST /style_grid/thumbnail/generate`); `GET /style_grid/thumbnail` resolves from the cached style list when the legacy file is missing. |
 | CSV table editor grayed out / toast “temporarily unavailable” | Expected: the feature is **disabled** by design. Edit styles per row via the **style editor** or CSV on disk; see `docs/DEVELOPMENT.md` to restore the table editor from the commented source. |
 
 ---

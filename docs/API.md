@@ -8,7 +8,7 @@ Gradio/FastAPI. All endpoints return HTTP 200 even on errors unless otherwise no
 
 Style Grid V2 UI (React iframe) communicates with the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`), then the host calls these API routes. The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
 
-Thumbnail **image** requests from the UI include query parameter `source` when the style row has `source_file`, so `GET /style_grid/thumbnail` resolves the same hashed filename as `stylegrid.thumbnails.get_thumbnail_path(name, source_file)` used when saving generated or uploaded previews.
+Thumbnail **image** requests use `GET /style_grid/thumbnail?name=…`. The server resolves the file on disk without using query `source`: it tries the legacy name-only hash first, then source-aware paths derived from cached styles (see **GET /thumbnail**). The React/host UI may still append `source` and `v` for cache behavior; they are not used for routing. **Generation** disambiguation uses `source` in **`POST /style_grid/thumbnail/generate`** (JSON body), not the GET query string.
 
 ```mermaid
 flowchart LR
@@ -326,17 +326,22 @@ Success:
 ## GET /thumbnail
 
 **Method:** GET  
-**Description:** Returns a single cached thumbnail image. On-disk filenames are derived from an MD5 of `style_name` and, when present, the style’s CSV path (see `stylegrid/thumbnails.py` — `source_file` participates in the hash). Callers that know which CSV row they mean should pass **`source`** so the correct file is returned when the same `name` exists in more than one file.
+**Description:** Returns a single cached thumbnail image. On-disk filenames are derived from an MD5 of `style_name` and, when present, the style’s CSV path (see `stylegrid/thumbnails.py` — `source_file` participates in the hash).
+
+**Resolution (server):**
+
+1. If `get_thumbnail_path(name)` exists on disk, that file is returned (legacy name-only hash).
+2. Otherwise, the handler collects all rows in `get_cached_styles()` with `name` equal to the query `name`, iterates them in **reverse** order (last cached occurrence first), and for each row builds `get_thumbnail_path(name, source_file)`; duplicate paths are skipped. The **first** path that exists on disk is returned.
+
+This matches how thumbnails are stored after generation or upload when a source-aware hash is used. Clients may add extra query parameters (for example `source` or `v`); the handler **only** uses `name` for lookup.
 
 **Parameters:**
 
 
-| name     | in    | required | type   | description |
-| -------- | ----- | -------- | ------ | ----------- |
-| `name`   | query | Yes      | string | Style name (same as in `/styles`). |
-| `source` | query | No       | string | Source CSV path string (`source_file` from `/styles`), as used by `get_thumbnail_path(name, source)`. When set, the handler uses that path only (no name-only fallback). |
-
-When **`source` is omitted**, the server first tries the legacy name-only hash (`get_thumbnail_path(name)`). If that file does not exist, it scans cached styles for the first row with matching `name` and retries with that row’s `source_file` so older clients still resolve thumbnails that were stored with a source-aware hash.
+| name   | in    | required | type   | description |
+| ------ | ----- | -------- | ------ | ----------- |
+| `name` | query | Yes      | string | Style name (same as in `/styles`). |
+| (other) | query | No       | string | Ignored for file resolution (e.g. cache-busting `v`, legacy `source`). |
 
 **Response:**
 
@@ -421,9 +426,10 @@ Success:
 **Parameters:**
 
 
-| name   | in   | required | type   | description                           |
-| ------ | ---- | -------- | ------ | ------------------------------------- |
-| `name` | body | Yes      | string | Style name to generate thumbnail for. |
+| name     | in   | required | type   | description |
+| -------- | ---- | -------- | ------ | ----------- |
+| `name`   | body | Yes      | string | Style name to generate thumbnail for. |
+| `source` | body | No       | string | When set and not `All`, selects the cached style row whose `name` matches and whose `source` or `source_file` equals this string (disambiguates duplicate names across CSVs). If omitted or unmatched, the first row by the usual name map is used. |
 
 
 **Response:**

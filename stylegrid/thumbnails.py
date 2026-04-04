@@ -1,14 +1,11 @@
 """Thumbnail file paths, listing, and background SD preview generation."""
 
 import hashlib
-import logging
 import os
 import threading
 
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import THUMBNAILS_DIR, get_styles_dirs
-
-logger = logging.getLogger(__name__)
 
 
 def _thumbnail_hash_input(style_name, csv_path=""):
@@ -75,16 +72,28 @@ class ThumbnailGenerationManager:
             self._gen_status[style_name] = {"status": "running"}
             return True
 
-    def spawn_generate(self, style_name):
+    def spawn_generate(self, style_name, source_hint=None):
         """Start background thumbnail generation thread for a style already marked running."""
-        t = threading.Thread(target=self._run_generation, args=(style_name,), daemon=True)
+        t = threading.Thread(
+            target=self._run_generation, args=(style_name, source_hint), daemon=True
+        )
         t.start()
 
-    def _run_generation(self, style_name):
+    def _run_generation(self, style_name, source_hint=None):
         thumb_csv_path = ""
         try:
-            style_map = {s["name"]: s for s in get_cached_styles()}
-            style = style_map.get(style_name)
+            all_cached = get_cached_styles()
+            style = None
+            if source_hint and source_hint != "All":
+                for s in all_cached:
+                    if s.get("name") == style_name and source_hint in (
+                        s.get("source") or "", s.get("source_file") or ""
+                    ):
+                        style = s
+                        break
+            if style is None:
+                style_map = {s["name"]: s for s in all_cached}
+                style = style_map.get(style_name)
             if not style:
                 with self._gen_lock:
                     self._gen_status[style_name] = {
@@ -157,7 +166,6 @@ class ThumbnailGenerationManager:
                 self._gen_status[style_name] = {"status": "done"}
 
         except Exception as e:
-            logger.exception("[Style Grid] Thumbnail generation FAILED: %s", e)
             try:
                 tmp_path = get_thumbnail_path(style_name, thumb_csv_path) + ".tmp"
                 if os.path.isfile(tmp_path):

@@ -29,3 +29,5 @@ flowchart LR
   H[javascript/style_grid.js] <-->|SG_* postMessage| UI[src/App.tsx]
   H -->|fetch /style_grid/*| API[stylegrid/routes.py]
 ```
+
+Thumbnail **images** use `GET /style_grid/thumbnail?name=…` (server resolves paths from the cached style list; see `docs/API.md`). **SD preview generation** from the host uses `POST /style_grid/thumbnail/generate` with optional JSON `source` when a specific CSV row must be targeted.

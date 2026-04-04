@@ -76,7 +76,7 @@ Note: `{CATEGORY_NAME}` (without `sg:`) is not handled by this resolver.
 
 ## Thumbnail cache vs. `source_file`
 
-Preview images are stored under `data/thumbnails/` with filenames derived from the style **`name`** and the CSV **`source_file`** (see `stylegrid/thumbnails.py`). The HTTP endpoint `GET /style_grid/thumbnail` accepts an optional **`source`** query parameter so clients load the file that matches generation/upload for that row. If the same `name` appears in more than one CSV, omitting `source` can resolve the wrong file or 404 when only a source-aware hash exists on disk — see `docs/API.md`.
+Preview images are stored under `data/thumbnails/` with filenames derived from the style **`name`** and the CSV **`source_file`** (see `stylegrid/thumbnails.py`). `GET /style_grid/thumbnail` serves the legacy name-only file when it exists; otherwise it searches cached rows with that `name` and tries source-aware paths in reverse cache order (see `docs/API.md`). To **generate** a preview for a specific row when names overlap, `POST /style_grid/thumbnail/generate` accepts optional **`source`** in the JSON body matching that row’s `source` / `source_file`.
 
 ### Compatibility with other wildcard extensions
 
@@ -118,7 +118,7 @@ Painterly-Soft,"painterly strokes, soft brushwork","","Painterly look. Combos: F
 | Mistake | What actually happens in current code |
 |---|---|
 | Duplicate names in same source CSV | Load dedup key is `(source, name)`, so first occurrence is kept. Save update also rewrites first matching row and stops (first match wins). |
-| Same `name` in **different** CSV files | Both rows can load; thumbnails and UI use `source_file` to tell them apart. Image URLs must include `source` when requesting `/style_grid/thumbnail` (see **Thumbnail cache** above). |
+| Same `name` in **different** CSV files | Both rows can load; thumbnails are keyed by `source_file` on disk. The GET thumbnail handler resolves which file to serve from the cached style list; use **`source` in POST `/thumbnail/generate`** when generating for a specific row (see **Thumbnail cache** above). |
 | Spaces in category names | Not rejected. Category strings are used as-is; only DOM IDs replace spaces with `_`. |
 | Weights above `2.0` in prompts | No numeric validation exists in CSV parser/saver; values pass through unchanged. |
 | Missing third column delimiter for `negative_prompt` | If a row has fewer than 3 columns, `negative_prompt` becomes empty string; parser does not raise an error for this case. |

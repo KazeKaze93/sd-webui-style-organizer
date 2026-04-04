@@ -995,7 +995,7 @@
             onProgress("generating", 0);
         }
 
-        apiPost("/style_grid/thumbnail/generate", { name: styleName })
+        apiPost("/style_grid/thumbnail/generate", { name: styleName, source: state[tabName].selectedSource || "" })
             .then(function (r) {
                 if (r.error) {
                     showStatusMessage(tabName, "Generation failed: " + r.error, true);

@@ -234,30 +234,31 @@ def _register_thumbnail_routes(app):
         return {"has_thumbnail": list(list_thumbnails())}
 
     @app.get("/style_grid/thumbnail")
-    async def api_get_thumbnail(name: str = "", source: str = ""):
-        if source:
-            path = get_thumbnail_path(name, source)
-            exists = os.path.isfile(path)
-        else:
-            path = get_thumbnail_path(name)
-            exists = os.path.isfile(path)
+    async def api_get_thumbnail(name: str = ""):
+        path = get_thumbnail_path(name)
+        if os.path.isfile(path):
+            return FileResponse(
+                path,
+                media_type="image/webp",
+                headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+            )
 
-        if not exists and not source:
-            # Generation hashes include source_file when available; resolve the same way.
-            style = next((s for s in get_cached_styles() if s.get("name") == name), None)
-            if style:
-                path_with_source = get_thumbnail_path(name, style.get("source_file") or "")
-                if os.path.isfile(path_with_source):
-                    path = path_with_source
-                    exists = True
+        all_styles = get_cached_styles()
+        matches = [s for s in all_styles if s.get("name") == name]
+        seen = set()
+        for style in reversed(matches):
+            sf = style.get("source_file") or ""
+            candidate = get_thumbnail_path(name, sf)
+            if candidate not in seen:
+                seen.add(candidate)
+                if os.path.isfile(candidate):
+                    return FileResponse(
+                        candidate,
+                        media_type="image/webp",
+                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+                    )
 
-        if not exists:
-            return Response(status_code=404)
-        return FileResponse(
-            path,
-            media_type="image/webp",
-            headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
-        )
+        return Response(status_code=404)
 
     @app.post("/style_grid/thumbnail/upload")
     async def api_upload_thumbnail(data: dict):
@@ -298,6 +299,7 @@ def _register_thumbnail_routes(app):
     @app.post("/style_grid/thumbnail/generate")
     async def api_generate_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
+        requested_source = data.get("source", "").strip()
         if not style_name:
             return {"error": "name required"}
 
@@ -311,7 +313,7 @@ def _register_thumbnail_routes(app):
         if not mgr.try_begin(style_name):
             return {"error": "already generating"}
 
-        mgr.spawn_generate(style_name)
+        mgr.spawn_generate(style_name, requested_source)
         return {"ok": True, "status": "running"}
 
     @app.delete("/style_grid/thumbnail")

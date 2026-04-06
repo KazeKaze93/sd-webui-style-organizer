@@ -6,7 +6,7 @@ Gradio/FastAPI. All endpoints return HTTP 200 even on errors unless otherwise no
 
 ## V2 Integration Notes
 
-Style Grid V2 UI (React iframe) communicates with the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`), then the host calls these API routes. The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
+Style Grid V2 UI (React iframe) communicates with the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`), then the host calls these API routes. The iframe document is loaded via **GET `/style_grid/ui`** (see **GET /ui**). The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
 
 Thumbnail **image** requests use `GET /style_grid/thumbnail?name=…`. The server resolves the file on disk without using query `source`: it tries the legacy name-only hash first, then source-aware paths derived from cached styles (see **GET /thumbnail**). The React/host UI may still append `source` and `v` for cache behavior; they are not used for routing. **Generation** disambiguation uses `source` in **`POST /style_grid/thumbnail/generate`** (JSON body), not the GET query string.
 
@@ -18,6 +18,17 @@ flowchart LR
 ```
 
 The API contract in this document reflects `stylegrid/routes.py` (registered from `scripts/style_grid.py`).
+
+## GET /ui
+
+**Method:** GET  
+**Description:** Serves the V2 React shell HTML from `ui/dist/index.html`. Response body is transformed so `<script>` and `<link rel="stylesheet">` points to Gradio static URLs under `/file=extensions/sd-webui-style-organizer/ui/dist/assets/index.js` and `.../index.css` (with a cache-busting `?v=` query on those URLs). The host iframe uses this route (e.g. `GET /style_grid/ui?t=<timestamp>`) instead of loading the file via `/file=…/index.html` alone, so both the HTML document and the linked bundles stay fresh after rebuilds.
+
+**Parameters:** Optional query on the iframe URL (e.g. `t`) is for browser cache busting of the **document** request; the handler does not parse preset names from the query.
+
+**Response:** `text/html`
+
+**Error cases:** If `ui/dist/index.html` is missing (UI not built), the server may return an error response.
 
 ## Generation-time: `{sg:…}` wildcards
 

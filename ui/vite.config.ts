@@ -11,10 +11,13 @@ export default defineConfig({
     rollupOptions: {
       output: {
         entryFileNames: 'assets/index.js',
-        chunkFileNames: 'assets/[name].js',
-        assetFileNames: 'assets/[name].[ext]',
-      }
-    }
+        chunkFileNames: 'assets/index.js',
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name?.endsWith('.css')) return 'assets/index.css'
+          return 'assets/[name][extname]'
+        },
+      },
+    },
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') }

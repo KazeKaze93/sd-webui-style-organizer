@@ -83,6 +83,12 @@ function resolveSourceInList(sources: string[], preferred: string | null): strin
   return found ?? null
 }
 
+/**
+ * Values of `activeCategory` that are sidebar “special” views (not real CSV categories).
+ * Matches Favorites / Recent; use the same checks in grid layout as those.
+ */
+export type ActiveSpecialView = '★ Favorites' | '🕑 Recent' | 'presets'
+
 /** Central UI state for style filtering, selection, and host-side actions. */
 interface StylesStore {
   toasts: { id: number; message: string; variant: 'success' | 'error' | 'info' }[]
@@ -112,6 +118,8 @@ interface StylesStore {
   usageCounts: Record<string, number>
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
+  /** Saved style presets from backend (`/style_grid/presets` / list API). */
+  presets: Record<string, { styles: string[]; created: string }>
   
   // Actions
   setStyles: (styles: Style[], tab: Tab) => void
@@ -135,6 +143,7 @@ interface StylesStore {
   toggleFavorite: (name: string) => void
   isFavorite: (name: string) => boolean
   addToRecent: (name: string) => void
+  fetchPresets: () => Promise<void>
   
   // Derived
   categories: () => string[]
@@ -164,6 +173,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   recentNames: JSON.parse(
     localStorage.getItem('sg_v2_recent') || '[]'
   ),
+  presets: {},
 
   setStyles: (styles, tab) => {
     const sources = [...new Set(
@@ -368,6 +378,30 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       body: JSON.stringify({ name })
     }).catch(() => {})
   },
+  fetchPresets: async () => {
+    const parse = (raw: unknown): Record<string, { styles: string[]; created: string }> =>
+      raw && typeof raw === 'object' && !Array.isArray(raw)
+        ? raw as Record<string, { styles: string[]; created: string }>
+        : {}
+    try {
+      let r = await fetch('/style_grid/presets/list')
+      if (!r.ok) {
+        r = await fetch('/style_grid/presets')
+      }
+      if (!r.ok) return
+      const data = parse(await r.json())
+      set({ presets: data })
+    } catch {
+      try {
+        const r = await fetch('/style_grid/presets')
+        if (!r.ok) return
+        const data = parse(await r.json())
+        set({ presets: data })
+      } catch {
+        // ignore
+      }
+    }
+  },
   setCategoryOrder: (order: string[]) => {
     localStorage.setItem('sg_v2_category_order', JSON.stringify(order))
     localStorage.setItem('sg_v2_category_order_source', 'all')
@@ -426,6 +460,23 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     if (activeCategory === '🕑 Recent') {
       const recent = get().recentNames
       return recent
+        .map(name => styles.find(s => s.name === name))
+        .filter(Boolean) as Style[]
+    }
+
+    if (activeCategory === 'presets') {
+      const presetRecord = get().presets
+      const order: string[] = []
+      const seen = new Set<string>()
+      for (const key of Object.keys(presetRecord).sort()) {
+        for (const n of presetRecord[key]?.styles ?? []) {
+          if (!seen.has(n)) {
+            seen.add(n)
+            order.push(n)
+          }
+        }
+      }
+      return order
         .map(name => styles.find(s => s.name === name))
         .filter(Boolean) as Style[]
     }

@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import time
+import zipfile
 
 from stylegrid.config import BACKUP_DIR, PRESETS_FILE, USAGE_FILE, get_all_styles_file_paths
 
@@ -63,10 +64,31 @@ def backup_csv_files():
         fname = os.path.basename(fp)
         shutil.copy2(fp, os.path.join(backup_subdir, fname))
 
+    if os.path.isfile(PRESETS_FILE):
+        if not backed_up:
+            os.makedirs(backup_subdir, exist_ok=True)
+            backed_up = True
+        shutil.copy2(PRESETS_FILE, os.path.join(backup_subdir, "presets.json"))
+
+    if backed_up:
+        zip_path = backup_subdir + ".zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for fp in get_all_styles_file_paths():
+                if os.path.isfile(fp):
+                    zf.write(fp, arcname=os.path.basename(fp))
+            if os.path.isfile(PRESETS_FILE):
+                zf.write(PRESETS_FILE, arcname="presets.json")
+
     if os.path.isdir(BACKUP_DIR):
         backups = sorted(os.listdir(BACKUP_DIR))
         while len(backups) > 20:
-            old_path = os.path.join(BACKUP_DIR, backups.pop(0))
+            old_name = backups.pop(0)
+            old_path = os.path.join(BACKUP_DIR, old_name)
             if os.path.isdir(old_path):
                 shutil.rmtree(old_path, ignore_errors=True)
+            elif os.path.isfile(old_path) and old_name.endswith(".zip"):
+                try:
+                    os.remove(old_path)
+                except Exception:
+                    pass
     return backed_up

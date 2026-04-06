@@ -10,6 +10,7 @@ export type HostMessage =
   | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
+  | { type: 'SG_PRESETS_UPDATED' }
 
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
@@ -28,6 +29,7 @@ export type FrameMessage =
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_RANDOM' }
   | { type: 'SG_PRESETS' }
+  | { type: 'SG_LOAD_PRESET'; name: string }
   | { type: 'SG_BACKUP' }
   | { type: 'SG_IMPORT_EXPORT' }
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }

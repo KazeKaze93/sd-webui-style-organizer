@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { sendToHost } from '../bridge'
+import { sendToHost, type Style } from '../bridge'
 import {
   getCategoryColor,
   styleRowKey,
@@ -12,7 +12,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
     filteredStyles, activeCategory, compactMode,
     collapsedCategories, toggleCollapse,
-    selectedStyles, selectAllInCategory
+    selectedStyles, selectAllInCategory, presets,
   } = useStylesStore()
   const [catMenu, setCatMenu] = useState<{
     x: number
@@ -20,6 +20,54 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     cat: string
     missingCount: number
   } | null>(null)
+
+  if (activeCategory === 'presets') {
+    const presetNames = Object.keys(presets).sort((a, b) => a.localeCompare(b))
+    if (presetNames.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center">
+          <p className="text-sg-muted text-sm">No presets saved yet</p>
+          <p className="max-w-sm text-sg-muted/70 text-xs leading-relaxed">
+            Open the toolbar <span className="text-sg-text/90">Presets</span> control, then use{' '}
+            <span className="text-sg-text/90">Save current</span> in the Style Presets dialog.
+          </p>
+        </div>
+      )
+    }
+    return (
+      <div
+        className={`grid content-start ${
+          compactMode
+            ? windowed
+              ? 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-1'
+              : 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
+            : windowed
+              ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
+              : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2'
+        }`}
+      >
+        {presetNames.map((name) => {
+          const style: Style = {
+            name,
+            prompt: '',
+            negative_prompt: '',
+            description: '',
+            category: 'OTHER',
+            source_file: '',
+            has_thumbnail: false,
+          }
+          return (
+            <StyleCard
+              key={`preset:${name}`}
+              style={style}
+              windowed={windowed}
+              presetName={name}
+            />
+          )
+        })}
+      </div>
+    )
+  }
 
   const filtered = filteredStyles()
 

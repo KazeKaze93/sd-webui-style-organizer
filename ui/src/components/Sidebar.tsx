@@ -1,13 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Reorder } from 'framer-motion'
-import { sendToHost } from '../bridge'
+import { BookMarked } from 'lucide-react'
+import { onHostMessage, sendToHost } from '../bridge'
 import { getCategoryColor, useStylesStore } from '../store/stylesStore'
 
 export function Sidebar() {
   const {
     activeCategory, setCategory, categories, favorites, recentNames,
-    setCategoryOrder
+    setCategoryOrder, presets,
   } = useStylesStore()
   const [catMenu, setCatMenu] = useState<{
     x: number
@@ -19,6 +20,16 @@ export function Sidebar() {
     { id: '★ Favorites', label: '★ Favorites', count: favorites.size },
     { id: '🕑 Recent', label: '🕑 Recent', count: recentNames.length },
   ]
+
+  useEffect(() => {
+    void useStylesStore.getState().fetchPresets()
+    const unsub = onHostMessage((msg) => {
+      if (msg.type === 'SG_PRESETS_UPDATED') {
+        void useStylesStore.getState().fetchPresets()
+      }
+    })
+    return unsub
+  }, [])
 
   const count = (cat: string | null) => {
     const { styles, activeSource } = useStylesStore.getState()
@@ -68,6 +79,29 @@ export function Sidebar() {
           <span className="ml-auto float-right text-xs opacity-60">{count}</span>
         </button>
       ))}
+      <button
+        type="button"
+        onClick={() => setCategory(activeCategory === 'presets' ? null : 'presets')}
+        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors relative overflow-hidden
+          ${activeCategory === 'presets'
+            ? 'text-white'
+            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
+      >
+        {activeCategory === 'presets' && (
+          <motion.div
+            layoutId="active-category"
+            className="absolute inset-0 bg-sg-accent rounded-md -z-10"
+            transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
+          />
+        )}
+        <span className="relative z-10 flex min-w-0 items-center gap-2">
+          <BookMarked className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="truncate">Presets</span>
+        </span>
+        <span className="relative z-10 shrink-0 text-xs opacity-60 tabular-nums">
+          {Object.keys(presets).length}
+        </span>
+      </button>
       <div className="border-t border-sg-border my-1" />
       <Reorder.Group
         axis="y"

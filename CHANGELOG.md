@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **V2 iframe entry:** `GET /style_grid/ui` (FastAPI in `stylegrid/routes.py`) serves `ui/dist/index.html` and rewrites bundled JS/CSS to Gradio `/file=extensions/sd-webui-style-organizer/ui/dist/assets/...` with a cache-busting `?v=` on those asset URLs. The host sets the iframe `src` to `/style_grid/ui?t=<timestamp>` so the HTML document is also refreshed after extension updates.
+- **Sidebar Presets (V2):** the **Presets** category in the React grid uses the same **`StyleCard`** tiles as style rows; click sends **`SG_LOAD_PRESET`** to the host. **`ThumbnailPreview`** accepts optional **`presetName`** and skips the hover thumbnail popup for those cards.
 - `POST /style_grid/thumbnail/generate` accepts an optional `source` field in the JSON body (active CSV path string) so thumbnail generation picks the correct row when the same style `name` exists in more than one file; the host passes `state[tab].selectedSource` from `generateThumbnail`.
 - CSV parse/load: optional `_source` field (basename, aligned with `source`) and tests for loading the same filename from different scan directories (`3488b64`).
 - React iframe frontend (V2) integrated into Forge panel lifecycle (`dc5f544`, `589ca79`).
@@ -16,10 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fullscreen/windowed interactions with outside-click handling and host scroll lock control (`930f6b6`, `fc9d9dc`, `72c77f2`).
 
 ### Changed
+- **V2 iframe document cache (follow-up):** the floating panel iframe no longer uses `/file=…/ui/dist/index.html` directly; it uses **`/style_grid/ui`** (see **Added**). Older changelog notes about `index.html?sgui=…` refer to the previous host `src` pattern.
+- **SG_LOAD_PRESET (host):** if the requested preset is not yet present in `state[tab].presets`, the message handler **`fetch`es `/style_grid/presets/list`**, assigns the result to host state, then runs the same **`loadPreset`** as the modal **Load** button.
 - **Thumbnails (HTTP):** `GET /style_grid/thumbnail` no longer branches on a `source` query parameter for file resolution. The handler tries `get_thumbnail_path(name)`, then unique `get_thumbnail_path(name, source_file)` candidates from `get_cached_styles()` for that name in **reverse** list order. `POST /style_grid/thumbnail/generate` accepts optional `source` in the JSON body for row disambiguation (see **Added**).
 - **Forge script `process()` inputs:** `StyleGridScript.ui()` now returns only the hidden `style_grid_silent_*` textbox to the script runner; `process()` reads silent JSON from `args[0]` (wildcard expansion still runs first). `styles_data` / `selected_styles` / apply trigger remain in the DOM for the host script only (`a8819d6`).
 - **CSV table editor:** **disabled** in the product UI (📋 inactive in React and host toolbars; EN/RU tooltips and native `title` explain temporary unavailability). Full implementation preserved as a **block comment** in `javascript/style_grid.js`; live `openCsvTableEditor` is a no-op stub. `SG_CSV_EDITOR` remains in `ui/src/bridge.ts` for typing; the host responds with an informational **`SG_TOAST`** instead of opening the overlay (legacy handler body left commented beside the active branch). Full-screen editor styles (`.sg-csv-*`, `.sg-csv-editor-btn-disabled`) live in `style.css` for future re-enable. *When previously enabled:* target CSV followed **`getStoredSource(tab)`**; **All Sources** was rejected; iframe-triggered open used the visible `style_grid_wrapper_*` tab (`c0dff77`, `62b083d`).
-- **V2 iframe document cache:** host sets `frame.src` to `ui/dist/index.html?sgui=…` so users pick up rebuilt `ui/dist` after updating the extension without a stale `index.html` sticking in cache.
 - **Host toolbar:** icon row vertical alignment; Style Grid trigger button placement follows the target control row structure (`c0dff77`, `6ad888e`).
 - **DOM helper `qs`:** optional root element with `gradioApp()` fallback for Gradio-scoped queries (`d0c135b`).
 - **Host → iframe:** `SG_HOST_TAB` updates the React store when the visible txt2img/img2img context changes so non-init style pushes keep the correct tab (`c0dff77`).

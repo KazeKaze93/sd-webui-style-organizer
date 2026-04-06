@@ -1903,12 +1903,25 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     className: "sg-btn sg-btn-secondary", textContent: "Load",
                     onClick: function () {
                         clearAll(tabName);
+                        var sgFrame = document.getElementById("sg-frame-" + tabName);
+                        if (sgFrame && sgFrame.contentWindow) {
+                            sgFrame.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
+                        }
                         const presetStyles = p.styles || [];
                         presetStyles.forEach(function (sn) {
                             state[tabName].selected.add(sn);
                             state[tabName].selectedOrder.push(sn);
                             applyStyleImmediate(tabName, sn);
-                            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
+                            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) {
+                                c.classList.add("sg-selected");
+                                c.classList.add("sg-applied");
+                            });
+                            if (sgFrame && sgFrame.contentWindow) {
+                                var styleObj = findStyleByName(tabName, sn);
+                                if (styleObj) {
+                                    sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
+                                }
+                            }
                         });
                         updateSelectedUI(tabName);
                         overlay.remove();
@@ -3932,6 +3945,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             var target = e.target;
             if (!target) return;
             if (target.closest && target.closest(".sg-trigger-btn")) return;
+            if (target.closest && target.closest(".sg-editor-overlay, .sg-source-picker")) return;
             if (!wrapper.contains(target)) {
                 wrapper.style.display = "none";
                 setHostPageScrollLock(anySGFrameVisible());
@@ -4051,13 +4065,22 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     state[tab].silentMode = true;
                 } else {
                     state[tab].silentMode = false;
-                    state[tab].selected = new Set();
+                    if (!state[tab].selected) state[tab].selected = new Set();
+                    state[tab].selected.add(msg.styleId);
+                    state[tab].selectedOrder = state[tab].selectedOrder || [];
+                    if (state[tab].selectedOrder.indexOf(msg.styleId) === -1) {
+                        state[tab].selectedOrder.push(msg.styleId);
+                    }
                 }
                 window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
                 setSilentGradio(tab);
             }
 
             if (msg.type === "SG_UNAPPLY") {
+                if (state[tab] && state[tab].selected) {
+                    state[tab].selected.delete(msg.styleId);
+                    state[tab].selectedOrder = (state[tab].selectedOrder || []).filter(function (n) { return n !== msg.styleId; });
+                }
                 window._sgUnapplyStyle(tab, msg.styleId);
             }
 
@@ -4119,13 +4142,30 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             }
             if (msg.type === "SG_BACKUP") {
                 fetch("/style_grid/backup", { method: "POST" })
-                    .then(function (r) { return r.json(); })
+                    .then(function (r) {
+                        if (!r.ok) { return r.text().then(function (t) { throw new Error("HTTP " + r.status + ": " + t.slice(0, 120)); }); }
+                        return r.json();
+                    })
                     .then(function (data) {
+                        if (frame.contentWindow) {
+                            var failed = data.error || data.ok === false;
+                            frame.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: data.error
+                                    ? ("Backup failed: " + data.error)
+                                    : data.ok === false
+                                        ? "Nothing to backup (no CSV files found)"
+                                        : "💾 Backup created",
+                                variant: failed ? "error" : "success"
+                            }, "*");
+                        }
+                    })
+                    .catch(function (err) {
                         if (frame.contentWindow) {
                             frame.contentWindow.postMessage({
                                 type: "SG_TOAST",
-                                message: data.error ? ("Backup failed: " + data.error) : "💾 Backup created",
-                                variant: data.error ? "error" : "success"
+                                message: "Backup request failed: " + (err && err.message ? err.message : String(err)),
+                                variant: "error"
                             }, "*");
                         }
                     });

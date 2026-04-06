@@ -222,7 +222,10 @@ def _register_crud_routes(app):
 
     @app.post("/style_grid/backup")
     async def api_backup():
-        return {"ok": backup_csv_files()}
+        try:
+            return {"ok": backup_csv_files()}
+        except Exception as e:
+            return {"error": str(e)}
 
 
 def _register_thumbnail_routes(app):

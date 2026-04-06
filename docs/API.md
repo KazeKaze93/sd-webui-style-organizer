@@ -544,7 +544,7 @@ Success:
 ## POST /backup
 
 **Method:** POST  
-**Description:** Creates a timestamped backup of all discovered CSV files.
+**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`. Paths that are not regular files on disk are **skipped** (no error — missing optional files do not abort the run).
 
 **Parameters:**
 
@@ -556,13 +556,39 @@ Success:
 
 **Response:**
 
-
-| field | type    | description                                                  |
-| ----- | ------- | ------------------------------------------------------------ |
-| `ok`  | boolean | `true` if at least one CSV was backed up, otherwise `false`. |
+Success (at least one file copied):
 
 
-**Error cases:** None explicitly returned as `{error}`.
+| field | type    | description |
+| ----- | ------- | ----------- |
+| `ok`  | boolean | `true`.     |
+
+
+No files copied (all paths missing or list empty):
+
+
+| field | type    | description |
+| ----- | ------- | ----------- |
+| `ok`  | boolean | `false`.    |
+
+
+On unexpected failure while copying (exception in `backup_csv_files()`):
+
+
+| field   | type   | description                    |
+| ------- | ------ | ------------------------------ |
+| `error` | string | Exception message as a string. |
+
+
+**Error cases:**
+
+
+| case                         | response body                          |
+| ---------------------------- | -------------------------------------- |
+| Exception during backup I/O  | `{ "error": "<message>" }` (HTTP 200). |
+
+
+The host UI (`SG_BACKUP` in `javascript/style_grid.js`) should treat `{ "error": … }`, `{ "ok": false }`, non-success HTTP status, and network/parse errors and show a toast — it does not assume JSON-only success.
 
 ## GET /export
 

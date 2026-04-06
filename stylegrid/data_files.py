@@ -55,6 +55,8 @@ def backup_csv_files():
     backed_up = False
 
     for fp in get_all_styles_file_paths():
+        if not os.path.isfile(fp):
+            continue
         if not backed_up:
             os.makedirs(backup_subdir, exist_ok=True)
             backed_up = True

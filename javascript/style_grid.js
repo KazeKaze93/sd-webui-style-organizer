@@ -1862,10 +1862,40 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     // -----------------------------------------------------------------------
     // Presets UI
     // -----------------------------------------------------------------------
+    function loadPreset(tabName, presetName) {
+        var p = (state[tabName].presets || {})[presetName];
+        if (!p) return;
+        clearAll(tabName);
+        var sgFrame = document.getElementById("sg-frame-" + tabName);
+        if (sgFrame && sgFrame.contentWindow) {
+            sgFrame.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
+        }
+        const presetStyles = p.styles || [];
+        presetStyles.forEach(function (sn) {
+            state[tabName].selected.add(sn);
+            state[tabName].selectedOrder.push(sn);
+            applyStyleImmediate(tabName, sn);
+            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) {
+                c.classList.add("sg-selected");
+                c.classList.add("sg-applied");
+            });
+            if (sgFrame && sgFrame.contentWindow) {
+                var styleObj = findStyleByName(tabName, sn);
+                if (styleObj) {
+                    sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
+                }
+            }
+        });
+        updateSelectedUI(tabName);
+    }
+
     function showPresetsMenu(tabName) {
         const old = qs(".sg-presets-overlay");
         if (old) old.remove();
 
+        apiGet("/style_grid/presets").then(function (presets) {
+            state[tabName].presets = presets || {};
+        }).catch(function () {}).then(function () {
         const overlay = el("div", { className: "sg-editor-overlay sg-presets-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
         modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📦 Style Presets" }));
@@ -1882,6 +1912,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     state[tabName].presets = r.presets || {};
                     renderPresetsList();
                     nameIn.value = "";
+                    var sgFrameSave = document.getElementById("sg-frame-" + tabName);
+                    if (sgFrameSave && sgFrameSave.contentWindow) {
+                        sgFrameSave.contentWindow.postMessage({ type: "SG_PRESETS_UPDATED" }, "*");
+                    }
                 }).catch(function () {});
             }
         });
@@ -1902,28 +1936,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 row.appendChild(el("button", {
                     className: "sg-btn sg-btn-secondary", textContent: "Load",
                     onClick: function () {
-                        clearAll(tabName);
-                        var sgFrame = document.getElementById("sg-frame-" + tabName);
-                        if (sgFrame && sgFrame.contentWindow) {
-                            sgFrame.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
-                        }
-                        const presetStyles = p.styles || [];
-                        presetStyles.forEach(function (sn) {
-                            state[tabName].selected.add(sn);
-                            state[tabName].selectedOrder.push(sn);
-                            applyStyleImmediate(tabName, sn);
-                            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) {
-                                c.classList.add("sg-selected");
-                                c.classList.add("sg-applied");
-                            });
-                            if (sgFrame && sgFrame.contentWindow) {
-                                var styleObj = findStyleByName(tabName, sn);
-                                if (styleObj) {
-                                    sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
-                                }
-                            }
-                        });
-                        updateSelectedUI(tabName);
+                        loadPreset(tabName, p.name ?? name);
                         overlay.remove();
                     }
                 }));
@@ -1933,6 +1946,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         apiPost("/style_grid/presets/delete", { name: name }).then(function (r) {
                             state[tabName].presets = r.presets || {};
                             renderPresetsList();
+                            var sgFrameDel = document.getElementById("sg-frame-" + tabName);
+                            if (sgFrameDel && sgFrameDel.contentWindow) {
+                                sgFrameDel.contentWindow.postMessage({ type: "SG_PRESETS_UPDATED" }, "*");
+                            }
                         }).catch(function () {});
                     }
                 }));
@@ -1958,6 +1975,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             presetsOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
+        });
     }
 
     // -----------------------------------------------------------------------
@@ -2024,6 +2042,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     // -----------------------------------------------------------------------
     function refreshPanel(tabName) {
         apiGet("/style_grid/styles").then(function (data) {
+            if (data && Object.prototype.hasOwnProperty.call(data, "presets")) {
+                state[tabName].presets = data.presets || {};
+            }
             const dataEl = qs("#style_grid_data_" + tabName + " textarea");
             if (dataEl) {
                 const full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
@@ -3914,7 +3935,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         const frame = document.createElement("iframe");
         frame.id = "sg-frame-" + tab;
         // Query string busts stale index.html / iframe document cache after ui/dist updates (bump when shipping UI changes).
-        frame.src = "/file=extensions/sd-webui-style-organizer/ui/dist/index.html?v=" + Date.now();
+        frame.src = `/style_grid/ui?t=${Date.now()}`;
         var wrapper = document.createElement("div");
         wrapper.id = "sg-panel-wrapper-" + tab;
         wrapper.style.cssText = [
@@ -4218,6 +4239,21 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             }
             if (msg.type === "SG_CLEAR_ALL") {
                 clearAll(tab);
+            }
+            if (msg.type === "SG_LOAD_PRESET") {
+                var presetName = msg.name;
+                var tabName = tab;
+                var existing = (state[tabName].presets || {})[presetName];
+                if (existing) {
+                    loadPreset(tabName, presetName);
+                } else {
+                    fetch('/style_grid/presets/list')
+                        .then(function(r) { return r.json(); })
+                        .then(function(data) {
+                            state[tabName].presets = data || {};
+                            loadPreset(tabName, presetName);
+                        });
+                }
             }
             if (msg.type === "SG_PRESETS") {
                 showPresetsMenu(tab);

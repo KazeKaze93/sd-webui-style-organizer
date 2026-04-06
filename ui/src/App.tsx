@@ -97,6 +97,7 @@ export default function App() {
             ? msg.tab
             : useStylesStore.getState().tab,
         )
+        void useStylesStore.getState().fetchPresets()
       }
       if (msg.type === 'SG_HOST_TAB') {
         useStylesStore.setState({ tab: msg.tab })

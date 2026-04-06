@@ -9,18 +9,20 @@ import { ThumbnailPreview } from './ThumbnailPreview'
 interface Props {
   style: Style
   windowed?: boolean
+  /** When set, card acts as a saved preset: click loads preset; no selection/thumbnail menu behavior. */
+  presetName?: string
 }
 
 const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
-export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
+export const StyleCard = memo(function StyleCard({ style, windowed = false, presetName }: Props) {
   const {
     selectedStyles, toggleStyle, isFavorite, toggleFavorite, usageCounts, styles, activeSource
   } = useStylesStore()
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
-  const isSelected = selectedStyles.some(s => s.name === style.name)
+  const isSelected = !presetName && selectedStyles.some(s => s.name === style.name)
   const fav = isFavorite(style.name)
   const usageCount = usageCounts[style.name] || 0
   const duplicates = styles.filter(s => s.name === style.name)
@@ -66,9 +68,10 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
 
   return (
     <>
-      <ThumbnailPreview style={style}>
+      <ThumbnailPreview style={style} presetName={presetName}>
         <motion.div
           data-sg-card="true"
+          title={presetName ? undefined : style.name}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -76,11 +79,20 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onContextMenu={(e) => {
+            if (presetName) {
+              e.preventDefault()
+              e.stopPropagation()
+              return
+            }
             e.preventDefault()
             e.stopPropagation()
             setMenuPos({ x: e.clientX, y: e.clientY })
           }}
           onClick={(e) => {
+            if (presetName) {
+              sendToHost({ type: 'SG_LOAD_PRESET', name: presetName })
+              return
+            }
             if (hasMultipleSources && !activeSource && !isSelected) {
               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
               const left = Math.min(rect.right + 8, window.innerWidth - 280)
@@ -107,11 +119,11 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
           </div>
 
           {/* Selected indicator */}
-          {isSelected && (
+          {!presetName && isSelected && (
             <div className="absolute bottom-2 right-2 w-2 h-2
                             rounded-full bg-sg-accent" />
           )}
-          {usageCount > 0 && (
+          {!presetName && usageCount > 0 && (
             <span className="absolute bottom-1.5 left-2 text-[10px] 
                      text-sg-muted/60 font-mono">
               {usageCount > 99 ? '99+' : usageCount}

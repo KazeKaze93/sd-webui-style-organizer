@@ -3,13 +3,17 @@
 import base64
 import csv
 import hashlib
+import io
 import json
 import os
 import time
+import zipfile
+from pathlib import Path
 
-from fastapi import Request  # type: ignore[reportMissingImports]
+from fastapi import HTTPException, Request  # type: ignore[reportMissingImports]
 from fastapi.responses import (  # type: ignore[reportMissingImports]
     FileResponse,
+    HTMLResponse,
     JSONResponse,
     Response,
 )
@@ -92,7 +96,7 @@ def _register_style_routes(app):
         if_none_match = request.headers.get("If-None-Match", "").strip().strip('"')
         if if_none_match and if_none_match == etag:
             return Response(status_code=304)
-        response = JSONResponse(content={"categories": categories, "usage": load_usage()})
+        response = JSONResponse(content={"categories": categories, "usage": load_usage(), "presets": load_presets()})
         response.headers["ETag"] = etag
         return response
 
@@ -122,7 +126,26 @@ def _register_style_routes(app):
         }
 
     @app.post("/style_grid/import")
-    async def api_import(data: dict):
+    async def api_import(request: Request):
+        raw = await request.body()
+        if not raw:
+            return {"ok": True}
+        if len(raw) >= 2 and raw[:2] == b"PK":
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                    if "presets.json" in zf.namelist():
+                        data = json.loads(zf.read("presets.json").decode("utf-8"))
+                        if isinstance(data, dict):
+                            save_presets(data)
+            except Exception:
+                pass
+            return {"ok": True}
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=422, detail="Invalid JSON") from None
+        if not isinstance(data, dict):
+            return {"ok": True}
         if "presets" in data:
             p = load_presets()
             p.update(data["presets"])
@@ -181,6 +204,10 @@ def _register_preset_routes(app):
             del presets[name]
             save_presets(presets)
         return {"ok": True, "presets": presets}
+
+    @app.get("/style_grid/presets/list")
+    async def api_list_presets():
+        return load_presets()
 
 
 def _register_usage_routes(app):
@@ -351,6 +378,25 @@ def _register_thumbnail_routes(app):
         return {"removed": removed}
 
 
+def _register_ui_routes(app):
+    """Serve V2 React iframe HTML with cache-busted asset URLs."""
+
+    @app.get("/style_grid/ui")
+    async def serve_ui():
+        html_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
+        html = html_path.read_text(encoding="utf-8")
+        ts = int(time.time())
+        BASE = "/file=extensions/sd-webui-style-organizer/ui/dist"
+        html = html.replace(
+            'src="./assets/index.js"',
+            f'src="{BASE}/assets/index.js?v={ts}"',
+        ).replace(
+            'href="./assets/index.css"',
+            f'href="{BASE}/assets/index.css?v={ts}"',
+        )
+        return HTMLResponse(content=html)
+
+
 def register_api(demo, app):
     """
     Register all Style Grid API groups on FastAPI app.
@@ -363,3 +409,4 @@ def register_api(demo, app):
     _register_usage_routes(app)
     _register_crud_routes(app)
     _register_thumbnail_routes(app)
+    _register_ui_routes(app)

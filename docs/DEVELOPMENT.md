@@ -11,7 +11,8 @@ The extension now uses a hybrid architecture:
 ```mermaid
 flowchart LR
   A[Forge page / Gradio DOM] --> B[javascript/style_grid.js]
-  B -->|postMessage SG_*| C[iframe ui/dist/index.html]
+  B -->|iframe src GET /style_grid/ui| C[V2 React bundle]
+  B -->|postMessage SG_*| C
   C -->|postMessage SG_*| B
   B -->|fetch /style_grid/*| D[FastAPI routes.py]
   D --> E[(CSV + data/*.json + thumbnails)]
@@ -49,7 +50,7 @@ npm install
 npm run build
 ```
 
-The host iframe points at `ui/dist/index.html`, so run `npm run build` after UI changes.
+The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegrid/routes.py`), which reads `ui/dist/index.html` and rewrites asset URLs to Gradio **`/file=extensions/sd-webui-style-organizer/ui/dist/...`** with cache-busting query params on JS/CSS. The host sets `frame.src` to **`/style_grid/ui?t=<Date.now()>`** so the document URL changes when the panel is created. After UI code changes, run **`npm run build`** in `ui/` so `ui/dist/` exists and matches `vite.config.ts`.
 
 ## Message Bridge (Host <-> Frame)
 
@@ -85,7 +86,11 @@ sequenceDiagram
 
 **Backup (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host `fetch`es `POST /style_grid/backup`, checks `response.ok` before `json()`, and maps `{ error }`, `{ ok: false }`, and thrown errors to **`SG_TOAST`**. See `docs/API.md` § POST `/backup`.
 
-**Presets — Load:** The classic presets UI (`showPresetsMenu`) runs on the host DOM. After `clearAll`, it posts **`SG_CLEAR_SELECTION`** to `#sg-frame-<tab>`, then for each preset style **`SG_STYLE_APPLIED`** with the resolved style object so the **React selected bar** matches the loaded preset without relying on the iframe having driven each apply.
+**Presets — Load:** **`loadPreset(tabName, presetName)`** (shared by the modal **Load** button and the iframe) clears the selection, posts **`SG_CLEAR_SELECTION`**, applies each saved style name (`applyStyleImmediate`, host `.sg-card` classes), posts **`SG_STYLE_APPLIED`** per resolved style, and calls **`updateSelectedUI`**. The classic presets UI (`showPresetsMenu`) runs on the host DOM and calls **`loadPreset`** from the **Load** button.
+
+The React sidebar **Presets** view (`activeCategory === 'presets'`) renders preset names with the same **`StyleCard`** component as ordinary styles (`presetName` prop); a click sends **`SG_LOAD_PRESET`** with the preset name. The host handler calls **`loadPreset(tab, name)`**; if **`state[tab].presets`** does not yet include that key, it **`fetch`es `GET /style_grid/presets/list`**, merges into **`state[tab].presets`**, then invokes **`loadPreset`** — so loading from the iframe works even when the host cache was empty.
+
+**Thumbnail hover:** **`ThumbnailPreview`** skips the hover popup wrapper when **`presetName`** is set (preset tiles are name-only; no thumbnail preview for the preset name string).
 
 **Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, but **`return` is only `[silent_styles]`** so `process(*args)` receives a single argument (silent JSON). Wildcard resolution uses `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not those hidden textboxes.
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { sendToHost, type Style } from '../bridge'
 import {
@@ -7,19 +7,38 @@ import {
   useStylesStore,
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
+import { useShallow } from 'zustand/react/shallow'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
     filteredStyles, activeCategory, compactMode,
     collapsedCategories, toggleCollapse,
     selectedStyles, selectAllInCategory, presets,
-  } = useStylesStore()
+  } = useStylesStore(
+    useShallow(s => ({
+      filteredStyles: s.filteredStyles,
+      activeCategory: s.activeCategory,
+      compactMode: s.compactMode,
+      collapsedCategories: s.collapsedCategories,
+      toggleCollapse: s.toggleCollapse,
+      selectedStyles: s.selectedStyles,
+      selectAllInCategory: s.selectAllInCategory,
+      presets: s.presets,
+    }))
+  )
   const [catMenu, setCatMenu] = useState<{
     x: number
     y: number
     cat: string
     missingCount: number
   } | null>(null)
+
+  const z = useStylesStore.getState()
+  const filtered = useMemo(
+    () => filteredStyles(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [z.styles, z.search, z.activeCategory, z.activeSource]
+  )
 
   if (activeCategory === 'presets') {
     const presetNames = Object.keys(presets).sort((a, b) => a.localeCompare(b))
@@ -68,8 +87,6 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       </div>
     )
   }
-
-  const filtered = filteredStyles()
 
   if (filtered.length === 0) {
     return (

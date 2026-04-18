@@ -147,7 +147,56 @@ interface StylesStore {
   
   // Derived
   categories: () => string[]
-  filteredStyles: () => Style[]
+}
+
+export function selectFilteredStyles(
+  styles: Style[],
+  search: string,
+  activeCategory: string | null,
+  activeSource: string | null,
+  favorites: Set<string>,
+  recentNames: string[],
+  presets: Record<string, { styles: string[]; created: string }>,
+): Style[] {
+  if (activeCategory === '★ Favorites') {
+    return styles.filter(s => favorites.has(s.name))
+  }
+
+  if (activeCategory === '🕑 Recent') {
+    return recentNames
+      .map(name => styles.find(s => s.name === name))
+      .filter(Boolean) as Style[]
+  }
+
+  if (activeCategory === 'presets') {
+    const order: string[] = []
+    const seen = new Set<string>()
+    for (const key of Object.keys(presets).sort()) {
+      for (const n of presets[key]?.styles ?? []) {
+        if (!seen.has(n)) {
+          seen.add(n)
+          order.push(n)
+        }
+      }
+    }
+    return order
+      .map(name => styles.find(s => s.name === name))
+      .filter(Boolean) as Style[]
+  }
+
+  let filtered = styles.filter(s => {
+    const matchSource = !activeSource || s.source_file === activeSource
+    const matchCat = !activeCategory || s.category === activeCategory
+    const matchSearch = !search ||
+      s.name.toLowerCase().includes(search.toLowerCase())
+    return matchSource && matchCat && matchSearch
+  })
+
+  if (!activeSource) {
+    filtered = dedupeStylesByNameForAllSources(filtered)
+  }
+
+  return filtered
 }
 
 export const useStylesStore = create<StylesStore>((set, get) => ({
@@ -447,52 +496,5 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     const rest = all.filter(c => !relevantOrder.includes(c)).sort()
     return [...relevantOrder, ...rest]
-  },
-
-  filteredStyles: () => {
-    const { styles, search, activeCategory, activeSource } = get()
-
-    if (activeCategory === '★ Favorites') {
-      const favs = get().favorites
-      return styles.filter(s => favs.has(s.name))
-    }
-
-    if (activeCategory === '🕑 Recent') {
-      const recent = get().recentNames
-      return recent
-        .map(name => styles.find(s => s.name === name))
-        .filter(Boolean) as Style[]
-    }
-
-    if (activeCategory === 'presets') {
-      const presetRecord = get().presets
-      const order: string[] = []
-      const seen = new Set<string>()
-      for (const key of Object.keys(presetRecord).sort()) {
-        for (const n of presetRecord[key]?.styles ?? []) {
-          if (!seen.has(n)) {
-            seen.add(n)
-            order.push(n)
-          }
-        }
-      }
-      return order
-        .map(name => styles.find(s => s.name === name))
-        .filter(Boolean) as Style[]
-    }
-
-    let filtered = styles.filter(s => {
-      const matchSource = !activeSource || s.source_file === activeSource
-      const matchCat = !activeCategory || s.category === activeCategory
-      const matchSearch = !search || 
-        s.name.toLowerCase().includes(search.toLowerCase())
-      return matchSource && matchCat && matchSearch
-    })
-
-    if (!activeSource) {
-      filtered = dedupeStylesByNameForAllSources(filtered)
-    }
-
-    return filtered
   }
 }))

@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, type Style } from '../bridge'
 import {
   getCategoryColor,
+  selectFilteredStyles,
   styleRowKey,
   useStylesStore,
 } from '../store/stylesStore'
@@ -10,16 +12,37 @@ import { StyleCard } from './StyleCard'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
-    filteredStyles, activeCategory, compactMode,
-    collapsedCategories, toggleCollapse,
-    selectedStyles, selectAllInCategory, presets,
-  } = useStylesStore()
+    styles, search, activeCategory, activeSource,
+    favorites, recentNames, presets,
+    compactMode, collapsedCategories, toggleCollapse,
+    selectedStyles, selectAllInCategory,
+  } = useStylesStore(
+    useShallow(s => ({
+      styles: s.styles,
+      search: s.search,
+      activeCategory: s.activeCategory,
+      activeSource: s.activeSource,
+      favorites: s.favorites,
+      recentNames: s.recentNames,
+      presets: s.presets,
+      compactMode: s.compactMode,
+      collapsedCategories: s.collapsedCategories,
+      toggleCollapse: s.toggleCollapse,
+      selectedStyles: s.selectedStyles,
+      selectAllInCategory: s.selectAllInCategory,
+    }))
+  )
   const [catMenu, setCatMenu] = useState<{
     x: number
     y: number
     cat: string
     missingCount: number
   } | null>(null)
+
+  const filtered = useMemo(
+    () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames, presets),
+    [styles, search, activeCategory, activeSource, favorites, recentNames, presets]
+  )
 
   if (activeCategory === 'presets') {
     const presetNames = Object.keys(presets).sort((a, b) => a.localeCompare(b))
@@ -68,8 +91,6 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       </div>
     )
   }
-
-  const filtered = filteredStyles()
 
   if (filtered.length === 0) {
     return (

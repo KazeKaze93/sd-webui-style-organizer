@@ -27,7 +27,7 @@ flowchart LR
 ├─ stylegrid/                         # Backend package (routes, cache, csv_io, thumbnails, wildcards)
 ├─ ui/                                # React app (builds to ui/dist)
 │  ├─ src/bridge.ts                   # Typed SG_* message contract
-│  ├─ src/store/stylesStore.ts        # Client state/actions/derived filters
+│  ├─ src/store/stylesStore.ts        # Client state/actions; selectFilteredStyles()
 │  └─ src/components/                 # UI building blocks
 ├─ tests/                              # pytest (csv_io, routes, wildcards); test_js.html
 ├─ docs/API.md
@@ -50,7 +50,9 @@ npm install
 npm run build
 ```
 
-The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegrid/routes.py`), which reads `ui/dist/index.html` and rewrites asset URLs to Gradio **`/file=extensions/sd-webui-style-organizer/ui/dist/...`** with cache-busting query params on JS/CSS. The host sets `frame.src` to **`/style_grid/ui?t=<Date.now()>`** so the document URL changes when the panel is created. After UI code changes, run **`npm run build`** in `ui/` so `ui/dist/` exists and matches `vite.config.ts`.
+The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegrid/routes.py`). **`_get_ui_html()`** reads `ui/dist/index.html` and rewrites **all** relative `src` / `href` (`./…`) to Gradio **`/file=extensions/sd-webui-style-organizer/ui/dist/...`** with a **new** `?v=` timestamp on **each** HTTP response (not only the main bundle URLs). The host sets `frame.src` to **`/style_grid/ui?t=<Date.now()>`** so the document URL changes when the panel is created. After UI code changes, run **`npm run build`** in `ui/` so `ui/dist/` exists and matches `vite.config.ts`.
+
+**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`). **`StyleGrid`** and **`Sidebar`** subscribe to the Zustand store with **`useShallow`** from `zustand/react/shallow` so unrelated slice updates (selection, toasts, conflicts, …) do not force unnecessary re-renders. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`** with dependencies on the subscribed filter fields.
 
 ## Message Bridge (Host <-> Frame)
 
@@ -124,6 +126,6 @@ Gaps worth knowing: React/iframe logic and `javascript/style_grid.js` are not co
 
 ## Practical Notes
 
-- Keep `stylesStore.filteredStyles()` and host-side style payload behavior aligned. If host dedups too early, source-aware UI features (like source picker on dedup cards) cannot work correctly.
+- Keep **`selectFilteredStyles`** (grid) and host-side style payload behavior aligned. If host dedups too early, source-aware UI features (like source picker on dedup cards) cannot work correctly.
 - Category ordering logic should remain source-aware: All Sources behavior and specific-source behavior are intentionally different.
 - When changing bridge messages, update both `ui/src/bridge.ts` and host `window.addEventListener("message", ...)` handlers (both iframe instances).

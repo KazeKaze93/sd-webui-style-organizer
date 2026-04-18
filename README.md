@@ -252,6 +252,7 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 
 - API reference: `docs/API.md`
 - Development guide: `docs/DEVELOPMENT.md`
+- V2 React bundle (iframe loading, Zustand `useShallow`, `selectFilteredStyles`): `ui/README.md` (also overlaps with **GET `/style_grid/ui`** in `docs/API.md`).
 
 ---
 

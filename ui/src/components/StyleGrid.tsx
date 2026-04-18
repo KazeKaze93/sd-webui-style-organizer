@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { sendToHost, type Style } from '../bridge'
 import {
   getCategoryColor,
+  selectFilteredStyles,
   styleRowKey,
   useStylesStore,
 } from '../store/stylesStore'
@@ -11,12 +12,11 @@ import { useShallow } from 'zustand/react/shallow'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
-    filteredStyles, activeCategory, compactMode,
+    activeCategory, compactMode,
     collapsedCategories, toggleCollapse,
     selectedStyles, selectAllInCategory, presets,
   } = useStylesStore(
     useShallow(s => ({
-      filteredStyles: s.filteredStyles,
       activeCategory: s.activeCategory,
       compactMode: s.compactMode,
       collapsedCategories: s.collapsedCategories,
@@ -35,9 +35,16 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
 
   const z = useStylesStore.getState()
   const filtered = useMemo(
-    () => filteredStyles(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [z.styles, z.search, z.activeCategory, z.activeSource]
+    () => selectFilteredStyles(
+      z.styles,
+      z.search,
+      z.activeCategory,
+      z.activeSource,
+      z.favorites,
+      z.recentNames,
+      z.presets,
+    ),
+    [z.styles, z.search, z.activeCategory, z.activeSource, z.favorites, z.recentNames, z.presets]
   )
 
   if (activeCategory === 'presets') {

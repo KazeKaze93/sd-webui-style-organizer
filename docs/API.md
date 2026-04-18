@@ -22,7 +22,7 @@ The API contract in this document reflects `stylegrid/routes.py` (registered fro
 ## GET /ui
 
 **Method:** GET  
-**Description:** Serves the V2 React shell HTML from `ui/dist/index.html`. Response body is transformed so `<script>` and `<link rel="stylesheet">` points to Gradio static URLs under `/file=extensions/sd-webui-style-organizer/ui/dist/assets/index.js` and `.../index.css` (with a cache-busting `?v=` query on those URLs). The host iframe uses this route (e.g. `GET /style_grid/ui?t=<timestamp>`) instead of loading the file via `/file=…/index.html` alone, so both the HTML document and the linked bundles stay fresh after rebuilds.
+**Description:** Serves the V2 React shell HTML from `ui/dist/index.html`. Implementation: **`_get_ui_html()`** in `stylegrid/routes.py` transforms the file so **every** relative asset reference (`src` / `href` with a `./…` path) is rewritten to Gradio static URLs under `/file=extensions/sd-webui-style-organizer/ui/dist/…` with a **fresh** cache-busting `?v=<unix time>` on **each** response (scripts, stylesheets, favicon, etc.). The host iframe uses this route (e.g. `GET /style_grid/ui?t=<timestamp>`) instead of loading the file via `/file=…/index.html` alone, so the HTML document and **all** linked assets stay fresh after rebuilds.
 
 **Parameters:** Optional query on the iframe URL (e.g. `t`) is for browser cache busting of the **document** request; the handler does not parse preset names from the query.
 

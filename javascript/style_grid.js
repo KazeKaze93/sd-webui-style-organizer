@@ -2153,7 +2153,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             });
                             var frame = state[t] && state[t].sgFrame;
                             if (frame && frame.contentWindow) {
-                                // Full list for v2: dedupe by name only in iframe when "All sources" (stylesStore.filteredStyles).
+                                // Full list for v2: dedupe by name only in iframe when "All sources" (selectFilteredStyles).
                                 var v2styles = Object.values(state[t].categories).flat();
                                 frame.contentWindow.postMessage({
                                     type: "SG_STYLES_UPDATE",

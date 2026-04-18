@@ -4,12 +4,23 @@ import { Reorder } from 'framer-motion'
 import { BookMarked } from 'lucide-react'
 import { onHostMessage, sendToHost } from '../bridge'
 import { getCategoryColor, useStylesStore } from '../store/stylesStore'
+import { useShallow } from 'zustand/react/shallow'
 
 export function Sidebar() {
   const {
     activeCategory, setCategory, categories, favorites, recentNames,
     setCategoryOrder, presets,
-  } = useStylesStore()
+  } = useStylesStore(
+    useShallow(s => ({
+      activeCategory: s.activeCategory,
+      setCategory: s.setCategory,
+      categories: s.categories,
+      favorites: s.favorites,
+      recentNames: s.recentNames,
+      setCategoryOrder: s.setCategoryOrder,
+      presets: s.presets,
+    }))
+  )
   const [catMenu, setCatMenu] = useState<{
     x: number
     y: number

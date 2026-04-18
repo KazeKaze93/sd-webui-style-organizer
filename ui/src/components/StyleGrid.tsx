@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, type Style } from '../bridge'
 import {
   getCategoryColor,
@@ -8,22 +9,27 @@ import {
   useStylesStore,
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
-import { useShallow } from 'zustand/react/shallow'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const {
-    activeCategory, compactMode,
-    collapsedCategories, toggleCollapse,
-    selectedStyles, selectAllInCategory, presets,
+    styles, search, activeCategory, activeSource,
+    favorites, recentNames, presets,
+    compactMode, collapsedCategories, toggleCollapse,
+    selectedStyles, selectAllInCategory,
   } = useStylesStore(
     useShallow(s => ({
+      styles: s.styles,
+      search: s.search,
       activeCategory: s.activeCategory,
+      activeSource: s.activeSource,
+      favorites: s.favorites,
+      recentNames: s.recentNames,
+      presets: s.presets,
       compactMode: s.compactMode,
       collapsedCategories: s.collapsedCategories,
       toggleCollapse: s.toggleCollapse,
       selectedStyles: s.selectedStyles,
       selectAllInCategory: s.selectAllInCategory,
-      presets: s.presets,
     }))
   )
   const [catMenu, setCatMenu] = useState<{
@@ -33,18 +39,9 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     missingCount: number
   } | null>(null)
 
-  const z = useStylesStore.getState()
   const filtered = useMemo(
-    () => selectFilteredStyles(
-      z.styles,
-      z.search,
-      z.activeCategory,
-      z.activeSource,
-      z.favorites,
-      z.recentNames,
-      z.presets,
-    ),
-    [z.styles, z.search, z.activeCategory, z.activeSource, z.favorites, z.recentNames, z.presets]
+    () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames, presets),
+    [styles, search, activeCategory, activeSource, favorites, recentNames, presets]
   )
 
   if (activeCategory === 'presets') {

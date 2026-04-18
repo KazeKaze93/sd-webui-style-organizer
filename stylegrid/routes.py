@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import time
 import zipfile
 from pathlib import Path
@@ -378,23 +379,33 @@ def _register_thumbnail_routes(app):
         return {"removed": removed}
 
 
+def _get_ui_html() -> str:
+    """
+    Load built UI index.html and rewrite every relative asset URL (src/href="./...")
+    to the Gradio file URL with a fresh ?v= cache buster on each call.
+    """
+    html_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
+    html = html_path.read_text(encoding="utf-8")
+    v = str(int(time.time()))
+    base = "/file=extensions/sd-webui-style-organizer/ui/dist"
+    pattern = re.compile(
+        r'(?P<attr>\b(?:src|href))=(?P<q>["\'])(?P<path>\./[^"\']+)(?P=q)',
+        re.IGNORECASE,
+    )
+    def _sub(m: re.Match) -> str:
+        rel = m.group("path")[2:]
+        q = m.group("q")
+        return f'{m.group("attr")}={q}{base}/{rel}?v={v}{q}'
+
+    return pattern.sub(_sub, html)
+
+
 def _register_ui_routes(app):
     """Serve V2 React iframe HTML with cache-busted asset URLs."""
 
     @app.get("/style_grid/ui")
     async def serve_ui():
-        html_path = Path(__file__).parent.parent / "ui" / "dist" / "index.html"
-        html = html_path.read_text(encoding="utf-8")
-        ts = int(time.time())
-        BASE = "/file=extensions/sd-webui-style-organizer/ui/dist"
-        html = html.replace(
-            'src="./assets/index.js"',
-            f'src="{BASE}/assets/index.js?v={ts}"',
-        ).replace(
-            'href="./assets/index.css"',
-            f'href="{BASE}/assets/index.css?v={ts}"',
-        )
-        return HTMLResponse(content=html)
+        return HTMLResponse(content=_get_ui_html())
 
 
 def register_api(demo, app):

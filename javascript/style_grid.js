@@ -3212,6 +3212,23 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         state[tabName].applied.clear();
         state[tabName].userPromptBase = "";
         state[tabName].userPromptBaseNeg = "";
+
+        // Strip {sg:...} wildcard tokens from both prompt fields
+        (function () {
+            var promptEl = qs("#" + tabName + "_prompt textarea");
+            var negEl    = qs("#" + tabName + "_neg_prompt textarea");
+            function stripSgWildcards(val) {
+                return val
+                    .replace(/,\s*\{sg:[^}]+\}/g, "")   // token after comma
+                    .replace(/\{sg:[^}]+\}\s*,\s*/g, "") // token before comma
+                    .replace(/\{sg:[^}]+\}/g, "")        // lone token
+                    .replace(/,\s*,/g, ",")              // double commas
+                    .trim();
+            }
+            if (promptEl) setPromptValue(promptEl, stripSgWildcards(promptEl.value));
+            if (negEl)    setPromptValue(negEl,    stripSgWildcards(negEl.value));
+        })();
+
         if (state[tabName].panel) {
             qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
         }

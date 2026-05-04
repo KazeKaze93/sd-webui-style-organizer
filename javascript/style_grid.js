@@ -741,6 +741,11 @@
     window._sgUnapplyStyle = unapplyStyle;
 
     function unapplyStyle(tabName, styleName) {
+        var _uPre  = (document.querySelector("#" + tabName + "_prompt textarea") || {}).value;
+        var _uPreN = (document.querySelector("#" + tabName + "_neg_prompt textarea") || {}).value;
+        console.log("[SG DIAG] unapplyStyle:", styleName,
+          "| prompt_before:", JSON.stringify(_uPre),
+          "| neg_before:", JSON.stringify(_uPreN));
         const record = state[tabName].applied.get(styleName);
         if (!record) {
             if (state[tabName].selected && state[tabName].selected.has(styleName)) {
@@ -798,6 +803,11 @@
 
         state[tabName].applied.delete(styleName);
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+        var _uPost  = (document.querySelector("#" + tabName + "_prompt textarea") || {}).value;
+        var _uPostN = (document.querySelector("#" + tabName + "_neg_prompt textarea") || {}).value;
+        console.log("[SG DIAG] unapplyStyle DONE:", styleName,
+          "| prompt_after:", JSON.stringify(_uPost),
+          "| neg_after:", JSON.stringify(_uPostN));
     }
 
     function clearHostSilentSelection(tabName) {
@@ -1865,13 +1875,18 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     function loadPreset(tabName, presetName) {
         var p = (state[tabName].presets || {})[presetName];
         if (!p) return;
-        clearAll(tabName);
+        console.log("[SG DIAG] loadPreset START >>>", presetName);
+        console.log("[SG DIAG]   applied.size before clearAll:", state[tabName].applied.size);
+        console.log("[SG DIAG]   selected before clearAll:", [...state[tabName].selected]);
+        console.log("[SG DIAG]   userPromptBase before clearAll:", JSON.stringify(state[tabName].userPromptBase));
+        var _promptBefore = (document.querySelector("#" + tabName + "_prompt textarea") || {}).value;
+        var _negBefore    = (document.querySelector("#" + tabName + "_neg_prompt textarea") || {}).value;
+        console.log("[SG DIAG]   promptEl.value before clearAll:", JSON.stringify(_promptBefore));
+        console.log("[SG DIAG]   negEl.value before clearAll:",    JSON.stringify(_negBefore));
         var sgFrame = document.getElementById("sg-frame-" + tabName);
-        if (sgFrame && sgFrame.contentWindow) {
-            sgFrame.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
-        }
         const presetStyles = p.styles || [];
         presetStyles.forEach(function (sn) {
+            if (state[tabName].selected.has(sn)) return;
             state[tabName].selected.add(sn);
             state[tabName].selectedOrder.push(sn);
             applyStyleImmediate(tabName, sn);
@@ -1887,6 +1902,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             }
         });
         updateSelectedUI(tabName);
+        var _promptAfter = (document.querySelector("#" + tabName + "_prompt textarea") || {}).value;
+        var _negAfter    = (document.querySelector("#" + tabName + "_neg_prompt textarea") || {}).value;
+        console.log("[SG DIAG] loadPreset END <<<", presetName);
+        console.log("[SG DIAG]   selected after:", [...state[tabName].selected]);
+        console.log("[SG DIAG]   userPromptBase after:", JSON.stringify(state[tabName].userPromptBase));
+        console.log("[SG DIAG]   promptEl.value after:", JSON.stringify(_promptAfter));
+        console.log("[SG DIAG]   negEl.value after:",    JSON.stringify(_negAfter));
     }
 
     function showPresetsMenu(tabName) {
@@ -3206,6 +3228,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     }
 
     function clearAll(tabName) {
+        console.log("[SG DIAG] clearAll START >>>");
+        console.log("[SG DIAG]   applied map keys:", [...state[tabName].applied.keys()]);
+        console.log("[SG DIAG]   selected:", [...state[tabName].selected]);
+        var _promptClearStart = (document.querySelector("#" + tabName + "_prompt textarea") || {}).value;
+        var _negClearStart    = (document.querySelector("#" + tabName + "_neg_prompt textarea") || {}).value;
+        console.log("[SG DIAG]   prompt BEFORE:", JSON.stringify(_promptClearStart));
+        console.log("[SG DIAG]   neg BEFORE:",    JSON.stringify(_negClearStart));
         state[tabName].applied.forEach(function (_, n) { unapplyStyle(tabName, n); });
         state[tabName].selected.clear();
         state[tabName].selectedOrder = [];
@@ -3213,20 +3242,11 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         state[tabName].userPromptBase = "";
         state[tabName].userPromptBaseNeg = "";
 
-        // Strip {sg:...} wildcard tokens from both prompt fields
         (function () {
             var promptEl = qs("#" + tabName + "_prompt textarea");
             var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-            function stripSgWildcards(val) {
-                return val
-                    .replace(/,\s*\{sg:[^}]+\}/g, "")   // token after comma
-                    .replace(/\{sg:[^}]+\}\s*,\s*/g, "") // token before comma
-                    .replace(/\{sg:[^}]+\}/g, "")        // lone token
-                    .replace(/,\s*,/g, ",")              // double commas
-                    .trim();
-            }
-            if (promptEl) setPromptValue(promptEl, stripSgWildcards(promptEl.value));
-            if (negEl)    setPromptValue(negEl,    stripSgWildcards(negEl.value));
+            if (promptEl) setPromptValue(promptEl, "");
+            if (negEl)    setPromptValue(negEl, "");
         })();
 
         if (state[tabName].panel) {
@@ -3236,6 +3256,11 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         updateSelectedUI(tabName);
         updateConflicts(tabName);
         updateCombosPanel(tabName, null);
+        var _promptClearEnd = (document.querySelector("#" + tabName + "_prompt textarea") || {}).value;
+        var _negClearEnd    = (document.querySelector("#" + tabName + "_neg_prompt textarea") || {}).value;
+        console.log("[SG DIAG]   prompt AFTER:", JSON.stringify(_promptClearEnd));
+        console.log("[SG DIAG]   neg AFTER:",    JSON.stringify(_negClearEnd));
+        console.log("[SG DIAG] clearAll END <<<");
     }
 
     function toggleCategoryAll(tabName, catName) {

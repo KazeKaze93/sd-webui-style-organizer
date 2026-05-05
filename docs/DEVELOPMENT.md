@@ -94,7 +94,7 @@ The React sidebar **Presets** view (`activeCategory === 'presets'`) renders pres
 
 **Thumbnail hover:** **`ThumbnailPreview`** skips the hover popup wrapper when **`presetName`** is set (preset tiles are name-only; no thumbnail preview for the preset name string).
 
-**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, but **`return` is only `[silent_styles]`** so `process(*args)` receives a single argument (silent JSON). Wildcard resolution uses `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not those hidden textboxes.
+**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, and returns **`[silent_styles, source_filter]`**. In `process(*args)`, `args[0]` is silent JSON and `args[1]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
 
 **CSV table editor (currently disabled):** The 📋 control appears in both the **React header** (`ui/src/App.tsx`, disabled `ToolBtn`) and the **classic host panel** toolbar (`javascript/style_grid.js`, disabled button after Refresh). Tooltips state that the editor is **temporarily unavailable**. The live `openCsvTableEditor` in the host script is a **no-op stub**; the previous full implementation is kept in a **block comment** directly above that stub (search for `CSV table editor — full implementation`). Styles for the overlay live in **`style.css`** under `.sg-csv-*` and `.sg-csv-editor-btn-disabled`.
 

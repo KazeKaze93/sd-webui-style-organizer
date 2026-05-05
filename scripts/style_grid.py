@@ -23,6 +23,30 @@ from stylegrid.wildcards import resolve_sg_wildcards
 script_callbacks.on_app_started(register_api)
 
 
+def _dedup_prompt(prompt_str):
+    """Remove duplicate tags from a comma-separated prompt.
+    First occurrence wins. Weighted (tag:1.3) and plain tag are
+    treated as the same identity via normalized key. BREAK is kept
+    as-is and never deduplicated.
+    """
+    import re as _re
+    out = []
+    seen = {}
+    for seg in prompt_str.split(","):
+        s = seg.strip()
+        if not s:
+            continue
+        if s.upper() == "BREAK":
+            out.append(s)
+            continue
+        m = _re.match(r'^\((.+?):\d+\.?\d*\)$', s)
+        key = m.group(1).strip().lower() if m else s.lower()
+        if key not in seen:
+            seen[key] = True
+            out.append(s)
+    return ", ".join(out)
+
+
 class StyleGridScript(scripts.Script):
     def title(self):
         return "Style Grid"
@@ -52,23 +76,35 @@ class StyleGridScript(scripts.Script):
             styles_data = gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
             selected_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")
             silent_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_silent_{tab_prefix}")
+            source_filter = gr.Textbox(value="", visible=False, elem_id=f"style_grid_source_{tab_prefix}")
             gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")
         with gr.Group(visible=False):
             gr.Textbox(value=json.dumps(category_order), visible=False, elem_id=f"style_grid_cat_order_{tab_prefix}")
-        return [silent_styles]
+        return [silent_styles, source_filter]
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Silent mode: inject styles into prompt at generation time."""
         all_styles = list(get_cached_styles())
         categorize_styles(all_styles)
+
+        # args[1] = active source filter passed from UI ("" means All Sources)
+        active_source = (args[1] if len(args) >= 2 else "") or ""
+        if active_source:
+            wildcard_pool = [s for s in all_styles if (s.get("source_file") or "") == active_source]
+            if not wildcard_pool:           # unknown source — fall back to all
+                wildcard_pool = all_styles
+        else:
+            wildcard_pool = all_styles      # All Sources selected
+
         styles_by_cat = {}
-        for s in all_styles:
+        for s in wildcard_pool:
             key = (s.get("category") or "").lower()
             styles_by_cat.setdefault(key, []).append(s)
+
         for i in range(len(p.all_prompts)):
-            p.all_prompts[i] = resolve_sg_wildcards(p.all_prompts[i], styles_by_cat)
+            p.all_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))
         for i in range(len(p.all_negative_prompts)):
-            p.all_negative_prompts[i] = resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat)
+            p.all_negative_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat))
 
         if len(args) < 1:
             return

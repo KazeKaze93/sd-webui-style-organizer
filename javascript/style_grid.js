@@ -448,6 +448,16 @@
         var names = state[tabName].silentMode ? [...state[tabName].selected] : [];
         if (!silentEl) return;
         setPromptValue(silentEl, JSON.stringify(names));
+        syncSourceInput(tabName);
+    }
+    function syncSourceInput(tab) {
+        var src = state[tab].selectedSourceFile || "";
+        var elemId = tab === "txt2img" ? "style_grid_source_txt2img" : "style_grid_source_img2img";
+        var el = gradioApp().querySelector("#" + elemId + " textarea");
+        if (el && el.value !== src) {
+            el.value = src;
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -2225,6 +2235,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         let currentSource = state[tabName].selectedSource;
         if (sources.indexOf(currentSource) === -1) currentSource = "All";
         state[tabName].selectedSource = currentSource;
+        syncSourceInput(tabName);
 
         const srcWrap = el("div", { className: "sg-source-dropdown-wrap" });
         const srcBtn = el("button", { type: "button", className: "sg-source-select lg secondary gradio-button", id: "sg_source_" + tabName, title: "Filter by source", textContent: currentSource === "All" ? "All Sources" : currentSource });
@@ -2246,6 +2257,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     });
                     state[tabName].selectedSourceFile = _pickedFile ? String(_pickedFile).replace(/\\/g, "/") : null;
                 }
+                syncSourceInput(tabName);
                 setStoredSource(tabName, opt.value);
                 srcBtn.textContent = opt.label;
                 srcList.classList.remove("sg-open");
@@ -4319,6 +4331,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 if (syncBtn) {
                     syncBtn.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
                 }
+                syncSourceInput(tab);
             }
             if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {
                 var catName = msg.category || "";

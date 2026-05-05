@@ -1,20 +1,39 @@
+import { useRef, useState } from 'react'
 import { useStylesStore } from '../store/stylesStore'
 import { ComboChips } from './ComboChips'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export function StyleInfoPanel() {
   const { selectedStyles, styles } = useStylesStore()
+  const [pinnedStyle, setPinnedStyle] = useState<typeof styles[0] | null>(null)
+  const isChipClick = useRef(false)
 
-  // Show info for the LAST selected style
   const lastSelected = selectedStyles[selectedStyles.length - 1]
-  if (!lastSelected) return null
 
-  // Get full style data
-  const style = styles.find(s => s.name === lastSelected.name) || lastSelected
+  // Clear pin only when selection changes from a non-chip action
+  // We detect this by checking if pinnedStyle is no longer selected
+  const resolvedStyle = (() => {
+    if (pinnedStyle) {
+      const stillSelected = selectedStyles.some(s => s.name === pinnedStyle.name)
+      if (stillSelected || isChipClick.current) return pinnedStyle
+      // Pin target was deselected — clear pin
+      setPinnedStyle(null)
+    }
+    return lastSelected ? (styles.find(s => s.name === lastSelected.name) || lastSelected) : null
+  })()
 
-  const displayName = style.name.includes('_')
-    ? style.name.split('_').slice(1).join(' ')
-    : style.name
+  if (!resolvedStyle) return null
+
+  const displayName = resolvedStyle.name.includes('_')
+    ? resolvedStyle.name.split('_').slice(1).join(' ')
+    : resolvedStyle.name
+
+  const handlePin = () => {
+    isChipClick.current = true
+    const full = styles.find(s => s.name === resolvedStyle.name) || resolvedStyle
+    setPinnedStyle(full)
+    setTimeout(() => { isChipClick.current = false }, 0)
+  }
 
   return (
     <AnimatePresence>
@@ -31,12 +50,12 @@ export function StyleInfoPanel() {
             <div className="text-sm font-semibold text-white">
               {displayName}
             </div>
-            {style.description && !style.description.includes('Combos:') && (
+            {resolvedStyle.description && !resolvedStyle.description.includes('Combos:') && (
               <div className="text-xs text-sg-muted mt-0.5 line-clamp-2">
-                {style.description.replace(/Combos?:[^.]+\.?/i, '').trim()}
+                {resolvedStyle.description.replace(/Combos?:[^.]+\.?/i, '').trim()}
               </div>
             )}
-            <ComboChips style={style} />
+            <ComboChips style={resolvedStyle} onBeforeToggle={handlePin} />
           </div>
         </div>
       </motion.div>

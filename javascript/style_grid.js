@@ -2988,21 +2988,23 @@ CSV table editor — full implementation kept for restoration; currently inactiv
 
         if (!styleName) {
             combosEl.style.display = "none";
+            if (!state[tabName]._comboStyles) state[tabName]._comboStyles = [];
+            state[tabName]._comboStyles = [];
             return;
+        }
+
+        if (!state[tabName]._comboStyles) state[tabName]._comboStyles = [];
+        if (state[tabName]._comboStyles.indexOf(styleName) === -1) {
+            state[tabName]._comboStyles.push(styleName);
         }
 
         var style = findStyleByName(tabName, styleName);
-        if (!style || !style.description) {
-            combosEl.style.display = "none";
-            return;
-        }
+        if (!style || !style.description) return;
 
         var parsed = parseDescription(style.description);
-        if (!parsed.combos.length && !parsed.conflicts.length && !parsed.text) {
-            combosEl.style.display = "none";
-            return;
-        }
+        if (!parsed.combos.length && !parsed.conflicts.length && !parsed.text) return;
 
+        // Re-render full accumulated combos panel
         combosEl.innerHTML = "";
         combosEl.style.display = "flex";
 

@@ -2,6 +2,7 @@ import { useStylesStore } from '../store/stylesStore'
 
 interface Props {
   style: { name: string; description: string }
+  onBeforeToggle?: () => void
 }
 
 function parseComboTokens(description: string): string[] {
@@ -18,7 +19,7 @@ function parseConflictTokens(description: string): string[] {
   return match[1].split(';').map(t => t.trim()).filter(Boolean)
 }
 
-export function ComboChips({ style }: Props) {
+export function ComboChips({ style, onBeforeToggle }: Props) {
   const { styles, setCategory, toggleStyle, selectedStyles } = useStylesStore()
 
   if (!style.description) return null
@@ -56,10 +57,14 @@ export function ComboChips({ style }: Props) {
               selectedStyles.some(s => s.name === resolved.style?.name)
 
             if (resolved.type === 'style') {
+              const styleName = resolved.style?.name
               return (
                 <button
                   key={token}
-                  onClick={() => resolved.style && toggleStyle(resolved.style)}
+                  onClick={() => {
+                    onBeforeToggle?.()
+                    resolved.style && toggleStyle(resolved.style)
+                  }}
                   className={`px-2 py-0.5 rounded text-xs border transition-colors
                     ${isSelected
                       ? 'bg-blue-500/30 border-blue-500/60 text-blue-300'

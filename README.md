@@ -95,6 +95,8 @@ The small tab badge in the panel header shows the active host context.
 - Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
 
+![LoRA sidebar view — cards grouped by folder, CivitAI titles on tiles](docs/screenshots/lora-view.png)
+
 ![Recent — last applied styles](docs/screenshots/recent-styles.png)
 
 ![Favorites — styles saved via context menu](docs/screenshots/favorites-view.png)
@@ -222,6 +224,9 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 | ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
 | ➕ | **New style** — creates a style in the **currently selected CSV** (`All Sources` must be switched to a specific file first). |
 | 🌐 | **Fetch LoRA titles** — visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under `data/lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
+
+![Fetch LoRA titles — 🌐 toolbar tooltip in LoRA view](docs/screenshots/lora-fetch-titles.png)
+
 | *(number)* | Shows how many styles are selected; **⚠️** may appear if conflicts are detected (hover for details). |
 | Fullscreen | Toggles between the floating panel size and edge-to-edge layout. |
 | ✕ | **Close** — closes the Style Grid panel. |
@@ -243,6 +248,10 @@ Style Grid can show installed LoRAs as style cards so they search, favorite, and
 | Titles | Optional **🌐** toolbar action fetches CivitAI model names via `GET https://civitai.com/api/v1/models/{id}` (manual only; sequential + throttled; retries HTTP 429). Successful titles become `display_name` on cards/hover. |
 | Read-only | UI hides mutate actions; `save_style_to_csv` / `delete_style_from_csv` raise if `source_file` is the LoRA marker. |
 | Rescan | `POST /style_grid/lora/rescan` invalidates the LoRA scan cache (see `docs/API.md`). |
+
+![🧬 LoRA view — CHARACTER folder group with titled cards](docs/screenshots/lora-view.png)
+
+![Fetch LoRA titles from CivitAI — toolbar control](docs/screenshots/lora-fetch-titles.png)
 
 ---
 

@@ -108,7 +108,8 @@ def categorize_styles(styles):
                 cat = "OTHER"
             display = name.replace("_", " ")
         s["category"] = cat
-        s["display_name"] = display
+        if not s.get("display_name"):
+            s["display_name"] = display
         s["has_placeholder"] = "{prompt}" in (s.get("prompt") or "") or "{prompt}" in (s.get("negative_prompt") or "")
         if cat not in categories:
             categories[cat] = []

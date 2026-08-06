@@ -100,7 +100,11 @@ def _register_style_routes(app):
     async def get_styles(request: Request):
         styles = get_cached_styles()
         categories = categorize_styles(styles)
-        etag = hashlib.md5(json.dumps(styles_cache_hashes(), sort_keys=True).encode()).hexdigest()
+        etag_input = {
+            "csv": styles_cache_hashes(),
+            "lora": lora_scan_status(),
+        }
+        etag = hashlib.md5(json.dumps(etag_input, sort_keys=True, default=str).encode()).hexdigest()
         if_none_match = request.headers.get("If-None-Match", "").strip().strip('"')
         if if_none_match and if_none_match == etag:
             return Response(status_code=304)

@@ -85,8 +85,19 @@ def _api_key():
 def _fetch_one(model_id):
     """GET the model's title from CivitAI's public API.
     Returns (name, None) on success or (None, error_message) on failure.
+
+    Headers matter here: CivitAI's edge (Cloudflare/WAF) returns HTTP 403
+    for urllib's default "Python-urllib/x.y" User-Agent, treating it as a
+    bot. Mirrors the header set CivitAI Browser+ itself sends (which does
+    not get blocked) rather than urllib's defaults.
     """
     req = urllib.request.Request(API_BASE + str(model_id))
+    req.add_header(
+        "User-Agent",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    )
+    req.add_header("Accept", "application/json")
     key = _api_key()
     if key:
         req.add_header("Authorization", f"Bearer {key}")
@@ -134,8 +145,13 @@ class TitleFetchManager:
             if mid in seen:
                 continue
             seen.add(mid)
-            if not force and str(mid) in cache:
-                continue
+            if not force:
+                entry = cache.get(str(mid))
+                # Only a prior *successful* fetch counts as "already done" —
+                # an error-only entry (e.g. a transient 403/timeout) must
+                # still be retried on the next run without needing force=True.
+                if isinstance(entry, dict) and entry.get("name"):
+                    continue
             pending.append(mid)
 
         with self._status_lock:

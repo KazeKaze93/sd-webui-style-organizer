@@ -8,7 +8,7 @@ Gradio/FastAPI. All endpoints return HTTP 200 even on errors unless otherwise no
 
 Style Grid V2 UI (React iframe) communicates with the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`), then the host calls these API routes. The iframe document is loaded via **GET `/style_grid/ui`** (see **GET /ui**). The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
 
-Thumbnail **image** requests use `GET /style_grid/thumbnail?name=…`. The server resolves the file on disk without using query `source`: it tries the legacy name-only hash first, then source-aware paths derived from cached styles (see **GET /thumbnail**). The React/host UI may still append `source` and `v` for cache behavior; they are not used for routing. **Generation** disambiguation uses `source` in **`POST /style_grid/thumbnail/generate`** (JSON body), not the GET query string.
+Thumbnail **image** requests use `GET /style_grid/thumbnail?name=…` (optional `source`). For normal CSV styles the server resolves the file on disk without requiring query `source`: it tries the legacy name-only hash first, then source-aware paths derived from cached styles (see **GET /thumbnail**). When `source` is `__style_grid_lora__` or `name` starts with `LORA_`, the handler serves the sibling preview file from the LoRA scan cache (or 404). The React/host UI may still append `source` and `v` for cache behavior. **Generation** disambiguation uses `source` in **`POST /style_grid/thumbnail/generate`** (JSON body), not the GET query string — and is refused for LoRA rows.
 
 ```mermaid
 flowchart LR
@@ -48,7 +48,7 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 ## GET /styles
 
 **Method:** GET  
-**Description:** Returns categorized styles and usage counters, with ETag support.
+**Description:** Returns categorized styles and usage counters, with ETag support. The style list from `get_cached_styles()` is CSV styles plus scanned LoRA synthetic rows (`stylegrid/lora_scan.py`).
 
 **Parameters:**
 
@@ -58,6 +58,8 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 | `If-None-Match` | header | No       | string | ETag value for conditional fetch. |
 
 
+**ETag:** MD5 of `json.dumps({"csv": styles_cache_hashes(), "lora": lora_scan_status()}, sort_keys=True, default=str)`. Changing CSV files or LoRA scan status invalidates the cache.
+
 **Response:**
 
 
@@ -65,6 +67,7 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 | ------------ | ------ | ----------------------------------------------- |
 | `categories` | object | Map of category name -> array of style objects. |
 | `usage`      | object | Per-style usage stats map.                      |
+| `presets`    | object | Saved presets map (same shape as GET `/presets`). |
 
 
 Style object fields include:
@@ -72,14 +75,14 @@ Style object fields include:
 
 | field               | type    | description                                                 |
 | ------------------- | ------- | ----------------------------------------------------------- |
-| `name`              | string  | Style name from CSV.                                        |
-| `prompt`            | string  | Positive prompt fragment.                                   |
+| `name`              | string  | Style name from CSV, or synthetic `LORA_…` key for LoRAs.   |
+| `prompt`            | string  | Positive prompt fragment (`<lora:…>` for LoRA rows).        |
 | `negative_prompt`   | string  | Negative prompt fragment.                                   |
 | `description`       | string  | Freeform description.                                       |
-| `category_explicit` | string  | Raw category column value from CSV.                         |
-| `source_file`       | string  | Source CSV filename/path as provided by loader.             |
+| `category_explicit` | string  | Raw category column value from CSV, or LoRA relative folder / `"LoRA"`. |
+| `source_file`       | string  | Absolute CSV path, or `__style_grid_lora__` for LoRA rows.   |
 | `category`          | string  | Resolved category.                                          |
-| `display_name`      | string  | Display label derived from name.                            |
+| `display_name`      | string  | Card label: filename-derived by default; CivitAI title when pre-set for LoRAs. |
 | `has_placeholder`   | boolean | True if `{prompt}` is present in prompt or negative prompt. |
 
 
@@ -337,14 +340,18 @@ Success:
 ## GET /thumbnail
 
 **Method:** GET  
-**Description:** Returns a single cached thumbnail image. On-disk filenames are derived from an MD5 of `style_name` and, when present, the style’s CSV path (see `stylegrid/thumbnails.py` — `source_file` participates in the hash).
+**Description:** Returns a single thumbnail / preview image.
 
-**Resolution (server):**
+**LoRA branch:** If query `source` equals `__style_grid_lora__` **or** `name` starts with `LORA_`, the handler returns the sibling preview file from `get_lora_preview_path(name)` (media type from file extension), or HTTP `404` if none. It does **not** use the CSV thumbnail pipeline.
+
+**CSV styles — on-disk filenames** are derived from an MD5 of `style_name` and, when present, the style’s CSV path (see `stylegrid/thumbnails.py` — `source_file` participates in the hash).
+
+**CSV resolution (server):**
 
 1. If `get_thumbnail_path(name)` exists on disk, that file is returned (legacy name-only hash).
 2. Otherwise, the handler collects all rows in `get_cached_styles()` with `name` equal to the query `name`, iterates them in **reverse** order (last cached occurrence first), and for each row builds `get_thumbnail_path(name, source_file)`; duplicate paths are skipped. The **first** path that exists on disk is returned.
 
-This matches how thumbnails are stored after generation or upload when a source-aware hash is used. Clients may add extra query parameters (for example `source` or `v`); the handler **only** uses `name` for lookup.
+Clients may add extra query parameters (for example `source` or `v`). For CSV styles, `source` is **not** used for path resolution; for LoRA rows it (or the `LORA_` name prefix) selects the LoRA branch.
 
 **Parameters:**
 
@@ -352,14 +359,15 @@ This matches how thumbnails are stored after generation or upload when a source-
 | name   | in    | required | type   | description |
 | ------ | ----- | -------- | ------ | ----------- |
 | `name` | query | Yes      | string | Style name (same as in `/styles`). |
-| (other) | query | No       | string | Ignored for file resolution (e.g. cache-busting `v`, legacy `source`). |
+| `source` | query | No     | string | When `__style_grid_lora__`, forces LoRA preview serving. |
+| (other) | query | No       | string | e.g. cache-busting `v`. |
 
 **Response:**
 
 
 | type                | description                     |
 | ------------------- | ------------------------------- |
-| `image/webp` binary | Thumbnail file body when found. |
+| `image/webp` (CSV) or `image/jpeg` / `image/png` / … (LoRA) | Image body when found. |
 
 
 **Error cases:**
@@ -367,7 +375,7 @@ This matches how thumbnails are stored after generation or upload when a source-
 
 | case              | behavior                                 |
 | ----------------- | ---------------------------------------- |
-| Thumbnail missing | Returns HTTP `404` (not JSON `{error}`). |
+| Thumbnail / preview missing | Returns HTTP `404` (not JSON `{error}`). |
 
 
 ## POST /thumbnail/upload
@@ -403,6 +411,7 @@ Success:
 | File too large (>2MB)      | `{ "error": "Image too large (max 2MB)" }`                           |
 | Unsupported file signature | `{ "error": "Invalid image format. Allowed: JPEG, PNG, WEBP, GIF" }` |
 | Unexpected exception       | `{ "error": "<exception message>" }`                                 |
+| LoRA source / `LORA_` name | `{ "error": "LoRA thumbnails come from the model's own preview file and can't be replaced here." }` |
 
 
 ## GET /thumbnail/gen_status
@@ -460,6 +469,7 @@ Success:
 | case                          | response body                                                            |
 | ----------------------------- | ------------------------------------------------------------------------ |
 | Missing/empty `name`          | `{ "error": "name required" }`                                           |
+| LoRA source / `LORA_` name    | `{ "error": "LoRA cards only show their own preview file; SD-generated previews are disabled for them." }` |
 | SD busy                       | `{ "error": "SD is busy, try again after current generation finishes" }` |
 | Already generating same style | `{ "error": "already generating" }`                                      |
 
@@ -680,6 +690,84 @@ Success:
 | case                  | response body                         |
 | --------------------- | ------------------------------------- |
 | `order` is not a list | `{ "error": "order must be a list" }` |
+
+## LoRA
+
+Synthetic LoRA styles are produced by `stylegrid/lora_scan.py` and merged into `/styles`. Marker string: `__style_grid_lora__`. Optional title enrichment: `stylegrid/lora_titles.py`.
+
+## POST /lora/rescan
+
+**Method:** POST  
+**Description:** Invalidates the in-memory LoRA scan cache, rescans roots, then returns categorized styles (CSV + LoRA) and LoRA status.
+
+**Response:**
+
+
+| field        | type   | description |
+| ------------ | ------ | ----------- |
+| `categories` | object | Same shape as GET `/styles` categories. |
+| `lora`       | object | `lora_scan_status()`: `count`, `roots`, `scanned_at`. |
+
+
+## GET /lora/status
+
+**Method:** GET  
+**Description:** Ensures LoRA cache is populated and returns `lora_scan_status()`.
+
+**Response:**
+
+
+| field        | type   | description |
+| ------------ | ------ | ----------- |
+| `count`      | number | Number of scanned LoRA styles in cache. |
+| `roots`      | array  | Absolute root directories used for the last scan. |
+| `scanned_at` | number | Unix timestamp of last scan (0 if never). |
+
+
+## POST /lora/fetch_titles
+
+**Method:** POST  
+**Description:** Starts a **manual** background job that fetches CivitAI model names for every scanned LoRA that has a `modelId` in sibling metadata. Never runs automatically. Uses sequential requests with throttling and 429 retries (`stylegrid/lora_titles.py`). On completion, invalidates the LoRA style cache so the next `/styles` load picks up `display_name`.
+
+**Parameters:**
+
+
+| name    | in   | required | type    | description |
+| ------- | ---- | -------- | ------- | ----------- |
+| `force` | body | No       | boolean | When true, refetch even if a successful title is already cached. |
+
+**Response (success):**
+
+
+| field               | type    | description |
+| ------------------- | ------- | ----------- |
+| `ok`                | boolean | `true` when the job was started. |
+| `total_candidates`  | number  | Unique `modelId` count passed to the job. |
+
+**Error cases:**
+
+
+| case | response body |
+| ---- | ------------- |
+| No modelIds | `{ "error": "No LoRAs with a modelId found (metadata missing or LoRA folder not scanned yet)" }` |
+| Job already running | `{ "error": "already running" }` |
+
+
+## GET /lora/fetch_titles/status
+
+**Method:** GET  
+**Description:** Polls `TitleFetchManager.get_status()`.
+
+**Response:**
+
+
+| field    | type   | description |
+| -------- | ------ | ----------- |
+| `status` | string | `idle`, `running`, or `done`. |
+| `done`   | number | Completed fetches in this job. |
+| `total`  | number | Pending count when the job started. |
+| `errors` | number | Failures recorded in this job. |
+
 
 ## DELETE /thumbnail
 

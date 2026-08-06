@@ -14,12 +14,12 @@ npm run build
 
 ## Key Files
 
-- `src/App.tsx`: top-level layout and toolbar actions.
-- `src/store/stylesStore.ts`: Zustand state, actions, `categories()`, and exported pure **`selectFilteredStyles(...)`** (filtered + deduped list for the grid — not a store method).
-- `src/bridge.ts`: typed SG_* postMessage contract with host.
-- `src/components/StyleGrid.tsx`: main grid; subscribes with **`useShallow`** and **`useMemo(selectFilteredStyles(...))`**; sidebar **Presets** view renders preset names with `StyleCard` (`presetName` + `SG_LOAD_PRESET`).
-- `src/components/Sidebar.tsx`: category list; **`useShallow`** subscription to limit re-renders.
-- `src/components/StyleCard.tsx` / `ThumbnailPreview.tsx`: style tiles; optional `presetName` disables context menu, usage chip, and hover thumbnail preview.
+- `src/App.tsx`: top-level layout and toolbar actions (including **🌐** LoRA title fetch when `activeCategory === LORA_VIEW`).
+- `src/store/stylesStore.ts`: Zustand state; **`LORA_SOURCE`** / **`LORA_VIEW`**; exported **`selectFilteredStyles`**, **`matchesSearch`**, **`matchesNameSearch`** (token AND search; description strips `Combos:`/`Conflicts:`; Favorites/Recent/presets honor search + source).
+- `src/bridge.ts`: typed SG_* postMessage contract; optional **`Style.display_name`**.
+- `src/components/StyleGrid.tsx`: main grid; **`useShallow`** + **`useMemo(selectFilteredStyles(...))`**; LoRA view groups by category like Favorites/Recent.
+- `src/components/Sidebar.tsx`: categories + special views (Favorites, Recent, **🧬 LoRA** when at least one LoRA was scanned).
+- `src/components/StyleCard.tsx` / `ThumbnailPreview.tsx`: prefer `display_name` for labels; LoRA cards hide edit/preview/delete menu actions.
 - `src/components/*`: other UI (sidebar, modals, etc.).
 
 ## Integration Flow
@@ -30,4 +30,6 @@ flowchart LR
   H -->|fetch /style_grid/*| API[stylegrid/routes.py]
 ```
 
-Thumbnail **images** use `GET /style_grid/thumbnail?name=…` (server resolves paths from the cached style list; see `docs/API.md`). **SD preview generation** from the host uses `POST /style_grid/thumbnail/generate` with optional JSON `source` when a specific CSV row must be targeted.
+Thumbnail **images** use `GET /style_grid/thumbnail?name=…` (CSV resolution from cache; LoRA sibling previews when marked — see `docs/API.md`). **SD preview generation** from the host uses `POST /style_grid/thumbnail/generate` with optional JSON `source` when a specific CSV row must be targeted (blocked for LoRA).
+
+**LoRA titles:** in the LoRA sidebar view, **🌐** → `POST /style_grid/lora/fetch_titles`, then poll `GET /style_grid/lora/fetch_titles/status` every 1.5s until not `running`. Reopen the panel after completion so cards pick up `display_name`.

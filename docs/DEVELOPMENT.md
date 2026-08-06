@@ -5,7 +5,7 @@
 The extension now uses a hybrid architecture:
 
 - Host layer: `javascript/style_grid.js` (Forge page integration, iframe lifecycle, prompt-side effects).
-- Backend API: `stylegrid/routes.py` and modules under `stylegrid/` (cache, CSV I/O, thumbnails, wildcards).
+- Backend API: `stylegrid/routes.py` and modules under `stylegrid/` (cache, CSV I/O, thumbnails, wildcards, **lora_scan**, **lora_titles**).
 - UI app: `ui/` (React + TypeScript + Vite + shadcn-style components), served inside iframe.
 
 ```mermaid
@@ -24,10 +24,15 @@ flowchart LR
 .
 ├─ javascript/style_grid.js           # Host integration + iframe bridge
 ├─ scripts/style_grid.py              # Forge script entrypoint (imports stylegrid.*)
-├─ stylegrid/                         # Backend package (routes, cache, csv_io, thumbnails, wildcards)
+├─ stylegrid/                         # Backend package
+│  ├─ routes.py                       # FastAPI registration
+│  ├─ cache.py / csv_io.py / …
+│  ├─ lora_scan.py                    # Disk LoRA → synthetic styles
+│  └─ lora_titles.py                  # Opt-in CivitAI title fetch + cache
+├─ config/lora_roots.json.example     # Optional LoRA root overrides (user copies to lora_roots.json)
 ├─ ui/                                # React app (builds to ui/dist)
-│  ├─ src/bridge.ts                   # Typed SG_* message contract
-│  ├─ src/store/stylesStore.ts        # Client state/actions; selectFilteredStyles()
+│  ├─ src/bridge.ts                   # Typed SG_* message contract (Style.display_name?)
+│  ├─ src/store/stylesStore.ts        # selectFilteredStyles, matchesSearch, LORA_VIEW
 │  └─ src/components/                 # UI building blocks
 ├─ tests/                              # pytest (csv_io, routes, wildcards); test_js.html
 ├─ docs/API.md
@@ -52,8 +57,9 @@ npm run build
 
 The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegrid/routes.py`). **`_get_ui_html()`** reads `ui/dist/index.html` and rewrites **all** relative `src` / `href` (`./…`) to Gradio **`/file=extensions/sd-webui-style-organizer/ui/dist/...`** with a **new** `?v=` timestamp on **each** HTTP response (not only the main bundle URLs). The host sets `frame.src` to **`/style_grid/ui?t=<Date.now()>`** so the document URL changes when the panel is created. After UI code changes, run **`npm run build`** in `ui/` so `ui/dist/` exists and matches `vite.config.ts`.
 
-**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`). **`StyleGrid`** and **`Sidebar`** subscribe to the Zustand store with **`useShallow`** from `zustand/react/shallow` so unrelated slice updates (selection, toasts, conflicts, …) do not force unnecessary re-renders. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`** with dependencies on the subscribed filter fields.
+**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`, **`matchesSearch`**, **`matchesNameSearch`**). Favorites / Recent / presets / **🧬 LoRA** (`LORA_VIEW`) are special branches; normal category views **exclude** `source_file === LORA_SOURCE`. **`StyleGrid`** and **`Sidebar`** use Zustand **`useShallow`**. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`**.
 
+**LoRA:** `get_cached_styles()` returns CSV cache + `get_cached_lora_styles()`. Optional roots: gitignored `config/lora_roots.json`. Title fetch is iframe-only (`App.tsx` → `POST /style_grid/lora/fetch_titles`); poll status every 1.5s while running. After titles land, reopen the panel so `/styles` reloads with `display_name`.
 ## Message Bridge (Host <-> Frame)
 
 Bridge types are declared in `ui/src/bridge.ts`.
@@ -78,8 +84,7 @@ sequenceDiagram
 
 **Iframe routing:** Forge mounts **two** Style Grid iframes (txt2img / img2img). Each tab’s `window.addEventListener("message", …)` must ignore events where `event.source !== frame.contentWindow`, otherwise both handlers would run for every postMessage (wrong tab, wrong `selectedSource`, etc.).
 
-**Thumbnails:** Cached files live under `data/thumbnails/` with names derived from `stylegrid.thumbnails.get_thumbnail_path(name, source_file)`. `GET /style_grid/thumbnail` resolves files using the style `name` and the cached styles list (see `docs/API.md` § GET `/thumbnail`); the iframe may still add `source` / `v` on the image URL for cache behavior. Per-style **Generate preview** uses `POST /style_grid/thumbnail/generate` with optional `source` in the JSON body (host passes `selectedSource`) so the worker picks the right row when names collide.
-
+**Thumbnails:** Cached CSV files live under `data/thumbnails/` with names derived from `stylegrid.thumbnails.get_thumbnail_path(name, source_file)`. `GET /style_grid/thumbnail` resolves CSV files using the style `name` and the cached styles list, and LoRA sibling previews when `source` / name indicates a LoRA row (see `docs/API.md` § GET `/thumbnail`). Per-style **Generate preview** uses `POST /style_grid/thumbnail/generate` with optional `source` in the JSON body (host passes `selectedSource`) so the worker picks the right row when names collide — refused for LoRA.
 **Silent mode:** injection for `scripts/style_grid.py` `process()` reads the hidden Gradio component `style_grid_silent_<tab>` (JSON array of style names). The host keeps that in sync via `setSilentGradio()` from `state[tab].selected` while `silentMode` is on. `SG_UNAPPLY` must remove the id from both `applied` and `selected`; `SG_TOGGLE_SILENT` with `value: false` runs `clearHostSilentSelection` and `postClearSelectionToIframes` (`SG_CLEAR_SELECTION`). **Source of truth for generation is the host textbox**, not the iframe selection UI: after silent turns off, V2 may still show tiles/chips as selected until the user toggles or clears — that mismatch is visual-only and must not imply silent styles are still injected.
 
 **Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** In **non-silent** mode the host must still maintain `state[tab].selected` and `selectedOrder` (not only in silent mode), because presets and other features read that set — applying a style adds the id; unapply removes it. This keeps **Save preset** consistent with what is actually selected.
@@ -109,8 +114,10 @@ The React sidebar **Presets** view (`activeCategory === 'presets'`) renders pres
 - `data/presets.json`: presets storage.
 - `data/usage.json`: usage counters.
 - `data/category_order.json`: backend-persisted category order.
-- `data/thumbnails/`: thumbnail files.
+- `data/thumbnails/`: thumbnail files (CSV styles).
 - `data/backups/`: CSV backups.
+- `data/lora_titles.json`: CivitAI title cache keyed by `modelId` (created on first successful/failed fetch).
+- `config/lora_roots.json`: optional user LoRA roots (gitignored; see `.example`).
 
 Client-side localStorage keys are also used for UI state (`favorites`, `recent`, source filter, collapsed categories, etc.).
 

@@ -7,9 +7,11 @@ It supports:
 - source-aware filtering
 - deduplicated All Sources view with source picker
 - favorites and recent styles
+- **LoRA cards** in a dedicated **🧬 LoRA** sidebar view (scanned from disk, read-only)
 - drag reorder of selected styles
 - presets, backup, import/export
 - thumbnail generation/upload and cleanup tools
+- optional CivitAI title enrichment for LoRAs (manual fetch)
 
 See `CHANGELOG.md` for full release history.
 
@@ -65,10 +67,11 @@ The small tab badge in the panel header shows the active host context.
 ![Browse and filter styles](docs/screenshots/browse-and-filter.png)
 
 ### Search and autocomplete
-- Type in the search box to filter cards by style name in real time.
-- A suggestion popup appears while you type and shows matching style names with their category.
+- Type in the search box to filter the grid in real time. Query tokens are **AND**-matched (whitespace-separated, case-insensitive).
+- Grid search (`matchesSearch`) looks at the style **name** (including underscore→space forms) and **description**, with `Combos:` / `Conflicts:` reference lists stripped from the description so those lists do not pollute matches.
+- Autocomplete suggestions use **name-only** matching (`matchesNameSearch`) and respect the active source filter (with All Sources, suggestions are deduped by name like the grid). Cap: top 8.
+- **Favorites**, **Recent**, and **Presets** views also respect search and the active source filter (they previously ignored them).
 - Use arrow keys + Enter to pick a suggestion quickly, or click the item with mouse.
-- Search respects your current source/category view, so results stay relevant to what is on screen.
 
 ![Search with autocomplete suggestions](docs/screenshots/search-autocomplete.png)
 
@@ -86,10 +89,11 @@ The small tab badge in the panel header shows the active host context.
 - Click outside the picker to close it without applying.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
-### 4) Favorites and recent
+### 4) Favorites, recent, and LoRA
 - **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites** (there is no star icon on the tile itself).
 - **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
-- Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists.
+- Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
+- **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
 
 ![Recent — last applied styles](docs/screenshots/recent-styles.png)
 
@@ -156,6 +160,8 @@ The small tab badge in the panel header shows the active host context.
 | **Upload preview image** | Opens the host **file picker** to set a custom thumbnail image. |
 | **Delete** | Removes the style (host confirms and updates CSV). |
 
+**LoRA cards:** Edit / Duplicate / Move / Generate preview / Upload preview / Delete are **hidden**. Select, Favorites, and Copy prompt remain. The server also rejects CSV save/delete for LoRA-sourced rows.
+
 Click **outside** the menu, or move the pointer **off** the menu panel, to close it.
 
 ![Style card context menu](docs/screenshots/style-card-context-menu.png)
@@ -215,9 +221,28 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 | ▪ | **Compact mode** — toggles a denser card layout. |
 | ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
 | ➕ | **New style** — creates a style in the **currently selected CSV** (`All Sources` must be switched to a specific file first). |
+| 🌐 | **Fetch LoRA titles** — visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under `data/lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
 | *(number)* | Shows how many styles are selected; **⚠️** may appear if conflicts are detected (hover for details). |
 | Fullscreen | Toggles between the floating panel size and edge-to-edge layout. |
 | ✕ | **Close** — closes the Style Grid panel. |
+
+---
+
+## LoRA support
+
+Style Grid can show installed LoRAs as style cards so they search, favorite, and apply/unapply like CSV styles.
+
+| Topic | Behavior |
+|---|---|
+| Discovery | Best-effort auto-detect of Forge/A1111 LoRA dirs (`paths_internal.models_path/Lora`, `cmd_opts.lora_dir`, `cmd_opts.lyco_dir`), plus optional **`config/lora_roots.json`** (gitignored; copy from `config/lora_roots.json.example`). Roots are merged and deduped by **realpath** so junctions/symlinks do not double-scan. |
+| Scan depth | Fully recursive unless `max_depth` is set in `lora_roots.json`. |
+| Card identity | Synthetic `source_file` / source marker `__style_grid_lora__`. Style keys look like `LORA_<stem>` (disambiguated with relative folder when stems collide). Apply injects `<lora:stem:weight>` plus optional activation text from sibling metadata. |
+| Metadata | Sibling `<stem>.json` (A1111/Forge extra-networks / CivitAI Browser+): preferred weight, activation / negative text, description/notes, `modelId`. |
+| Previews | Only real sibling preview files (`*.preview.*` preferred, else bare image next to the model). **Never** SD-generated thumbnails for LoRA cards. |
+| Sidebar | **🧬 LoRA** special view (shown when at least one LoRA was scanned). LoRAs are excluded from the CSV source dropdown and from normal category lists. |
+| Titles | Optional **🌐** toolbar action fetches CivitAI model names via `GET https://civitai.com/api/v1/models/{id}` (manual only; sequential + throttled; retries HTTP 429). Successful titles become `display_name` on cards/hover. |
+| Read-only | UI hides mutate actions; `save_style_to_csv` / `delete_style_from_csv` raise if `source_file` is the LoRA marker. |
+| Rescan | `POST /style_grid/lora/rescan` invalidates the LoRA scan cache (see `docs/API.md`). |
 
 ---
 
@@ -231,7 +256,14 @@ Generated files are stored in `data/`:
 | `data/usage.json` | Usage counters |
 | `data/category_order.json` | Persisted category order |
 | `data/backups/` | CSV backups |
-| `data/thumbnails/` | Thumbnail image cache |
+| `data/thumbnails/` | Thumbnail image cache (CSV styles) |
+| `data/lora_titles.json` | Cached CivitAI LoRA titles (by `modelId`) |
+
+Optional local config (not committed):
+
+| File | Purpose |
+|---|---|
+| `config/lora_roots.json` | Extra LoRA scan roots / optional `max_depth` (see `.example`) |
 
 Local UI state is also stored in browser localStorage (active source, favorites, recent, compact/collapse preferences).
 
@@ -265,7 +297,9 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | Styles missing | CSV location/encoding/header correctness. |
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
-| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. If a name exists in several CSVs, generation must target the intended row (body `source` on `POST /style_grid/thumbnail/generate`); `GET /style_grid/thumbnail` resolves from the cached style list when the legacy file is missing. |
+| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. If a name exists in several CSVs, generation must target the intended row (body `source` on `POST /style_grid/thumbnail/generate`); `GET /style_grid/thumbnail` resolves from the cached style list when the legacy file is missing. LoRA cards only show sibling preview files on disk. |
+| **🧬 LoRA** missing in sidebar | No scanned models yet — check Forge LoRA folder / `config/lora_roots.json`, then reload styles or `POST /style_grid/lora/rescan`. |
+| LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
 | CSV table editor grayed out / toast “temporarily unavailable” | Expected: the feature is **disabled** by design. Edit styles per row via the **style editor** or CSV on disk; see `docs/DEVELOPMENT.md` to restore the table editor from the commented source. |
 
 ---

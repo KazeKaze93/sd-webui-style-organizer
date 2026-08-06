@@ -76,8 +76,11 @@ Note: `{CATEGORY_NAME}` (without `sg:`) is not handled by this resolver.
 
 ## Thumbnail cache vs. `source_file`
 
-Preview images are stored under `data/thumbnails/` with filenames derived from the style **`name`** and the CSV **`source_file`** (see `stylegrid/thumbnails.py`). `GET /style_grid/thumbnail` serves the legacy name-only file when it exists; otherwise it searches cached rows with that `name` and tries source-aware paths in reverse cache order (see `docs/API.md`). To **generate** a preview for a specific row when names overlap, `POST /style_grid/thumbnail/generate` accepts optional **`source`** in the JSON body matching that row’s `source` / `source_file`.
+Preview images for **CSV styles** are stored under `data/thumbnails/` with filenames derived from the style **`name`** and the CSV **`source_file`** (see `stylegrid/thumbnails.py`). `GET /style_grid/thumbnail` serves the legacy name-only file when it exists; otherwise it searches cached rows with that `name` and tries source-aware paths in reverse cache order (see `docs/API.md`). To **generate** a preview for a specific row when names overlap, `POST /style_grid/thumbnail/generate` accepts optional **`source`** in the JSON body matching that row’s `source` / `source_file`.
 
+### LoRA styles (not CSV)
+
+LoRAs are **not** stored in style CSVs. `stylegrid/lora_scan.py` builds synthetic rows with `source_file` / source marker `__style_grid_lora__`. Sibling `<stem>.json` metadata (preferred weight, activation / negative text, description/notes, `modelId`) feeds the prompt and optional CivitAI title cache. `categorize_styles` only fills `display_name` when it is **absent**, so a pre-set CivitAI title is kept. `save_style_to_csv` / `delete_style_from_csv` raise `ValueError` if `source_file == "__style_grid_lora__"`. See README **LoRA support** and `docs/API.md` § LoRA.
 ### Compatibility with other wildcard extensions
 
 - Extensions such as **stable-diffusion-webui-wildcards** or **Dynamic Prompts** usually recognize **`__name__`** (or other grammar), not `{sg:…}`.

@@ -31,9 +31,14 @@ from stylegrid.config import DATA_DIR
 TITLES_CACHE_FILE = os.path.join(DATA_DIR, "lora_titles.json")
 API_BASE = "https://civitai.com/api/v1/models/"
 REQUEST_TIMEOUT = 10
-MAX_WORKERS = 4
+MAX_WORKERS = 1  # sequential: CivitAI's edge 429s hard under any concurrency
+MIN_REQUEST_INTERVAL = 1.5  # seconds between requests, enforced regardless of worker count
+MAX_429_RETRIES = 4
+FALLBACK_BACKOFF = (2, 4, 8, 16)  # seconds, used when the server sends no Retry-After
 
 _lock = threading.Lock()
+_rate_lock = threading.Lock()
+_last_request_at = 0.0
 _cache = None  # lazy: {str(model_id): {"name": str, "fetched_at": float} | {"error": str, "fetched_at": float}}
 
 
@@ -82,6 +87,18 @@ def _api_key():
         return ""
 
 
+def _throttle():
+    """Enforce MIN_REQUEST_INTERVAL between consecutive outbound requests,
+    regardless of how many worker threads call this concurrently.
+    """
+    global _last_request_at
+    with _rate_lock:
+        wait = MIN_REQUEST_INTERVAL - (time.time() - _last_request_at)
+        if wait > 0:
+            time.sleep(wait)
+        _last_request_at = time.time()
+
+
 def _fetch_one(model_id):
     """GET the model's title from CivitAI's public API.
     Returns (name, None) on success or (None, error_message) on failure.
@@ -90,6 +107,11 @@ def _fetch_one(model_id):
     for urllib's default "Python-urllib/x.y" User-Agent, treating it as a
     bot. Mirrors the header set CivitAI Browser+ itself sends (which does
     not get blocked) rather than urllib's defaults.
+
+    Retries on HTTP 429 (rate limit), honoring Retry-After when present and
+    falling back to fixed backoff steps otherwise. Any other error is not
+    retried here — it's recorded and will be retried on the next manual run
+    (see TitleFetchManager._run's pending filter).
     """
     req = urllib.request.Request(API_BASE + str(model_id))
     req.add_header(
@@ -101,15 +123,30 @@ def _fetch_one(model_id):
     key = _api_key()
     if key:
         req.add_header("Authorization", f"Bearer {key}")
-    try:
-        with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        name = data.get("name") if isinstance(data, dict) else None
-        return (name, None) if name else (None, "no name in response")
-    except urllib.error.HTTPError as e:
-        return None, f"HTTP {e.code}"
-    except Exception as e:
-        return None, str(e)
+
+    attempt = 0
+    while True:
+        _throttle()
+        try:
+            with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            name = data.get("name") if isinstance(data, dict) else None
+            return (name, None) if name else (None, "no name in response")
+        except urllib.error.HTTPError as e:
+            if e.code == 429 and attempt < MAX_429_RETRIES:
+                retry_after = e.headers.get("Retry-After") if e.headers else None
+                try:
+                    delay = float(retry_after) if retry_after else FALLBACK_BACKOFF[
+                        min(attempt, len(FALLBACK_BACKOFF) - 1)
+                    ]
+                except ValueError:
+                    delay = FALLBACK_BACKOFF[min(attempt, len(FALLBACK_BACKOFF) - 1)]
+                time.sleep(min(delay, 30))
+                attempt += 1
+                continue
+            return None, f"HTTP {e.code}"
+        except Exception as e:
+            return None, str(e)
 
 
 class TitleFetchManager:

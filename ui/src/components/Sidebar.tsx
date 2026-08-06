@@ -3,13 +3,13 @@ import { motion } from 'framer-motion'
 import { Reorder } from 'framer-motion'
 import { BookMarked } from 'lucide-react'
 import { onHostMessage, sendToHost } from '../bridge'
-import { getCategoryColor, useStylesStore } from '../store/stylesStore'
+import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 
 export function Sidebar() {
   const {
     activeCategory, setCategory, categories, favorites, recentNames,
-    setCategoryOrder, presets,
+    setCategoryOrder, presets, styles,
   } = useStylesStore(
     useShallow(s => ({
       activeCategory: s.activeCategory,
@@ -19,6 +19,7 @@ export function Sidebar() {
       recentNames: s.recentNames,
       setCategoryOrder: s.setCategoryOrder,
       presets: s.presets,
+      styles: s.styles,
     }))
   )
   const [catMenu, setCatMenu] = useState<{
@@ -27,9 +28,11 @@ export function Sidebar() {
     cat: string
   } | null>(null)
   const cats = categories()
+  const loraCount = styles.reduce((n, s) => s.source_file === LORA_SOURCE ? n + 1 : n, 0)
   const specialCategories = [
     { id: '★ Favorites', label: '★ Favorites', count: favorites.size },
     { id: '🕑 Recent', label: '🕑 Recent', count: recentNames.length },
+    { id: LORA_VIEW, label: LORA_VIEW, count: loraCount },
   ]
 
   useEffect(() => {
@@ -44,9 +47,10 @@ export function Sidebar() {
 
   const count = (cat: string | null) => {
     const { styles, activeSource } = useStylesStore.getState()
-    const src = activeSource
+    const src = (activeSource
       ? styles.filter(s => s.source_file === activeSource)
       : styles
+    ).filter(s => s.source_file !== LORA_SOURCE)
     return cat
       ? src.filter(s => s.category === cat).length
       : src.length

@@ -1,0 +1,8 @@
+{
+  "_comment": "Copy this file to config/lora_roots.json to add or override LoRA scan directories. Auto-detected default (models/Lora) is always included in addition to these. Paths are scanned fully recursively unless max_depth is set.",
+  "roots": [
+    "D:/stable-diffusion-webui-forge/models/Lora",
+    "E:/SD/SharedLoraLibrary"
+  ],
+  "max_depth": null
+}

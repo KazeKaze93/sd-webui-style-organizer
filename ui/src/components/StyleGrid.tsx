@@ -4,6 +4,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, type Style } from '../bridge'
 import {
   getCategoryColor,
+  LORA_SOURCE,
+  LORA_VIEW,
   selectFilteredStyles,
   styleRowKey,
   useStylesStore,
@@ -104,7 +106,8 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   // If specific category selected - flat grid, no headers
   if (activeCategory &&
       activeCategory !== '★ Favorites' &&
-      activeCategory !== '🕑 Recent') {
+      activeCategory !== '🕑 Recent' &&
+      activeCategory !== LORA_VIEW) {
     return (
       <div className={`grid content-start ${
         compactMode
@@ -154,7 +157,8 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               onContextMenu={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                const missing = catStyles.filter(s =>
+                const isLoraGroup = catStyles[0]?.source_file === LORA_SOURCE
+                const missing = isLoraGroup ? 0 : catStyles.filter(s =>
                   !localStorage.getItem(`sg_thumb_v_${s.name}`)
                 ).length
                 setCatMenu({ x: e.clientX, y: e.clientY, cat, missingCount: missing })

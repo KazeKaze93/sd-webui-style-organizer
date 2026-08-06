@@ -5,6 +5,7 @@ import os
 
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import EXT_DIR, get_all_styles_file_paths
+from stylegrid.lora_scan import LORA_SOURCE
 from modules import shared
 
 # Canonical CSV column order used when writing style rows back to disk.
@@ -107,7 +108,8 @@ def categorize_styles(styles):
                 cat = "OTHER"
             display = name.replace("_", " ")
         s["category"] = cat
-        s["display_name"] = display
+        if not s.get("display_name"):
+            s["display_name"] = display
         s["has_placeholder"] = "{prompt}" in (s.get("prompt") or "") or "{prompt}" in (s.get("negative_prompt") or "")
         if cat not in categories:
             categories[cat] = []
@@ -121,6 +123,8 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
     """
     Upsert a style row in target CSV: replace the first matching name row, or append new row.
     """
+    if source_file == LORA_SOURCE:
+        raise ValueError("LoRA-sourced styles are read-only and cannot be edited or saved.")
     if source_file:
         source_file = os.path.basename(source_file)
         if not source_file.lower().endswith('.csv'):
@@ -179,6 +183,8 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
 
 def delete_style_from_csv(name, source_file=None):
     """Delete style row by name from selected/inferred source; returns False when not found."""
+    if source_file == LORA_SOURCE:
+        raise ValueError("LoRA-sourced styles are read-only and cannot be deleted.")
     if not source_file:
         for s in load_all_styles():
             if s["name"] == name:

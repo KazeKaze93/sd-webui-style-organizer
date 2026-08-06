@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { onHostMessage, sendToHost } from './bridge'
-import { useStylesStore } from './store/stylesStore'
+import { LORA_VIEW, useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
@@ -64,6 +64,9 @@ const ToolBtn = ({
 
 export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [loraFetchStatus, setLoraFetchStatus] = useState<{
+    status: string; done: number; total: number; errors: number
+  } | null>(null)
   const {
     setStyles,
     tab,
@@ -77,7 +80,50 @@ export default function App() {
     collapsedCategories,
     collapseAll,
     expandAll,
+    activeCategory,
+    showToast,
   } = useStylesStore()
+
+  const fetchLoraTitles = async () => {
+    try {
+      const res = await fetch('/style_grid/lora/fetch_titles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (data.error) {
+        showToast(`⚠️ ${data.error}`, 'error')
+        return
+      }
+      showToast('🌐 Fetching titles from CivitAI…', 'info')
+      setLoraFetchStatus({ status: 'running', done: 0, total: data.total_candidates || 0, errors: 0 })
+    } catch {
+      showToast('⚠️ Could not start title fetch', 'error')
+    }
+  }
+
+  useEffect(() => {
+    if (loraFetchStatus?.status !== 'running') return
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/style_grid/lora/fetch_titles/status')
+        const data = await res.json()
+        setLoraFetchStatus(data)
+        if (data.status !== 'running') {
+          showToast(
+            data.errors > 0
+              ? `🌐 Titles: ${data.done - data.errors}/${data.total} ok, ${data.errors} failed. Reopen the panel to see updates.`
+              : `🌐 Titles fetched: ${data.done}/${data.total}. Reopen the panel to see updates.`,
+            data.errors > 0 ? 'info' : 'success'
+          )
+        }
+      } catch {
+        // transient poll failure — next tick will retry
+      }
+    }, 1500)
+    return () => clearInterval(interval)
+  }, [loraFetchStatus?.status])
 
   useEffect(() => {
     useStylesStore.getState().loadUsage()
@@ -260,6 +306,18 @@ export default function App() {
                 }
               }}
             />
+            {activeCategory === LORA_VIEW && (
+              <ToolBtn
+                icon="🌐"
+                label={
+                  loraFetchStatus?.status === 'running'
+                    ? `Fetching titles from CivitAI… ${loraFetchStatus.done}/${loraFetchStatus.total}`
+                    : 'Fetch LoRA titles from CivitAI\n(reads modelId already in each LoRA\'s local .json; nothing sent to CivitAI beyond the request itself)'
+                }
+                disabled={loraFetchStatus?.status === 'running'}
+                onClick={fetchLoraTitles}
+              />
+            )}
             <span className="text-xs text-sg-muted">
               {selectedStyles.length > 0 && `${selectedStyles.length} selected`}
             </span>

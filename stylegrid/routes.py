@@ -48,10 +48,12 @@ from stylegrid.thumbnails import (
 from stylegrid.lora_scan import (
     LORA_SOURCE,
     get_cached_lora_styles,
+    get_lora_model_ids,
     get_lora_preview_path,
     invalidate_lora_cache,
     lora_scan_status,
 )
+from stylegrid.lora_titles import title_fetch_manager
 
 
 def detect_conflicts(style_names):
@@ -422,6 +424,21 @@ def _register_lora_routes(app):
     async def api_lora_status():
         get_cached_lora_styles()
         return lora_scan_status()
+
+    @app.post("/style_grid/lora/fetch_titles")
+    async def api_lora_fetch_titles(data: dict = None):
+        force = bool((data or {}).get("force"))
+        model_ids = list(get_lora_model_ids().values())
+        if not model_ids:
+            return {"error": "No LoRAs with a modelId found (metadata missing or LoRA folder not scanned yet)"}
+        if not title_fetch_manager.try_begin():
+            return {"error": "already running"}
+        title_fetch_manager.spawn(model_ids, force=force)
+        return {"ok": True, "total_candidates": len(set(model_ids))}
+
+    @app.get("/style_grid/lora/fetch_titles/status")
+    async def api_lora_fetch_titles_status():
+        return title_fetch_manager.get_status()
 
 
 def _get_ui_html() -> str:

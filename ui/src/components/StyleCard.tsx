@@ -35,9 +35,9 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false, pres
   const maxSourceLabelLen = sourceLabels.reduce((max, label) => Math.max(max, label.length), 0)
   const pickerWidthCh = Math.min(48, Math.max(18, maxSourceLabelLen + 4))
 
-  const displayName = style.name.includes('_')
+  const displayName = style.display_name || (style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
-    : style.name
+    : style.name)
 
   const borderColor = getCategoryColor(style.category || 'OTHER')
 

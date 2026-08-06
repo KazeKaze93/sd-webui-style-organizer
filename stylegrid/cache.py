@@ -41,7 +41,11 @@ def check_files_changed():
 
 
 def get_cached_styles():
-    """Return cached parsed styles; reload when check_files_changed detects file updates."""
+    """Return cached parsed CSV styles plus scanned LoRA styles (see
+    stylegrid.lora_scan); reload CSVs when check_files_changed detects file
+    updates. LoRA entries have their own independent cache/invalidation and
+    are appended fresh on every call (cheap: no CSV re-parse involved).
+    """
     global _styles_cache
 
     if check_files_changed() or _styles_cache["data"] is None:
@@ -49,7 +53,10 @@ def get_cached_styles():
 
         _styles_cache["data"] = load_all_styles()
         _styles_cache["hashes"] = dict(_file_hashes)
-    return _styles_cache["data"]
+
+    from stylegrid.lora_scan import get_cached_lora_styles
+
+    return _styles_cache["data"] + get_cached_lora_styles()
 
 
 def invalidate_styles_cache():

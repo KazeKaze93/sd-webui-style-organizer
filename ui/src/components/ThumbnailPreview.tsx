@@ -57,9 +57,9 @@ export function ThumbnailPreview({ style, children, presetName }: Props) {
     }, 100)
   }
 
-  const displayName = style.name.includes('_')
+  const displayName = style.display_name || (style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
-    : style.name
+    : style.name)
 
   useEffect(() => {
     const unsub = onHostMessage((msg) => {

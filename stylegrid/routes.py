@@ -45,6 +45,15 @@ from stylegrid.thumbnails import (
     list_thumbnails,
     thumbnail_generation_manager,
 )
+from stylegrid.lora_scan import (
+    LORA_SOURCE,
+    get_cached_lora_styles,
+    get_lora_model_ids,
+    get_lora_preview_path,
+    invalidate_lora_cache,
+    lora_scan_status,
+)
+from stylegrid.lora_titles import title_fetch_manager
 
 
 def detect_conflicts(style_names):
@@ -93,7 +102,11 @@ def _register_style_routes(app):
     async def get_styles(request: Request):
         styles = get_cached_styles()
         categories = categorize_styles(styles)
-        etag = hashlib.md5(json.dumps(styles_cache_hashes(), sort_keys=True).encode()).hexdigest()
+        etag_input = {
+            "csv": styles_cache_hashes(),
+            "lora": lora_scan_status(),
+        }
+        etag = hashlib.md5(json.dumps(etag_input, sort_keys=True, default=str).encode()).hexdigest()
         if_none_match = request.headers.get("If-None-Match", "").strip().strip('"')
         if if_none_match and if_none_match == etag:
             return Response(status_code=304)
@@ -265,7 +278,21 @@ def _register_thumbnail_routes(app):
         return {"has_thumbnail": list(list_thumbnails())}
 
     @app.get("/style_grid/thumbnail")
-    async def api_get_thumbnail(name: str = ""):
+    async def api_get_thumbnail(name: str = "", source: str = ""):
+        # LoRA cards: serve the literal preview file found next to the model
+        # (if any) — never the generated-thumbnail pipeline below.
+        if source == LORA_SOURCE or name.startswith("LORA_"):
+            lora_preview = get_lora_preview_path(name)
+            if lora_preview and os.path.isfile(lora_preview):
+                ext = os.path.splitext(lora_preview)[1].lower().lstrip(".")
+                media_type = "image/jpeg" if ext in ("jpg", "jpeg") else f"image/{ext}"
+                return FileResponse(
+                    lora_preview,
+                    media_type=media_type,
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
+                )
+            return Response(status_code=404)
+
         path = get_thumbnail_path(name)
         if os.path.isfile(path):
             return FileResponse(
@@ -295,6 +322,8 @@ def _register_thumbnail_routes(app):
     async def api_upload_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
         image_data = data.get("image", "")
+        if data.get("source") == LORA_SOURCE or style_name.startswith("LORA_"):
+            return {"error": "LoRA thumbnails come from the model's own preview file and can't be replaced here."}
         if not style_name or not image_data:
             return {"error": "name and image required"}
         try:
@@ -331,6 +360,8 @@ def _register_thumbnail_routes(app):
     async def api_generate_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
         requested_source = data.get("source", "").strip()
+        if requested_source == LORA_SOURCE or style_name.startswith("LORA_"):
+            return {"error": "LoRA cards only show their own preview file; SD-generated previews are disabled for them."}
         if not style_name:
             return {"error": "name required"}
 
@@ -379,6 +410,37 @@ def _register_thumbnail_routes(app):
         return {"removed": removed}
 
 
+def _register_lora_routes(app):
+    """Register LoRA directory rescan/status routes."""
+    @app.post("/style_grid/lora/rescan")
+    async def api_lora_rescan():
+        invalidate_lora_cache()
+        get_cached_lora_styles()
+        styles = get_cached_styles()
+        categories = categorize_styles(styles)
+        return {"categories": categories, "lora": lora_scan_status()}
+
+    @app.get("/style_grid/lora/status")
+    async def api_lora_status():
+        get_cached_lora_styles()
+        return lora_scan_status()
+
+    @app.post("/style_grid/lora/fetch_titles")
+    async def api_lora_fetch_titles(data: dict = None):
+        force = bool((data or {}).get("force"))
+        model_ids = list(get_lora_model_ids().values())
+        if not model_ids:
+            return {"error": "No LoRAs with a modelId found (metadata missing or LoRA folder not scanned yet)"}
+        if not title_fetch_manager.try_begin():
+            return {"error": "already running"}
+        title_fetch_manager.spawn(model_ids, force=force)
+        return {"ok": True, "total_candidates": len(set(model_ids))}
+
+    @app.get("/style_grid/lora/fetch_titles/status")
+    async def api_lora_fetch_titles_status():
+        return title_fetch_manager.get_status()
+
+
 def _get_ui_html() -> str:
     """
     Load built UI index.html and rewrite every relative asset URL (src/href="./...")
@@ -420,4 +482,5 @@ def register_api(demo, app):
     _register_usage_routes(app)
     _register_crud_routes(app)
     _register_thumbnail_routes(app)
+    _register_lora_routes(app)
     _register_ui_routes(app)

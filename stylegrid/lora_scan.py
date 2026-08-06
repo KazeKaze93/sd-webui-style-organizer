@@ -89,11 +89,12 @@ def _auto_detected_roots():
     for r in candidates:
         try:
             ap = os.path.normpath(os.path.abspath(r))
+            key = os.path.normcase(os.path.realpath(ap))
         except Exception:
             continue
-        if ap in seen:
+        if key in seen:
             continue
-        seen.add(ap)
+        seen.add(key)
         if os.path.isdir(ap):
             result.append(ap)
     return result
@@ -102,15 +103,24 @@ def _auto_detected_roots():
 def get_lora_roots():
     """Merged, de-duplicated, existing-only list of LoRA root directories,
     plus the configured max scan depth (None = unlimited).
+
+    Dedup is by realpath (not just abspath): a junction/symlink pointing at
+    the same physical folder as an already-collected root must be dropped,
+    or every LoRA under it gets scanned twice and shows up as two cards.
     """
     cfg = _load_roots_config()
     roots = _auto_detected_roots()
+    seen = {os.path.normcase(os.path.realpath(r)) for r in roots}
     for r in cfg["roots"]:
         try:
             ap = os.path.normpath(os.path.abspath(r))
+            key = os.path.normcase(os.path.realpath(ap))
         except Exception:
             continue
-        if os.path.isdir(ap) and ap not in roots:
+        if key in seen:
+            continue
+        if os.path.isdir(ap):
+            seen.add(key)
             roots.append(ap)
     return roots, cfg["max_depth"]
 

@@ -1,6 +1,15 @@
 import { create } from 'zustand'
 import { sendToHost, type Style, type Tab } from '../bridge'
 
+/** Matches the backend's LORA_SOURCE marker (stylegrid/lora_scan.py). LoRA
+ * cards use this as their synthetic source_file so they can be excluded
+ * from normal CSV source/category browsing and routed to their own
+ * sidebar view instead. */
+export const LORA_SOURCE = '__style_grid_lora__'
+
+/** Sidebar special-view id for the LoRA section, parallel to Favorites/Recent. */
+export const LORA_VIEW = '🧬 LoRA'
+
 interface Conflict {
   styleA: string
   styleB: string
@@ -223,9 +232,13 @@ export function selectFilteredStyles(
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
 
+  if (activeCategory === LORA_VIEW) {
+    return styles.filter(s => s.source_file === LORA_SOURCE && matchesSearch(s, search))
+  }
+
   let filtered = styles.filter(s => {
     const matchCat = !activeCategory || s.category === activeCategory
-    return bySource(s) && matchCat && matchesSearch(s, search)
+    return s.source_file !== LORA_SOURCE && bySource(s) && matchCat && matchesSearch(s, search)
   })
 
   if (!activeSource) {
@@ -262,7 +275,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
   setStyles: (styles, tab) => {
     const sources = [...new Set(
-      styles.map(s => s.source_file).filter(Boolean)
+      styles.filter(s => s.source_file !== LORA_SOURCE).map(s => s.source_file).filter(Boolean)
     )].sort()
 
     // Restore selection: exact match can fail when host path strings differ from LS (basename must match)
@@ -501,9 +514,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
   categories: () => {
     const { styles, activeSource, categoryOrder } = get()
-    const filtered = activeSource
+    const filtered = (activeSource
       ? styles.filter(s => s.source_file === activeSource)
       : styles
+    ).filter(s => s.source_file !== LORA_SOURCE)
     const all = [...new Set(
       filtered.map(s => s.category).filter(Boolean)
     )]

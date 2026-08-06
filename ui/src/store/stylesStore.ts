@@ -70,6 +70,24 @@ export function dedupeStylesByNameForAllSources(styles: Style[]): Style[] {
   })
 }
 
+function buildStyleSearchText(style: Style): string {
+  const spaced = style.name.replace(/_/g, ' ')
+  const displayName = style.name.includes('_')
+    ? style.name.split('_').slice(1).join(' ')
+    : style.name
+  return [style.name, spaced, displayName, style.description]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+export function matchesSearch(style: Style, rawQuery: string): boolean {
+  const query = rawQuery.trim().toLowerCase()
+  if (!query) return true
+  const haystack = buildStyleSearchText(style)
+  return query.split(/\s+/).filter(Boolean).every(token => haystack.includes(token))
+}
+
 /** Map persisted or UI source string to an entry in `sources` (exact match, else basename). */
 function resolveSourceInList(sources: string[], preferred: string | null): string | null {
   if (!preferred || sources.length === 0) return null
@@ -159,13 +177,14 @@ export function selectFilteredStyles(
   presets: Record<string, { styles: string[]; created: string }>,
 ): Style[] {
   if (activeCategory === '★ Favorites') {
-    return styles.filter(s => favorites.has(s.name))
+    return styles.filter(s => favorites.has(s.name) && matchesSearch(s, search))
   }
 
   if (activeCategory === '🕑 Recent') {
     return recentNames
       .map(name => styles.find(s => s.name === name))
-      .filter(Boolean) as Style[]
+      .filter(Boolean)
+      .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
 
   if (activeCategory === 'presets') {
@@ -181,15 +200,14 @@ export function selectFilteredStyles(
     }
     return order
       .map(name => styles.find(s => s.name === name))
-      .filter(Boolean) as Style[]
+      .filter(Boolean)
+      .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
 
   let filtered = styles.filter(s => {
     const matchSource = !activeSource || s.source_file === activeSource
     const matchCat = !activeCategory || s.category === activeCategory
-    const matchSearch = !search ||
-      s.name.toLowerCase().includes(search.toLowerCase())
-    return matchSource && matchCat && matchSearch
+    return matchSource && matchCat && matchesSearch(s, search)
   })
 
   if (!activeSource) {

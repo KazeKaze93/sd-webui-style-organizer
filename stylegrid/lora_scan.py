@@ -33,7 +33,7 @@ PREVIEW_EXTS = (".png", ".jpg", ".jpeg", ".webp")
 _ROOTS_CONFIG_PATH = os.path.join(EXT_DIR, "config", "lora_roots.json")
 
 _cache_lock = threading.Lock()
-_cache = {"styles": None, "previews": {}, "scanned_at": 0.0, "roots": []}
+_cache = {"styles": None, "previews": {}, "model_ids": {}, "scanned_at": 0.0, "roots": []}
 
 
 # ---------------------------------------------------------------------------
@@ -231,8 +231,15 @@ def _scan():
     for _, stem, _ in found:
         stem_counts[stem] = stem_counts.get(stem, 0) + 1
 
+    try:
+        from stylegrid.lora_titles import get_cached_title
+    except Exception:
+        def get_cached_title(_model_id):
+            return None
+
     styles = []
     previews = {}
+    model_ids = {}
     for path_no_ext, stem, rel_dir in found:
         meta = _read_user_metadata(path_no_ext)
         preview_path = _find_preview(path_no_ext)
@@ -251,6 +258,7 @@ def _scan():
         activation = (meta.get("activation text") or "").strip()
         negative_text = (meta.get("negative text") or "").strip()
         description = (meta.get("description") or meta.get("notes") or "").strip()
+        model_id = meta.get("modelId")
 
         prompt = f"<lora:{stem}:{weight_str}>"
         if activation:
@@ -258,7 +266,7 @@ def _scan():
 
         negative_prompt = f"({negative_text}:{weight_str})" if negative_text else ""
 
-        styles.append({
+        style = {
             "name": style_key,
             "prompt": prompt,
             "negative_prompt": negative_prompt,
@@ -267,19 +275,31 @@ def _scan():
             "source": LORA_SOURCE,
             "_source": LORA_SOURCE,
             "source_file": LORA_SOURCE,
-        })
+        }
+
+        if model_id:
+            model_ids[style_key] = model_id
+            title = get_cached_title(model_id)
+            if title:
+                # Pre-set display_name so categorize_styles() (which only
+                # fills it in when absent) shows the real CivitAI title
+                # instead of the derived-from-filename fallback.
+                style["display_name"] = title
+
+        styles.append(style)
         if preview_path:
             previews[style_key] = preview_path
 
-    return styles, previews, roots
+    return styles, previews, model_ids, roots
 
 
 def get_cached_lora_styles():
     with _cache_lock:
         if _cache["styles"] is None:
-            styles, previews, roots = _scan()
+            styles, previews, model_ids, roots = _scan()
             _cache["styles"] = styles
             _cache["previews"] = previews
+            _cache["model_ids"] = model_ids
             _cache["roots"] = roots
             _cache["scanned_at"] = time.time()
         return _cache["styles"]
@@ -295,10 +315,21 @@ def get_lora_preview_path(style_key):
         return _cache["previews"].get(style_key)
 
 
+def get_lora_model_ids():
+    """style_key -> CivitAI modelId, for every scanned LoRA that has one
+    (i.e. its local .json metadata includes it). Used by lora_titles to know
+    which models to fetch titles for.
+    """
+    get_cached_lora_styles()
+    with _cache_lock:
+        return dict(_cache["model_ids"])
+
+
 def invalidate_lora_cache():
     with _cache_lock:
         _cache["styles"] = None
         _cache["previews"] = {}
+        _cache["model_ids"] = {}
         _cache["roots"] = []
 
 

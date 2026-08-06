@@ -70,21 +70,36 @@ export function dedupeStylesByNameForAllSources(styles: Style[]): Style[] {
   })
 }
 
-function buildStyleSearchText(style: Style): string {
+const COMBOS_CONFLICTS_RE = /\b(?:Combos|Conflicts):\s*[^.]*\.?/gi
+
+function stripStyleReferences(description: string): string {
+  return description.replace(COMBOS_CONFLICTS_RE, '').trim()
+}
+
+function nameSearchText(style: Style): string {
   const spaced = style.name.replace(/_/g, ' ')
   const displayName = style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
     : style.name
-  return [style.name, spaced, displayName, style.description]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase()
+  return [style.name, spaced, displayName].join(' ').toLowerCase()
+}
+
+function buildStyleSearchText(style: Style): string {
+  const cleanDescription = stripStyleReferences(style.description || '')
+  return [nameSearchText(style), cleanDescription].filter(Boolean).join(' ').toLowerCase()
 }
 
 export function matchesSearch(style: Style, rawQuery: string): boolean {
   const query = rawQuery.trim().toLowerCase()
   if (!query) return true
   const haystack = buildStyleSearchText(style)
+  return query.split(/\s+/).filter(Boolean).every(token => haystack.includes(token))
+}
+
+export function matchesNameSearch(style: Style, rawQuery: string): boolean {
+  const query = rawQuery.trim().toLowerCase()
+  if (!query) return true
+  const haystack = nameSearchText(style)
   return query.split(/\s+/).filter(Boolean).every(token => haystack.includes(token))
 }
 

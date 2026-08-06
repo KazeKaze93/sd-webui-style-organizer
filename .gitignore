@@ -51,6 +51,9 @@ config.local.*
 styles/*
 !styles/.gitkeep
 
+# Extension: user-specific LoRA scan root overrides (see config/lora_roots.json.example)
+config/lora_roots.json
+
 # Extension: user data and thumbnails (generated/local)
 data/*
 thumbnails/*

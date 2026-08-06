@@ -17,6 +17,8 @@ Images in this folder are referenced from the root **`README.md`**. After UI cha
 | 7 | `search-autocomplete.png` | Search with autocomplete dropdown open. |
 | 8 | `thumbnail-hover-preview.png` | Hover popup with thumb + prompt snippet (duplicate names across CSVs rely on server thumbnail resolution + optional `source` on generate). |
 | 9 | `fullscreen-mode.png` | Fullscreen toggle result — edge‑to‑edge panel. |
+| 10 | `lora-view.png` | **🧬 LoRA** selected in the sidebar; grid grouped by LoRA sub-folder with `display_name` titles (and 🌐 in the top bar when in this view). |
+| 11 | `lora-fetch-titles.png` | Hover tooltip on the **🌐** “Fetch LoRA titles from CivitAI” toolbar button (LoRA view only). |
 
 **Usually still valid** (no stars on tiles): `style-card-context-menu.png`, `category-context-wildcard-previews*.png`, `top-bar-icons.png` — re-shoot only if those UIs change.
 

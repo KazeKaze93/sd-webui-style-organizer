@@ -191,13 +191,17 @@ export function selectFilteredStyles(
   recentNames: string[],
   presets: Record<string, { styles: string[]; created: string }>,
 ): Style[] {
+  const bySource = (s: Style) => !activeSource || s.source_file === activeSource
+
   if (activeCategory === '★ Favorites') {
-    return styles.filter(s => favorites.has(s.name) && matchesSearch(s, search))
+    let favStyles = styles.filter(s => favorites.has(s.name) && bySource(s) && matchesSearch(s, search))
+    if (!activeSource) favStyles = dedupeStylesByNameForAllSources(favStyles)
+    return favStyles
   }
 
   if (activeCategory === '🕑 Recent') {
     return recentNames
-      .map(name => styles.find(s => s.name === name))
+      .map(name => styles.find(s => s.name === name && bySource(s)))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
@@ -214,15 +218,14 @@ export function selectFilteredStyles(
       }
     }
     return order
-      .map(name => styles.find(s => s.name === name))
+      .map(name => styles.find(s => s.name === name && bySource(s)))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
 
   let filtered = styles.filter(s => {
-    const matchSource = !activeSource || s.source_file === activeSource
     const matchCat = !activeCategory || s.category === activeCategory
-    return matchSource && matchCat && matchesSearch(s, search)
+    return bySource(s) && matchCat && matchesSearch(s, search)
   })
 
   if (!activeSource) {

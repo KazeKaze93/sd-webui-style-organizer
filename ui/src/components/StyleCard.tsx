@@ -2,7 +2,7 @@ import { memo, useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
 import type { Style } from '../bridge'
-import { getCategoryColor, useStylesStore } from '../store/stylesStore'
+import { getCategoryColor, LORA_SOURCE, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { ThumbnailPreview } from './ThumbnailPreview'
 
@@ -23,6 +23,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false, pres
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
   const isSelected = !presetName && selectedStyles.some(s => s.name === style.name)
+  const isLora = style.source_file === LORA_SOURCE
   const fav = isFavorite(style.name)
   const usageCount = usageCounts[style.name] || 0
   const duplicates = styles.filter(s => s.name === style.name)
@@ -159,44 +160,56 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false, pres
             >
               📋 Copy prompt
             </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { sendToHost({ type: 'SG_EDIT_STYLE', styleId: style.name }); setMenuPos(null) }}
-            >
-              ✏️ Edit
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { sendToHost({ type: 'SG_DUPLICATE_STYLE', styleId: style.name }); setMenuPos(null) }}
-            >
-              📄 Duplicate
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { sendToHost({ type: 'SG_MOVE_TO_CATEGORY', styleId: style.name }); setMenuPos(null) }}
-            >
-              📂 Move to category...
-            </button>
-            <div className="h-px my-1 bg-sg-border" />
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name }); setMenuPos(null) }}
-            >
-              🎨 Generate preview (SD)
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name }); setMenuPos(null) }}
-            >
-              🖼️ Upload preview image
-            </button>
-            <div className="h-px my-1 bg-sg-border" />
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
-              onClick={() => { sendToHost({ type: 'SG_DELETE_STYLE', styleId: style.name }); setMenuPos(null) }}
-            >
-              🗑️ Delete
-            </button>
+            {!isLora && (
+              <>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => { sendToHost({ type: 'SG_EDIT_STYLE', styleId: style.name }); setMenuPos(null) }}
+                >
+                  ✏️ Edit
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => { sendToHost({ type: 'SG_DUPLICATE_STYLE', styleId: style.name }); setMenuPos(null) }}
+                >
+                  📄 Duplicate
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => { sendToHost({ type: 'SG_MOVE_TO_CATEGORY', styleId: style.name }); setMenuPos(null) }}
+                >
+                  📂 Move to category...
+                </button>
+              </>
+            )}
+            {!isLora && (
+              <>
+                <div className="h-px my-1 bg-sg-border" />
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => { sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name }); setMenuPos(null) }}
+                >
+                  🎨 Generate preview (SD)
+                </button>
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => { sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name }); setMenuPos(null) }}
+                >
+                  🖼️ Upload preview image
+                </button>
+              </>
+            )}
+            {!isLora && (
+              <>
+                <div className="h-px my-1 bg-sg-border" />
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                  onClick={() => { sendToHost({ type: 'SG_DELETE_STYLE', styleId: style.name }); setMenuPos(null) }}
+                >
+                  🗑️ Delete
+                </button>
+              </>
+            )}
           </div>
           <div
             className="fixed inset-0 z-[9998]"

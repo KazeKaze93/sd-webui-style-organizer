@@ -482,24 +482,33 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     })), 3000)
   },
   detectConflicts: () => {
-    // Conflict heuristic: compare normalized prompt tags against each
-    // other style's negative tags; any overlap is treated as a conflict.
+    // Exact-set match (same as routes.py detect_conflicts / V1 checkConflictsLocal):
+    // comma-split → trim → lower → Set membership; skip empty and "{prompt}".
     const { selectedStyles } = get()
     const conflicts: Conflict[] = []
 
-    for (let i = 0; i < selectedStyles.length; i++) {
-      for (let j = i + 1; j < selectedStyles.length; j++) {
-        const a = selectedStyles[i]
-        const b = selectedStyles[j]
+    const tokenize = (text: string): Set<string> => {
+      const out = new Set<string>()
+      for (const raw of (text || '').split(',')) {
+        const t = raw.trim().toLowerCase()
+        if (t && t !== '{prompt}') out.add(t)
+      }
+      return out
+    }
 
-        // Check if style A's negative prompt contains tags from B's prompt
-        const aTags = a.prompt.toLowerCase().split(',').map(t => t.trim())
-        const bTags = b.prompt.toLowerCase().split(',').map(t => t.trim())
-        const aNeg = (a.negative_prompt || '').toLowerCase().split(',').map(t => t.trim())
-        const bNeg = (b.negative_prompt || '').toLowerCase().split(',').map(t => t.trim())
+    const tokenMap = selectedStyles.map((s) => ({
+      name: s.name,
+      pos: tokenize(s.prompt || ''),
+      neg: tokenize(s.negative_prompt || ''),
+    }))
 
-        const aKillsB = bTags.some(tag => tag && aNeg.some(n => n && n.includes(tag)))
-        const bKillsA = aTags.some(tag => tag && bNeg.some(n => n && n.includes(tag)))
+    for (let i = 0; i < tokenMap.length; i++) {
+      for (let j = i + 1; j < tokenMap.length; j++) {
+        const a = tokenMap[i]
+        const b = tokenMap[j]
+
+        const aKillsB = [...b.pos].some((tag) => a.neg.has(tag))
+        const bKillsA = [...a.pos].some((tag) => b.neg.has(tag))
 
         if (aKillsB) conflicts.push({
           styleA: a.name, styleB: b.name,

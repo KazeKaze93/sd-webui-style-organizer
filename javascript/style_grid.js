@@ -4452,6 +4452,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 if (syncBtn) {
                     syncBtn.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
                 }
+                setStoredSource(tab, state[tab].selectedSource || "All");
                 syncSourceInput(tab);
             }
             if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {

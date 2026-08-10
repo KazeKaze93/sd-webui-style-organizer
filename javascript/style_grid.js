@@ -847,7 +847,7 @@
     }
 
    // THUMBNAILS (batch / generate / upload — context menu entry points below)
-   var _batchState = { running: false, cancelled: false, skipped: false };
+   var _batchState = { running: false, cancelled: false, skipped: false, jobId: null };
 
    function startBatchThumbnails(tabName, catName, styles) {
        if (_batchState.running) {
@@ -863,7 +863,7 @@
            return;
        }
 
-       _batchState = { running: true, cancelled: false, skipped: false };
+       _batchState = { running: true, cancelled: false, skipped: false, jobId: null };
        var total = queue.length;
        var done = 0;
        var failed = 0;
@@ -884,11 +884,33 @@
        var progressFill = el("div", { className: "sg-batch-bar-fill" });
        progressBar.appendChild(progressFill);
 
+       function cancelCurrentJobThen(next) {
+           var jobId = _batchState.jobId;
+           _batchState.jobId = null;
+           if (!jobId) {
+               next();
+               return;
+           }
+           var settled = false;
+           function finish() {
+               if (settled) return;
+               settled = true;
+               next();
+           }
+           apiPost("/style_grid/thumbnail/cancel", { job_id: jobId })
+               .then(finish)
+               .catch(finish);
+           setTimeout(finish, 2000);
+       }
+
        var btnRow = el("div", { className: "sg-editor-btns" });
        var skipBtn = el("button", {
            className: "sg-btn sg-btn-secondary",
            textContent: "⏭ Skip",
-           onClick: function () { _batchState.skipped = true; }
+           onClick: function () {
+               _batchState.skipped = true;
+               cancelCurrentJobThen(function () {});
+           }
        });
        var cancelBtn = el("button", {
            className: "sg-btn",
@@ -898,6 +920,7 @@
                _batchState.cancelled = true;
                cancelBtn.textContent = "Cancelling...";
                cancelBtn.disabled = true;
+               cancelCurrentJobThen(function () {});
            }
        });
        btnRow.appendChild(skipBtn);
@@ -923,6 +946,7 @@
            if (_batchState.cancelled || index >= queue.length) {
                // Finished
                _batchState.running = false;
+               _batchState.jobId = null;
                overlay.remove();
                var msg = "Done: " + done + "/" + total + " generated";
                if (failed > 0) msg += ", " + failed + " failed";
@@ -939,18 +963,13 @@
 
            apiPost("/style_grid/thumbnail/generate", { name: styleName, source: styleSourceFile })
                .then(function (r) {
-                   if (r.error) {
-                       if (r.error.indexOf("busy") !== -1) {
-                           // SD busy — wait and retry same index
-                           updateProgress(index + 1, styleName, "SD busy, waiting...");
-                           setTimeout(function () { processNext(index); }, 5000);
-                           return;
-                       }
+                   if (r.error || !r.job_id) {
                        failed++;
                        processNext(index + 1);
                        return;
                    }
-                   pollBatchStatus(tabName, styleName, styleSourceFile, index, 0);
+                   _batchState.jobId = r.job_id;
+                   pollBatchStatus(tabName, styleName, styleSourceFile, index, 0, r.job_id);
                })
                .catch(function () {
                    failed++;
@@ -958,34 +977,41 @@
                });
        }
 
-       function pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts) {
+       function pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts, jobId) {
            if (_batchState.cancelled) {
-               _batchState.running = false;
-               overlay.remove();
-               showStatusMessage(tabName2, "Cancelled. " + done + "/" + total + " completed.");
-               loadThumbnailList(tabName2);
+               cancelCurrentJobThen(function () {
+                   _batchState.running = false;
+                   overlay.remove();
+                   showStatusMessage(tabName2, "Cancelled. " + done + "/" + total + " completed.");
+                   loadThumbnailList(tabName2);
+               });
                return;
            }
            if (_batchState.skipped) {
-               skipped++;
-               processNext(index + 1);
+               cancelCurrentJobThen(function () {
+                   skipped++;
+                   processNext(index + 1);
+               });
                return;
            }
            if (attempts > 60) {
+               _batchState.jobId = null;
                failed++;
                processNext(index + 1);
                return;
            }
 
-           apiGet("/style_grid/thumbnail/gen_status?name=" +
-               encodeURIComponent(styleName))
+           apiGet("/style_grid/thumbnail/gen_status?job_id=" +
+               encodeURIComponent(jobId))
                .then(function (r) {
                    if (!r || r.detail === "Not Found" || r.status === undefined) {
+                       _batchState.jobId = null;
                        failed++;
                        processNext(index + 1);
                        return;
                    }
                    if (r.status === "done") {
+                       _batchState.jobId = null;
                        done++;
                        state[tabName2].hasThumbnail.add(thumbIdentityKey(styleName, styleSourceFile));
                        _thumbVersions[styleName] = Date.now();
@@ -1001,16 +1027,26 @@
                            });
                        updateProgress(index + 1, styleName, "✓");
                        setTimeout(function () { processNext(index + 1); }, 300);
-                   } else if (r.status === "error") {
+                   } else if (r.status === "error" || r.status === "cancelled") {
+                       _batchState.jobId = null;
+                       if (r.status === "cancelled") {
+                           skipped++;
+                       } else {
+                           failed++;
+                       }
+                       processNext(index + 1);
+                   } else if (r.status === "queued" || r.status === "running") {
+                       setTimeout(function () {
+                           pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts + 1, jobId);
+                       }, 2000);
+                   } else {
+                       _batchState.jobId = null;
                        failed++;
                        processNext(index + 1);
-                   } else {
-                       setTimeout(function () {
-                           pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts + 1);
-                       }, 2000);
                    }
                })
                .catch(function () {
+                   _batchState.jobId = null;
                    failed++;
                    processNext(index + 1);
                });
@@ -1029,14 +1065,14 @@
 
         apiPost("/style_grid/thumbnail/generate", { name: styleName, source: resolvedSource })
             .then(function (r) {
-                if (r.error) {
-                    showStatusMessage(tabName, "Generation failed: " + r.error, true);
+                if (r.error || !r.job_id) {
+                    showStatusMessage(tabName, "Generation failed: " + (r.error || "missing job_id"), true);
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
                     return;
                 }
-                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress, resolvedSource);
+                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress, resolvedSource, r.job_id);
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -1046,7 +1082,7 @@
             });
     }
 
-    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile) {
+    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile, jobId) {
         if (attempts > 60) {
             showStatusMessage(tabName, "Generation timed out", true);
             if (typeof onProgress === "function") {
@@ -1054,8 +1090,8 @@
             }
             return;
         }
-        apiGet("/style_grid/thumbnail/gen_status?name=" +
-            encodeURIComponent(styleName))
+        apiGet("/style_grid/thumbnail/gen_status?job_id=" +
+            encodeURIComponent(jobId))
             .then(function (r) {
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     showStatusMessage(tabName, "Generation endpoint not found", true);
@@ -1083,18 +1119,20 @@
                         onProgress("done", 100);
                     }
                     if (typeof onDone === "function") onDone(_thumbVersions[styleName]);
-                } else if (r.status === "error") {
+                } else if (r.status === "error" || r.status === "cancelled") {
                     showStatusMessage(tabName,
-                        "Generation failed: " + (r.message || "unknown"), true);
+                        r.status === "cancelled"
+                            ? "Generation cancelled"
+                            : ("Generation failed: " + (r.message || "unknown")), true);
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
-                } else if (r.status === "running" || r.status === "idle") {
+                } else if (r.status === "queued" || r.status === "running") {
                     if (typeof onProgress === "function") {
                         onProgress("generating", Math.min(90, Math.round((attempts / 60) * 100)));
                     }
                     setTimeout(function () {
-                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress, sourceFile);
+                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress, sourceFile, jobId);
                     }, 2000);
                 } else {
                     showStatusMessage(tabName, "Unknown generation status: " + r.status, true);

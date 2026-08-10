@@ -69,6 +69,42 @@ export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
   return `${s.source_file}\0${s.name}`
 }
 
+type StyleIdentity = Pick<Style, 'name' | 'source_file'>
+
+/** Safe localStorage JSON array read — never throws on corrupt data. */
+function loadStringArrayFromLs(key: string): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || '[]')
+    if (!Array.isArray(raw)) return []
+    return raw.filter((x): x is string => typeof x === 'string')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Upgrade legacy bare-name favorites/recent entries to styleRowKey composites.
+ * Entries that already contain '\0' are left as-is. Unresolvable names are dropped.
+ */
+function migrateLegacyNameKeys(entries: string[], styles: Style[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    let key: string | null
+    if (entry.includes('\0')) {
+      key = entry
+    } else {
+      const match = styles.find((s) => s.name === entry)
+      key = match ? styleRowKey(match) : null
+    }
+    if (key && !seen.has(key)) {
+      seen.add(key)
+      out.push(key)
+    }
+  }
+  return out
+}
+
 /** First occurrence wins; use only when the active source is "All sources". */
 export function dedupeStylesByNameForAllSources(styles: Style[]): Style[] {
   const seen = new Set<string>()
@@ -150,9 +186,9 @@ interface StylesStore {
   collapsedCategories: Set<string>
   silentMode: boolean
   compactMode: boolean
-  /** Favorite style names persisted in localStorage. */
+  /** Favorite style row keys (styleRowKey) persisted in localStorage. */
   favorites: Set<string>
-  /** Most recently applied style names (max 10). */
+  /** Most recently applied style row keys (styleRowKey, max 10). */
   recentNames: string[]
   /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
@@ -182,9 +218,9 @@ interface StylesStore {
   loadUsage: () => Promise<void>
   incrementUsage: (name: string) => void
   setCategoryOrder: (order: string[]) => void
-  toggleFavorite: (name: string) => void
-  isFavorite: (name: string) => boolean
-  addToRecent: (name: string) => void
+  toggleFavorite: (style: StyleIdentity) => void
+  isFavorite: (style: StyleIdentity) => boolean
+  addToRecent: (style: StyleIdentity) => void
   fetchPresets: () => Promise<void>
   
   // Derived
@@ -203,14 +239,14 @@ export function selectFilteredStyles(
   const bySource = (s: Style) => !activeSource || s.source_file === activeSource
 
   if (activeCategory === '★ Favorites') {
-    let favStyles = styles.filter(s => favorites.has(s.name) && bySource(s) && matchesSearch(s, search))
-    if (!activeSource) favStyles = dedupeStylesByNameForAllSources(favStyles)
-    return favStyles
+    return styles.filter(
+      (s) => favorites.has(styleRowKey(s)) && bySource(s) && matchesSearch(s, search),
+    )
   }
 
   if (activeCategory === '🕑 Recent') {
     return recentNames
-      .map(name => styles.find(s => s.name === name && bySource(s)))
+      .map((key) => styles.find((s) => styleRowKey(s) === key && bySource(s)))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
@@ -265,12 +301,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   collapsedCategories: new Set(),
   silentMode: false,
   compactMode: false,
-  favorites: new Set(
-    JSON.parse(localStorage.getItem('sg_v2_favorites') || '[]')
-  ),
-  recentNames: JSON.parse(
-    localStorage.getItem('sg_v2_recent') || '[]'
-  ),
+  favorites: new Set(loadStringArrayFromLs('sg_v2_favorites')),
+  recentNames: loadStringArrayFromLs('sg_v2_recent'),
   presets: {},
 
   setStyles: (styles, tab) => {
@@ -285,7 +317,29 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       resolveSourceInList(sources, prevActive) ??
       resolveSourceInList(sources, lastSource)
 
-    set({ styles, tab, sources, activeSource })
+    const prevFavs = [...get().favorites]
+    const prevRecent = get().recentNames
+    const nextFavs = migrateLegacyNameKeys(prevFavs, styles)
+    const nextRecent = migrateLegacyNameKeys(prevRecent, styles)
+    const favsChanged =
+      nextFavs.length !== prevFavs.length || nextFavs.some((k, i) => k !== prevFavs[i])
+    const recentChanged =
+      nextRecent.length !== prevRecent.length || nextRecent.some((k, i) => k !== prevRecent[i])
+    if (favsChanged) {
+      localStorage.setItem('sg_v2_favorites', JSON.stringify(nextFavs))
+    }
+    if (recentChanged) {
+      localStorage.setItem('sg_v2_recent', JSON.stringify(nextRecent))
+    }
+
+    set({
+      styles,
+      tab,
+      sources,
+      activeSource,
+      ...(favsChanged ? { favorites: new Set(nextFavs) } : {}),
+      ...(recentChanged ? { recentNames: nextRecent } : {}),
+    })
     if (activeSource) {
       localStorage.setItem('sg_v2_last_source', activeSource)
       sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
@@ -362,7 +416,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     set({ selectedStyles: [...selectedStyles, ...toAdd] })
     toAdd.forEach((style) => {
-      get().addToRecent(style.name)
+      get().addToRecent(style)
       sendToHost({
         type: 'SG_APPLY',
         styleId: style.name,
@@ -372,16 +426,18 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       })
     })
   },
-  toggleFavorite: (name) => {
+  toggleFavorite: (style) => {
+    const key = styleRowKey(style)
     const favs = new Set(get().favorites)
-    if (favs.has(name)) favs.delete(name)
-    else favs.add(name)
+    if (favs.has(key)) favs.delete(key)
+    else favs.add(key)
     localStorage.setItem('sg_v2_favorites', JSON.stringify([...favs]))
     set({ favorites: favs })
   },
-  isFavorite: (name) => get().favorites.has(name),
-  addToRecent: (name) => {
-    const recent = [name, ...get().recentNames.filter(n => n !== name)]
+  isFavorite: (style) => get().favorites.has(styleRowKey(style)),
+  addToRecent: (style) => {
+    const key = styleRowKey(style)
+    const recent = [key, ...get().recentNames.filter((n) => n !== key)]
       .slice(0, 10)
     localStorage.setItem('sg_v2_recent', JSON.stringify(recent))
     set({ recentNames: recent })
@@ -397,7 +453,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       get().detectConflicts()
     } else {
       set({ selectedStyles: [...selectedStyles, style] })
-      get().addToRecent(style.name)
+      get().addToRecent(style)
       get().incrementUsage(style.name)
       sendToHost({ 
         type: 'SG_APPLY', 

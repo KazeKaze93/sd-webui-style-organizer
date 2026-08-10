@@ -324,7 +324,7 @@ def _register_thumbnail_routes(app):
 
     @app.get("/style_grid/thumbnails/list")
     async def api_list_thumbnails():
-        return {"has_thumbnail": list(list_thumbnails())}
+        return {"has_thumbnail": list_thumbnails()}
 
     @app.get("/style_grid/thumbnail")
     async def api_get_thumbnail(name: str = "", source: str = ""):
@@ -342,28 +342,19 @@ def _register_thumbnail_routes(app):
                 )
             return Response(status_code=404)
 
-        path = get_thumbnail_path(name)
+        if not source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
+
+        path = get_thumbnail_path(name, source)
         if os.path.isfile(path):
             return FileResponse(
                 path,
                 media_type="image/webp",
                 headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
             )
-
-        all_styles = get_cached_styles()
-        matches = [s for s in all_styles if s.get("name") == name]
-        seen = set()
-        for style in reversed(matches):
-            sf = style.get("source_file") or ""
-            candidate = get_thumbnail_path(name, sf)
-            if candidate not in seen:
-                seen.add(candidate)
-                if os.path.isfile(candidate):
-                    return FileResponse(
-                        candidate,
-                        media_type="image/webp",
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
-                    )
 
         return Response(status_code=404)
 

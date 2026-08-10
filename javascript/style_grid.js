@@ -204,6 +204,27 @@
         }
         return null;
     }
+    /** Prefer name+source_file match; fall back to name-only when source missing or no hit. */
+    function findStyleByNameAndSource(t, name, sourceFile) {
+        var want = String(sourceFile || "").replace(/\\/g, "/");
+        if (!want) return findStyleByName(t, name);
+        for (const styles of Object.values(state[t].categories)) {
+            const f = styles.find(function (s) {
+                return s.name === name && String(s.source_file || "").replace(/\\/g, "/") === want;
+            });
+            if (f) return f;
+        }
+        return findStyleByName(t, name);
+    }
+    /** Map name-only selected Set → {name, source_file}[] for presets / silent Gradio. */
+    function selectedAsNameSourceEntries(tabName) {
+        return [...state[tabName].selected].map(function (n) {
+            var s = findStyleByName(tabName, n);
+            return s
+                ? { name: s.name, source_file: s.source_file || "" }
+                : { name: n, source_file: "" };
+        });
+    }
     function getLoadedStylesWithCategory(tabName) {
         var out = [];
         var cats = state[tabName].categories || {};
@@ -445,7 +466,7 @@
     }
     function setSilentGradio(tabName) {
         var silentEl = qs("#style_grid_silent_" + tabName + " textarea");
-        var names = state[tabName].silentMode ? [...state[tabName].selected] : [];
+        var names = state[tabName].silentMode ? selectedAsNameSourceEntries(tabName) : [];
         if (!silentEl) return;
         setPromptValue(silentEl, JSON.stringify(names));
         syncSourceInput(tabName);
@@ -660,7 +681,9 @@
         opts = opts || {};
         var restoreOnly = opts.silent === true;
         if (!restoreOnly && state[tabName].applied.has(styleName)) return;
-        const style = findStyleByName(tabName, styleName);
+        const style = opts.source_file
+            ? findStyleByNameAndSource(tabName, styleName, opts.source_file)
+            : findStyleByName(tabName, styleName);
         if (!style) return;
 
         if (state[tabName].silentMode) {
@@ -1953,17 +1976,30 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         if (!p) return;
         var sgFrame = document.getElementById("sg-frame-" + tabName);
         const presetStyles = p.styles || [];
-        presetStyles.forEach(function (sn) {
-            if (state[tabName].selected.has(sn)) return;
-            state[tabName].selected.add(sn);
-            state[tabName].selectedOrder.push(sn);
-            applyStyleImmediate(tabName, sn);
-            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) {
+        presetStyles.forEach(function (entry) {
+            var styleName;
+            var styleObj;
+            if (entry && typeof entry === "object") {
+                styleName = entry.name;
+                styleObj = findStyleByNameAndSource(tabName, styleName, entry.source_file || "");
+            } else {
+                styleName = entry;
+                styleObj = findStyleByName(tabName, styleName);
+            }
+            if (!styleName) return;
+            if (state[tabName].selected.has(styleName)) return;
+            state[tabName].selected.add(styleName);
+            state[tabName].selectedOrder.push(styleName);
+            if (styleObj && styleObj.source_file) {
+                applyStyleImmediate(tabName, styleName, { source_file: styleObj.source_file });
+            } else {
+                applyStyleImmediate(tabName, styleName);
+            }
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
                 c.classList.add("sg-selected");
                 c.classList.add("sg-applied");
             });
             if (sgFrame && sgFrame.contentWindow) {
-                var styleObj = findStyleByName(tabName, sn);
                 if (styleObj) {
                     sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
                 }
@@ -1991,7 +2027,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             onClick: function () {
                 const name = nameIn.value.trim();
                 if (!name) return;
-                apiPost("/style_grid/presets/save", { name: name, styles: [...state[tabName].selected] }).then(function (r) {
+                apiPost("/style_grid/presets/save", { name: name, styles: selectedAsNameSourceEntries(tabName) }).then(function (r) {
                     state[tabName].presets = r.presets || {};
                     renderPresetsList();
                     nameIn.value = "";

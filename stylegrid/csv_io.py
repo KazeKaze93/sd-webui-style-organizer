@@ -153,7 +153,7 @@ def categorize_styles(styles):
 
 def save_style_to_csv(name, prompt, negative_prompt, description="", source_file=None, category=None):
     """
-    Upsert a style row in target CSV: replace the first matching name row, or append new row.
+    Upsert a style row in target CSV: replace all matching name rows, or append new row.
     """
     if source_file == LORA_SOURCE:
         raise ValueError("LoRA-sourced styles are read-only and cannot be edited or saved.")
@@ -196,7 +196,6 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         if row and row[0].strip() == name:
             rows[i] = make_row(rows[i])
             found = True
-            break
     if not found:
         rows.append(make_row())
     with open(target_path, "w", encoding="utf-8-sig", newline="") as f:

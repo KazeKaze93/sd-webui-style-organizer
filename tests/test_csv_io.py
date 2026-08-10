@@ -1,8 +1,8 @@
 """
 Tests for stylegrid.csv_io parse/save/delete behavior.
 
-Duplicate names (save): save_style_to_csv updates the first matching row by name and stops;
-remaining duplicate rows are left unchanged (see test_save_updates_first_duplicate_only).
+Duplicate names (save): save_style_to_csv updates every matching row by name in the
+target CSV (row count unchanged; see test_save_updates_all_duplicate_rows).
 """
 from pathlib import Path
 
@@ -175,7 +175,7 @@ def test_delete_nonexistent_name_no_raise(tmp_csv, patch_styles_dirs, monkeypatc
     assert [s["name"] for s in after] == [s["name"] for s in before]
 
 
-def test_save_updates_first_duplicate_only(tmp_path, patch_styles_dirs, monkeypatch):
+def test_save_updates_all_duplicate_rows(tmp_path, monkeypatch):
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
     p = tmp_path / "styles.csv"
     p.write_text(
@@ -185,9 +185,10 @@ def test_save_updates_first_duplicate_only(tmp_path, patch_styles_dirs, monkeypa
         "Other,x,,,\n",
         encoding="utf-8",
     )
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: [str(p)])
     csv_io.save_style_to_csv(
         "Dup",
-        "first_only",
+        "updated",
         "",
         "",
         source_file="styles.csv",
@@ -196,5 +197,6 @@ def test_save_updates_first_duplicate_only(tmp_path, patch_styles_dirs, monkeypa
     styles = csv_io.parse_styles_csv(str(p))
     dups = [s for s in styles if s["name"] == "Dup"]
     assert len(dups) == 2
-    assert dups[0]["prompt"] == "first_only"
-    assert dups[1]["prompt"] == "old2"
+    assert dups[0]["prompt"] == "updated"
+    assert dups[1]["prompt"] == "updated"
+    assert len(styles) == 3

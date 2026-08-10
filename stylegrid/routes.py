@@ -398,9 +398,13 @@ def _register_thumbnail_routes(app):
             return {"error": str(e)}
 
     @app.get("/style_grid/thumbnail/gen_status")
-    async def api_gen_status(name: str = ""):
-        style_name = name
-        return mgr.get_status(style_name)
+    async def api_gen_status(job_id: str = ""):
+        if not job_id:
+            return JSONResponse(
+                {"ok": False, "error": "job_id is required"},
+                status_code=400,
+            )
+        return mgr.get_status(job_id)
 
     @app.post("/style_grid/thumbnail/generate")
     async def api_generate_thumbnail(data: dict):
@@ -410,19 +414,27 @@ def _register_thumbnail_routes(app):
             return {"error": "LoRA cards only show their own preview file; SD-generated previews are disabled for them."}
         if not style_name:
             return {"error": "name required"}
+        if not requested_source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
 
         try:
-            from modules.shared import state as forge_state  # type: ignore[reportMissingImports]
-            if getattr(forge_state, 'job', None):
-                return {"error": "SD is busy, try again after current generation finishes"}
-        except Exception:
-            pass
+            job_id = mgr.enqueue(style_name, requested_source)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        return {"ok": True, "job_id": job_id, "status": "queued"}
 
-        if not mgr.try_begin(style_name):
-            return {"error": "already generating"}
-
-        mgr.spawn_generate(style_name, requested_source)
-        return {"ok": True, "status": "running"}
+    @app.post("/style_grid/thumbnail/cancel")
+    async def api_cancel_thumbnail(data: dict):
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id:
+            return JSONResponse(
+                {"ok": False, "error": "job_id is required"},
+                status_code=400,
+            )
+        return {"ok": mgr.cancel(job_id)}
 
     @app.delete("/style_grid/thumbnail")
     async def api_delete_thumbnail(name: str = "", source: str = ""):

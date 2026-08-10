@@ -7,21 +7,79 @@ import time
 import zipfile
 
 from stylegrid.config import BACKUP_DIR, PRESETS_FILE, USAGE_FILE, get_all_styles_file_paths
+from stylegrid.csv_io import load_all_styles
+
+
+def normalize_preset_entry(entry, styles_by_name_first):
+    """Return {name, source_file} or None. Accepts bare name str or dict entries."""
+    if isinstance(entry, str):
+        name = entry.strip()
+        if not name:
+            return None
+        match = styles_by_name_first.get(name)
+        if not match:
+            return None
+        return {"name": match["name"], "source_file": match.get("source_file") or ""}
+
+    if isinstance(entry, dict):
+        raw_name = entry.get("name", "")
+        if not isinstance(raw_name, str):
+            return None
+        name = raw_name.strip()
+        if not name:
+            return None
+        raw_source = entry.get("source_file", "")
+        source_file = raw_source.strip() if isinstance(raw_source, str) else ""
+        if source_file:
+            return {"name": name, "source_file": source_file}
+        match = styles_by_name_first.get(name)
+        if not match:
+            return None
+        return {"name": match["name"], "source_file": match.get("source_file") or ""}
+
+    return None
+
+
+def normalize_presets(presets):
+    """In-memory upgrade of presets dict: styles entries become {name, source_file}."""
+    if not isinstance(presets, dict):
+        return {}
+    styles_by_name_first = {}
+    for s in load_all_styles():
+        styles_by_name_first.setdefault(s["name"], s)
+    out = {}
+    for preset_name, preset in presets.items():
+        if not isinstance(preset, dict):
+            continue
+        new_preset = dict(preset)
+        styles_raw = preset.get("styles", [])
+        if not isinstance(styles_raw, list):
+            styles_raw = []
+        normalized_styles = []
+        for entry in styles_raw:
+            normalized = normalize_preset_entry(entry, styles_by_name_first)
+            if normalized is not None:
+                normalized_styles.append(normalized)
+        new_preset["styles"] = normalized_styles
+        out[preset_name] = new_preset
+    return out
 
 
 def load_presets():
     if os.path.isfile(PRESETS_FILE):
         try:
             with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                raw = json.load(f)
+            return normalize_presets(raw)
         except Exception:
             pass
     return {}
 
 
 def save_presets(presets):
+    normalized = normalize_presets(presets)
     with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-        json.dump(presets, f, indent=2, ensure_ascii=False)
+        json.dump(normalized, f, indent=2, ensure_ascii=False)
 
 
 def load_usage():

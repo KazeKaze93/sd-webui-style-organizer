@@ -19,6 +19,13 @@ def _sanitize_csv_cell(value):
     return value
 
 
+def normalize_source_path(path: str) -> str:
+    """Normalize a source path for reliable comparison across OS/JS boundaries."""
+    if not path:
+        return path
+    return os.path.abspath(path).replace("\\", "/")
+
+
 def parse_styles_csv(filepath):
     """
     Parse one styles CSV file as UTF-8/UTF-8-BOM and return normalized style dicts.
@@ -56,7 +63,7 @@ def parse_styles_csv(filepath):
                         "category_explicit": category_explicit,
                         "source": base,
                         "_source": base,
-                        "source_file": os.path.abspath(filepath),
+                        "source_file": normalize_source_path(filepath),
                     })
     except Exception:
         return styles

@@ -540,20 +540,35 @@
         return fetch(endpoint).then(function (r) { return r.json(); });
     }
 
+    /** Canonical host-side thumbnail identity; must match list API name+source_file. */
+    function thumbIdentityKey(name, sourceFile) {
+        return String(name) + "::" + String(sourceFile || "");
+    }
+
     // ════════════════════════════════════════════════════
     // THUMBNAILS
     // ════════════════════════════════════════════════════
     function loadThumbnailList(tabName) {
         apiGet("/style_grid/thumbnails/list")
             .then(function (data) {
-                state[tabName].hasThumbnail = new Set(data.has_thumbnail || []);
+                var entries = data.has_thumbnail || [];
+                state[tabName].hasThumbnail = new Set(entries.map(function (e) {
+                    return thumbIdentityKey(e.name, e.source_file);
+                }));
                 var panel = state[tabName].panel;
                 if (!panel) return;
                 qsa(".sg-card", panel).forEach(function (card) {
                     var name = card.getAttribute("data-style-name");
+                    var styleRef = card._styleRef;
+                    var sourceFile = styleRef && styleRef.source_file ? styleRef.source_file : "";
+                    if (!sourceFile) {
+                        // TODO: no source_file on card at paint — cannot resolve thumb identity
+                        card.classList.remove("sg-has-thumb");
+                        return;
+                    }
                     card.classList.toggle(
                         "sg-has-thumb",
-                        state[tabName].hasThumbnail.has(name)
+                        state[tabName].hasThumbnail.has(thumbIdentityKey(name, sourceFile))
                     );
                 });
             })
@@ -841,7 +856,7 @@
        }
 
        var queue = styles.filter(function (s) {
-           return !state[tabName].hasThumbnail.has(s.name);
+           return !state[tabName].hasThumbnail.has(thumbIdentityKey(s.name, s.source_file));
        });
        if (queue.length === 0) {
            showStatusMessage(tabName, "All styles already have previews");
@@ -918,10 +933,11 @@
            }
 
            var styleName = queue[index].name;
+           var styleSourceFile = queue[index].source_file || "";
            _batchState.skipped = false;
            updateProgress(index + 1, styleName, "generating...");
 
-           apiPost("/style_grid/thumbnail/generate", { name: styleName })
+           apiPost("/style_grid/thumbnail/generate", { name: styleName, source: styleSourceFile })
                .then(function (r) {
                    if (r.error) {
                        if (r.error.indexOf("busy") !== -1) {
@@ -934,7 +950,7 @@
                        processNext(index + 1);
                        return;
                    }
-                   pollBatchStatus(tabName, styleName, index, 0);
+                   pollBatchStatus(tabName, styleName, styleSourceFile, index, 0);
                })
                .catch(function () {
                    failed++;
@@ -942,7 +958,7 @@
                });
        }
 
-       function pollBatchStatus(tabName2, styleName, index, attempts) {
+       function pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts) {
            if (_batchState.cancelled) {
                _batchState.running = false;
                overlay.remove();
@@ -971,13 +987,18 @@
                    }
                    if (r.status === "done") {
                        done++;
-                       state[tabName2].hasThumbnail.add(styleName);
+                       state[tabName2].hasThumbnail.add(thumbIdentityKey(styleName, styleSourceFile));
                        _thumbVersions[styleName] = Date.now();
                        localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                        _saveThumbVersions();
                        qsa('.sg-card[data-style-name="' +
                            CSS.escape(styleName) + '"]', state[tabName2].panel)
-                           .forEach(function (c) { c.classList.add("sg-has-thumb"); });
+                           .forEach(function (c) {
+                               var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
+                               if (sf && sf === styleSourceFile) {
+                                   c.classList.add("sg-has-thumb");
+                               }
+                           });
                        updateProgress(index + 1, styleName, "✓");
                        setTimeout(function () { processNext(index + 1); }, 300);
                    } else if (r.status === "error") {
@@ -985,7 +1006,7 @@
                        processNext(index + 1);
                    } else {
                        setTimeout(function () {
-                           pollBatchStatus(tabName2, styleName, index, attempts + 1);
+                           pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts + 1);
                        }, 2000);
                    }
                })
@@ -998,14 +1019,15 @@
        processNext(0);
    }
 
-   function generateThumbnail(tabName, styleName, onDone, onProgress) {
+   function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
+        var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
         showStatusMessage(tabName, "🎨 Generating preview for " +
             styleName.split("_").slice(1).join(" ") + "...");
         if (typeof onProgress === "function") {
             onProgress("generating", 0);
         }
 
-        apiPost("/style_grid/thumbnail/generate", { name: styleName, source: state[tabName].selectedSource || "" })
+        apiPost("/style_grid/thumbnail/generate", { name: styleName, source: resolvedSource })
             .then(function (r) {
                 if (r.error) {
                     showStatusMessage(tabName, "Generation failed: " + r.error, true);
@@ -1014,7 +1036,7 @@
                     }
                     return;
                 }
-                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress);
+                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress, resolvedSource);
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -1024,7 +1046,7 @@
             });
     }
 
-    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress) {
+    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile) {
         if (attempts > 60) {
             showStatusMessage(tabName, "Generation timed out", true);
             if (typeof onProgress === "function") {
@@ -1043,7 +1065,7 @@
                     return;
                 }
                 if (r.status === "done") {
-                    state[tabName].hasThumbnail.add(styleName);
+                    state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, sourceFile));
                     _thumbVersions[styleName] = Date.now();
                     localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                     _saveThumbVersions();
@@ -1051,7 +1073,10 @@
                         CSS.escape(styleName) + '"]',
                         state[tabName].panel)
                         .forEach(function (c) {
-                            c.classList.add("sg-has-thumb");
+                            var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
+                            if (sf && sf === sourceFile) {
+                                c.classList.add("sg-has-thumb");
+                            }
                         });
                     showStatusMessage(tabName, "✓ Preview ready!");
                     if (typeof onProgress === "function") {
@@ -1069,7 +1094,7 @@
                         onProgress("generating", Math.min(90, Math.round((attempts / 60) * 100)));
                     }
                     setTimeout(function () {
-                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress);
+                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress, sourceFile);
                     }, 2000);
                 } else {
                     showStatusMessage(tabName, "Unknown generation status: " + r.status, true);
@@ -1086,7 +1111,8 @@
             });
     }
 
-    function uploadThumbnail(tabName, styleName) {
+    function uploadThumbnail(tabName, styleName, sourceFile) {
+        var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
         var input = document.createElement("input");
         input.type = "file";
         input.accept = "image/*";
@@ -1097,16 +1123,20 @@
             reader.onload = function () {
                 apiPost("/style_grid/thumbnail/upload", {
                     name: styleName,
-                    image: reader.result
+                    image: reader.result,
+                    source: resolvedSource
                 })
                     .then(function (r) {
                         if (r.ok) {
-                            state[tabName].hasThumbnail.add(styleName);
+                            state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, resolvedSource));
                             qsa('.sg-card[data-style-name="' +
                                 CSS.escape(styleName) + '"]',
                                 state[tabName].panel)
                                 .forEach(function (c) {
-                                    c.classList.add("sg-has-thumb");
+                                    var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
+                                    if (sf && sf === resolvedSource) {
+                                        c.classList.add("sg-has-thumb");
+                                    }
                                 });
                             _thumbVersions[styleName] = Date.now();
                             localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
@@ -1149,12 +1179,12 @@
 
         items.push({
             label: "🎨 Generate preview (SD)",
-            action: function () { generateThumbnail(tabName, styleName); }
+            action: function () { generateThumbnail(tabName, styleName, undefined, undefined, style.source_file); }
         });
 
         items.push({
             label: "🖼️ Upload preview image",
-            action: function () { uploadThumbnail(tabName, styleName); }
+            action: function () { uploadThumbnail(tabName, styleName, style.source_file); }
         });
 
         items.forEach(function (item) {
@@ -2758,7 +2788,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
            }
            var missingCount = 0;
            stylesInCat.forEach(function (s) {
-               if (!state[tabName].hasThumbnail.has(s.name)) missingCount++;
+               if (!state[tabName].hasThumbnail.has(thumbIdentityKey(s.name, s.source_file))) missingCount++;
            });
            if (missingCount > 0) {
                var batchItem = el("div", {
@@ -2839,7 +2869,8 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     showThumbPopup(card, name, tabName, displayName, promptText);
                 }, 700);
 
-                if (state[tabName].hasThumbnail && state[tabName].hasThumbnail.has(name)) {
+                if (state[tabName].hasThumbnail && styleRef && styleRef.source_file &&
+                    state[tabName].hasThumbnail.has(thumbIdentityKey(name, styleRef.source_file))) {
                     card.classList.add("sg-thumb-loading");
                     _thumbProgressTimer = setTimeout(function () {
                         card.classList.remove("sg-thumb-loading");
@@ -2895,7 +2926,15 @@ CSV table editor — full implementation kept for restoration; currently inactiv
 
     function showThumbPopup(card, styleName, tabName, displayName, promptText) {
         var popup = createThumbPopup();
-        var hasThumbnail = state[tabName].hasThumbnail.has(styleName);
+        var styleRef = card._styleRef;
+        var sourceFile = styleRef && styleRef.source_file ? styleRef.source_file : "";
+        var hasThumbnail = false;
+        if (!sourceFile) {
+            // TODO: no source_file on card at paint — cannot resolve thumb identity
+            hasThumbnail = false;
+        } else {
+            hasThumbnail = state[tabName].hasThumbnail.has(thumbIdentityKey(styleName, sourceFile));
+        }
 
         var rect = card.getBoundingClientRect();
         var popupW = 253;
@@ -4399,6 +4438,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 }
             }
             if (msg.type === "SG_GENERATE_PREVIEW") {
+                // Interim: selectedSourceFile is wrong under All Sources; pending React bridge.ts/StyleCard source on message.
                 generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
                     if (frame.contentWindow) {
                         frame.contentWindow.postMessage({
@@ -4432,10 +4472,11 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             }, "*");
                         }
                     }
-                });
+                }, state[tab].selectedSourceFile || "");
             }
             if (msg.type === "SG_UPLOAD_PREVIEW") {
-                uploadThumbnail(tab, msg.styleId);
+                // Interim: selectedSourceFile is wrong under All Sources; pending React bridge.ts/StyleCard source on message.
+                uploadThumbnail(tab, msg.styleId, state[tab].selectedSourceFile || "");
             }
             if (msg.type === "SG_DELETE_STYLE") {
                 var styleToDelete = findStyleByName(msg.styleId);

@@ -4438,7 +4438,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 }
             }
             if (msg.type === "SG_GENERATE_PREVIEW") {
-                // Interim: selectedSourceFile is wrong under All Sources; pending React bridge.ts/StyleCard source on message.
+                var genSource = msg.source || state[tab].selectedSourceFile || "";
                 generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
                     if (frame.contentWindow) {
                         frame.contentWindow.postMessage({
@@ -4472,11 +4472,11 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             }, "*");
                         }
                     }
-                }, state[tab].selectedSourceFile || "");
+                }, genSource);
             }
             if (msg.type === "SG_UPLOAD_PREVIEW") {
-                // Interim: selectedSourceFile is wrong under All Sources; pending React bridge.ts/StyleCard source on message.
-                uploadThumbnail(tab, msg.styleId, state[tab].selectedSourceFile || "");
+                var uploadSource = msg.source || state[tab].selectedSourceFile || "";
+                uploadThumbnail(tab, msg.styleId, uploadSource);
             }
             if (msg.type === "SG_DELETE_STYLE") {
                 var styleToDelete = findStyleByName(msg.styleId);

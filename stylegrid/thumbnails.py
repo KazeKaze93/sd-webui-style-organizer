@@ -28,27 +28,34 @@ def _thumbnail_hash_input(style_name, csv_path=""):
     return f"{style_name}::{rel}"
 
 
-def get_thumbnail_path(style_name, csv_path=""):
+def thumbnail_hash_key(name: str, source: str) -> str:
+    """Canonical thumbnail identity hash, matching generate_thumbnail's (name, source) scheme."""
+    if not source:
+        raise ValueError("thumbnail_hash_key requires a non-empty source")
+    return hashlib.md5(_thumbnail_hash_input(name, source).encode("utf-8")).hexdigest()
+
+
+def get_thumbnail_path(style_name, csv_path):
     """Return deterministic thumbnail file path using md5(name + source path) hash naming."""
-    safe = hashlib.md5(_thumbnail_hash_input(style_name, csv_path).encode("utf-8")).hexdigest()
+    safe = thumbnail_hash_key(style_name, csv_path)
     return os.path.join(THUMBNAILS_DIR, safe + ".webp")
 
 
 def list_thumbnails():
     if not os.path.isdir(THUMBNAILS_DIR):
-        return set()
+        return []
     hashes = {
         os.path.splitext(f)[0]
         for f in os.listdir(THUMBNAILS_DIR)
         if f.endswith(".webp")
     }
-    result = set()
+    result = []
     for s in get_cached_styles():
-        h = hashlib.md5(
-            _thumbnail_hash_input(s["name"], s.get("source_file") or "").encode("utf-8")
-        ).hexdigest()
-        if h in hashes:
-            result.add(s["name"])
+        source = s.get("source_file") or ""
+        if not source:
+            continue
+        if thumbnail_hash_key(s["name"], source) in hashes:
+            result.append({"name": s["name"], "source_file": source})
     return result
 
 

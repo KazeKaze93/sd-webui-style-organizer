@@ -25,7 +25,7 @@ from stylegrid.cache import (
     invalidate_styles_cache,
     styles_cache_hashes,
 )
-from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR
+from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR, get_all_styles_file_paths, is_samples_source
 from stylegrid.csv_io import (
     categorize_styles,
     delete_style_from_csv,
@@ -243,14 +243,36 @@ def _register_crud_routes(app):
         name = data.get("name", "").strip()
         if not name:
             return {"error": "Name required"}
-        save_style_to_csv(
-            name,
-            data.get("prompt", ""),
-            data.get("negative_prompt", ""),
-            data.get("description", ""),
-            data.get("source"),
-            category=data.get("category"),
-        )
+
+        # FIX A: reject writes into read-only samples/
+        source = data.get("source")
+        resolved_path = None
+        if source:
+            source_base = os.path.basename(source)
+            if not source_base.lower().endswith(".csv"):
+                source_base = source_base + ".csv"
+            for fp in get_all_styles_file_paths():
+                if os.path.basename(fp) == source_base:
+                    resolved_path = fp
+                    break
+        if resolved_path and is_samples_source(resolved_path):
+            return JSONResponse(
+                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                status_code=403,
+            )
+
+        # FIX B: surface LoRA/validation ValueError as 400
+        try:
+            save_style_to_csv(
+                name,
+                data.get("prompt", ""),
+                data.get("negative_prompt", ""),
+                data.get("description", ""),
+                data.get("source"),
+                category=data.get("category"),
+            )
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
         return {"ok": True}
 
     @app.post("/style_grid/style/delete")
@@ -258,7 +280,34 @@ def _register_crud_routes(app):
         name = data.get("name", "").strip()
         if not name:
             return {"error": "Name required"}
-        delete_style_from_csv(name, data.get("source"))
+
+        # FIX A: reject deletes from read-only samples/
+        source = data.get("source")
+        if not source:
+            for s in load_all_styles():
+                if s["name"] == name:
+                    source = s.get("source", "styles.csv")
+                    break
+        resolved_path = None
+        if source:
+            source_base = os.path.basename(source)
+            if not source_base.lower().endswith(".csv"):
+                source_base = source_base + ".csv"
+            for fp in get_all_styles_file_paths():
+                if os.path.basename(fp) == source_base:
+                    resolved_path = fp
+                    break
+        if resolved_path and is_samples_source(resolved_path):
+            return JSONResponse(
+                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                status_code=403,
+            )
+
+        # FIX B: surface LoRA/validation ValueError as 400
+        try:
+            delete_style_from_csv(name, data.get("source"))
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
         return {"ok": True}
 
     @app.post("/style_grid/backup")

@@ -425,6 +425,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         silent: silentMode,
       })
     })
+    get().detectConflicts()
   },
   toggleFavorite: (style) => {
     const key = styleRowKey(style)

@@ -30,6 +30,7 @@ from stylegrid.csv_io import (
     categorize_styles,
     delete_style_from_csv,
     load_all_styles,
+    normalize_source_path,
     save_style_to_csv,
 )
 from stylegrid.data_files import (
@@ -57,27 +58,55 @@ from stylegrid.lora_titles import title_fetch_manager
 
 
 def detect_conflicts(style_names):
-    styles_map = {s["name"]: s for s in get_cached_styles()}
+    all_styles = get_cached_styles()
+    # Composite identity — same name from different CSVs must not collapse.
+    styles_map = {
+        (s["name"], normalize_source_path(s.get("source_file") or "")): s
+        for s in all_styles
+    }
+    # Name-only fallback for legacy bare-string request entries (last match wins).
+    styles_by_name = {s["name"]: s for s in all_styles}
     conflicts = []
     style_tokens = {}
-    for name in style_names:
-        s = styles_map.get(name)
+    for entry in style_names:
+        s = None
+        if isinstance(entry, str):
+            s = styles_by_name.get(entry)
+        elif isinstance(entry, dict):
+            name = entry.get("name", "")
+            if not isinstance(name, str) or not name:
+                continue
+            source_file = entry.get("source_file") or ""
+            if isinstance(source_file, str) and source_file.strip():
+                s = styles_map.get((name, normalize_source_path(source_file)))
+                if not s:
+                    s = styles_by_name.get(name)
+            else:
+                s = styles_by_name.get(name)
+        else:
+            continue
         if not s:
             continue
-        style_tokens[name] = {"positive": set(), "negative": set()}
+        key = (s["name"], normalize_source_path(s.get("source_file") or ""))
+        if key in style_tokens:
+            continue
+        label = s["name"]
+        style_tokens[key] = {"positive": set(), "negative": set(), "label": label}
         for token in (s.get("prompt") or "").split(","):
             t = token.strip().lower()
             if t and t != "{prompt}":
-                style_tokens[name]["positive"].add(t)
+                style_tokens[key]["positive"].add(t)
         for token in (s.get("negative_prompt") or "").split(","):
             t = token.strip().lower()
             if t and t != "{prompt}":
-                style_tokens[name]["negative"].add(t)
-    names = list(style_tokens.keys())
-    for i in range(len(names)):
-        for j in range(i + 1, len(names)):
-            a, b = names[i], names[j]
-            overlap1 = style_tokens[a]["positive"] & style_tokens[b]["negative"]
+                style_tokens[key]["negative"].add(t)
+    keys = list(style_tokens.keys())
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            ka, kb = keys[i], keys[j]
+            a = style_tokens[ka]["label"]
+            b = style_tokens[kb]["label"]
+            overlap1 = style_tokens[ka]["positive"] & style_tokens[kb]["negative"]
             if overlap1:
                 conflicts.append({
                     "styles": [a, b],
@@ -85,7 +114,7 @@ def detect_conflicts(style_names):
                     "tokens": list(overlap1)[:5],
                     "message": f"'{a}' adds tokens that '{b}' negates: {', '.join(list(overlap1)[:3])}"
                 })
-            overlap2 = style_tokens[b]["positive"] & style_tokens[a]["negative"]
+            overlap2 = style_tokens[kb]["positive"] & style_tokens[ka]["negative"]
             if overlap2:
                 conflicts.append({
                     "styles": [b, a],

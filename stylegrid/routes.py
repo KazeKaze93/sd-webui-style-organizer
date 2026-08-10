@@ -362,10 +362,16 @@ def _register_thumbnail_routes(app):
     async def api_upload_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
         image_data = data.get("image", "")
-        if data.get("source") == LORA_SOURCE or style_name.startswith("LORA_"):
+        source = (data.get("source") or "").strip()
+        if source == LORA_SOURCE or style_name.startswith("LORA_"):
             return {"error": "LoRA thumbnails come from the model's own preview file and can't be replaced here."}
         if not style_name or not image_data:
             return {"error": "name and image required"}
+        if not source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
         try:
             if "," in image_data:
                 image_data = image_data.split(",", 1)[1]
@@ -384,7 +390,7 @@ def _register_thumbnail_routes(app):
                 is_valid_image = False
             if not is_valid_image:
                 return {"error": "Invalid image format. Allowed: JPEG, PNG, WEBP, GIF"}
-            path = get_thumbnail_path(style_name)
+            path = get_thumbnail_path(style_name, source)
             with open(path, "wb") as f:
                 f.write(raw)
             return {"ok": True}
@@ -419,8 +425,13 @@ def _register_thumbnail_routes(app):
         return {"ok": True, "status": "running"}
 
     @app.delete("/style_grid/thumbnail")
-    async def api_delete_thumbnail(name: str = ""):
-        path = get_thumbnail_path(name)
+    async def api_delete_thumbnail(name: str = "", source: str = ""):
+        if not source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
+        path = get_thumbnail_path(name, source)
         if os.path.isfile(path):
             os.remove(path)
         return {"ok": True}

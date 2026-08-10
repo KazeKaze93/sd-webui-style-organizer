@@ -311,7 +311,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     )].sort()
 
     // Restore selection: exact match can fail when host path strings differ from LS (basename must match)
-    const lastSource = localStorage.getItem('sg_v2_last_source')
+    const lastSourceKey = `sg_v2_last_source_${tab}`
+    const lastSource =
+      localStorage.getItem(lastSourceKey) ??
+      localStorage.getItem('sg_v2_last_source') // legacy global (pre per-tab)
     const prevActive = get().activeSource
     const activeSource =
       resolveSourceInList(sources, prevActive) ??
@@ -341,18 +344,25 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       ...(recentChanged ? { recentNames: nextRecent } : {}),
     })
     if (activeSource) {
-      localStorage.setItem('sg_v2_last_source', activeSource)
-      sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
+      localStorage.setItem(lastSourceKey, activeSource)
+    } else {
+      localStorage.removeItem(lastSourceKey)
     }
+    localStorage.removeItem('sg_v2_last_source')
+    // Always notify — including All (null) so Gradio clears a stale source path
+    sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
   setSearch: (search) => set({ search }),
   setCategory: (activeCategory) => set({ activeCategory }),
   setActiveSource: (activeSource) => {
+    const tab = get().tab
+    const lastSourceKey = `sg_v2_last_source_${tab}`
     if (activeSource) {
-      localStorage.setItem('sg_v2_last_source', activeSource)
+      localStorage.setItem(lastSourceKey, activeSource)
     } else {
-      localStorage.removeItem('sg_v2_last_source')
+      localStorage.removeItem(lastSourceKey)
     }
+    localStorage.removeItem('sg_v2_last_source')
     set({ activeSource })
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },

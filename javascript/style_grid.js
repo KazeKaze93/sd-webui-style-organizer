@@ -1180,6 +1180,14 @@
                             localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                             _saveThumbVersions();
                             showStatusMessage(tabName, "Preview saved ✓");
+                            var fr = state[tabName] && state[tabName].sgFrame;
+                            if (fr && fr.contentWindow) {
+                                fr.contentWindow.postMessage({
+                                    type: "SG_THUMB_DONE",
+                                    styleId: styleName,
+                                    version: _thumbVersions[styleName],
+                                }, "*");
+                            }
                         } else {
                             showStatusMessage(tabName,
                                 "Upload failed: " + (r.error || "?"), true);

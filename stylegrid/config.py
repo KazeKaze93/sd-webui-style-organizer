@@ -17,6 +17,17 @@ for _d in [DATA_DIR, BACKUP_DIR]:
 os.makedirs(THUMBNAILS_DIR, exist_ok=True)
 
 
+def is_samples_source(path: str) -> bool:
+    """Return True if the given (possibly relative) path resolves inside
+    the read-only samples/ directory."""
+    if not path:
+        return False
+    samples_dir = os.path.join(EXT_DIR, "samples")
+    normalized = os.path.abspath(path).replace("\\", "/")
+    samples_root = os.path.abspath(samples_dir).replace("\\", "/")
+    return normalized == samples_root or normalized.startswith(samples_root + "/")
+
+
 def get_styles_dirs():
     ext_styles_dir = os.path.join(EXT_DIR, "styles")
     all_styles_parent_dirs_paths = [ext_styles_dir]

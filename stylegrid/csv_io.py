@@ -4,7 +4,7 @@ import csv
 import os
 
 from stylegrid.cache import invalidate_styles_cache
-from stylegrid.config import EXT_DIR, get_all_styles_file_paths
+from stylegrid.config import DATA_DIR, EXT_DIR, get_all_styles_file_paths, is_samples_source
 from stylegrid.lora_scan import LORA_SOURCE
 from modules import shared
 
@@ -24,6 +24,31 @@ def normalize_source_path(path: str) -> str:
     if not path:
         return path
     return os.path.abspath(path).replace("\\", "/")
+
+
+def _path_under_dir(path: str, root_dir: str) -> bool:
+    normalized = os.path.abspath(path).replace("\\", "/")
+    root = os.path.abspath(root_dir).replace("\\", "/")
+    return normalized == root or normalized.startswith(root + "/")
+
+
+def _resolve_target_csv_path(source_basename: str):
+    """Resolve a CSV basename to a full path with deterministic writable-first priority.
+
+    When multiple discovered files share the same basename, prefer DATA_DIR,
+    then any non-samples path, then samples/ (read matches only; write guards
+    live in routes).
+    """
+    matches = [fp for fp in get_all_styles_file_paths() if os.path.basename(fp) == source_basename]
+    if not matches:
+        return None
+    for fp in matches:
+        if _path_under_dir(fp, DATA_DIR):
+            return fp
+    for fp in matches:
+        if not is_samples_source(fp):
+            return fp
+    return matches[0]
 
 
 def parse_styles_csv(filepath):
@@ -138,11 +163,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
             source_file = source_file + '.csv'
     if not source_file:
         source_file = "styles.csv"
-    target_path = None
-    for fp in get_all_styles_file_paths():
-        if os.path.basename(fp) == source_file:
-            target_path = fp
-            break
+    target_path = _resolve_target_csv_path(source_file)
     if not target_path:
         ext_styles = os.path.join(EXT_DIR, "styles")
         os.makedirs(ext_styles, exist_ok=True)
@@ -203,11 +224,7 @@ def delete_style_from_csv(name, source_file=None):
         source_file = os.path.basename(source_file)
         if not source_file.lower().endswith('.csv'):
             source_file = source_file + '.csv'
-    target_path = None
-    for fp in get_all_styles_file_paths():
-        if os.path.basename(fp) == source_file:
-            target_path = fp
-            break
+    target_path = _resolve_target_csv_path(source_file)
     if not target_path:
         return False
     rows = []

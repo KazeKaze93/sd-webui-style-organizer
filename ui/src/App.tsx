@@ -159,7 +159,7 @@ export default function App() {
         const exists = selectedStyles.some(s => s.name === msg.style.name)
         if (!exists) {
           useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
-          addToRecent(msg.style.name)
+          addToRecent(msg.style)
         }
       }
     })

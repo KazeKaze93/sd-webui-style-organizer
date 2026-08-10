@@ -115,16 +115,37 @@ class StyleGridScript(scripts.Script):
         if not silent_json or silent_json == "[]":
             return
         try:
-            style_names = json.loads(silent_json)
+            silent_entries = json.loads(silent_json)
         except Exception:
             return
-        if not style_names or not isinstance(style_names, list):
+        if not silent_entries or not isinstance(silent_entries, list):
             return
         style_map = {s["name"]: s for s in all_styles}
+        style_by_name_source = {
+            (s["name"], normalize_source_path(s.get("source_file") or "")): s
+            for s in all_styles
+        }
         prompts_add = []
         neg_add = []
-        for name in style_names:
-            s = style_map.get(name)
+        for entry in silent_entries:
+            if isinstance(entry, str):
+                s = style_map.get(entry)
+            elif isinstance(entry, dict):
+                name = entry.get("name", "")
+                if not isinstance(name, str) or not name:
+                    continue
+                source_file = entry.get("source_file") or ""
+                if isinstance(source_file, str) and source_file.strip():
+                    s = style_by_name_source.get(
+                        (name, normalize_source_path(source_file))
+                    )
+                    if not s:
+                        # Deliberate: stale/missing source falls back to name-only
+                        s = style_map.get(name)
+                else:
+                    s = style_map.get(name)
+            else:
+                continue
             if not s:
                 continue
             if s["prompt"]:

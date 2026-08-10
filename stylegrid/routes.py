@@ -391,8 +391,28 @@ def _register_thumbnail_routes(app):
             if not is_valid_image:
                 return {"error": "Invalid image format. Allowed: JPEG, PNG, WEBP, GIF"}
             path = get_thumbnail_path(style_name, source)
-            with open(path, "wb") as f:
-                f.write(raw)
+            try:
+                from PIL import Image  # type: ignore[reportMissingImports]
+                img = Image.open(io.BytesIO(raw))
+                if getattr(img, "is_animated", False):
+                    img.seek(0)
+                has_alpha = (
+                    img.mode in ("RGBA", "LA")
+                    or (img.mode == "P" and "transparency" in img.info)
+                )
+                img = img.convert("RGBA" if has_alpha else "RGB")
+                buf = io.BytesIO()
+                img.save(buf, "WEBP", quality=85)
+                webp_bytes = buf.getvalue()
+            except Exception as e:
+                return JSONResponse(
+                    {"ok": False, "error": f"Failed to convert image to WebP: {e}"},
+                    status_code=400,
+                )
+            tmp_path = path + ".tmp"
+            with open(tmp_path, "wb") as f:
+                f.write(webp_bytes)
+            os.replace(tmp_path, path)
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}

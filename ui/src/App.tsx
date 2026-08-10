@@ -155,11 +155,12 @@ export default function App() {
         useStylesStore.setState({ selectedStyles: [], conflicts: [] })
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
-        const { selectedStyles, addToRecent } = useStylesStore.getState()
+        const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
         const exists = selectedStyles.some(s => s.name === msg.style.name)
         if (!exists) {
           useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
           addToRecent(msg.style)
+          detectConflicts()
         }
       }
     })

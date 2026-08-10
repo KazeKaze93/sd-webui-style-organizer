@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
-import { sendToHost, type Style } from '../bridge'
+import { onHostMessage, sendToHost, type Style } from '../bridge'
 import {
   getCategoryColor,
   LORA_SOURCE,
@@ -40,6 +40,27 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     cat: string
     missingCount: number
   } | null>(null)
+  const [thumbPresence, setThumbPresence] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => {
+    const loadThumbPresence = () => {
+      fetch('/style_grid/thumbnails/list')
+        .then((r) => r.json())
+        .then((data: { has_thumbnail?: Array<{ name: string; source_file: string }> }) => {
+          const entries = data.has_thumbnail || []
+          setThumbPresence(new Set(entries.map((e) => styleRowKey(e))))
+        })
+        .catch(() => {
+          // ignore list load errors — missing count stays empty/stale
+        })
+    }
+    loadThumbPresence()
+    return onHostMessage((msg) => {
+      if (msg.type === 'SG_THUMB_DONE') {
+        loadThumbPresence()
+      }
+    })
+  }, [])
 
   const filtered = useMemo(
     () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames, presets),
@@ -159,7 +180,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
                 e.stopPropagation()
                 const isLoraGroup = catStyles[0]?.source_file === LORA_SOURCE
                 const missing = isLoraGroup ? 0 : catStyles.filter(s =>
-                  !localStorage.getItem(`sg_thumb_v_${s.name}`)
+                  !thumbPresence.has(styleRowKey(s))
                 ).length
                 setCatMenu({ x: e.clientX, y: e.clientY, cat, missingCount: missing })
               }}

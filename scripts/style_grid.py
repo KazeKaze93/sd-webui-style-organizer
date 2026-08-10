@@ -15,7 +15,7 @@ from modules import script_callbacks, scripts  # type: ignore[reportMissingImpor
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR
-from stylegrid.csv_io import categorize_styles, load_all_styles
+from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
 from stylegrid.data_files import increment_usage, load_presets, load_usage
 from stylegrid.routes import register_api
 from stylegrid.wildcards import resolve_sg_wildcards
@@ -90,7 +90,10 @@ class StyleGridScript(scripts.Script):
         # args[1] = active source filter passed from UI ("" means All Sources)
         active_source = (args[1] if len(args) >= 2 else "") or ""
         if active_source:
-            wildcard_pool = [s for s in all_styles if (s.get("source_file") or "") == active_source]
+            wildcard_pool = [
+                s for s in all_styles
+                if normalize_source_path(s.get("source_file") or "") == normalize_source_path(active_source)
+            ]
             if not wildcard_pool:           # unknown source — fall back to all
                 wildcard_pool = all_styles
         else:

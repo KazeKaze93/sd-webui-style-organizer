@@ -32,7 +32,7 @@ def get_styles_dirs():
 def get_all_styles_file_paths():
     ext_styles_dir = os.path.join(EXT_DIR, "styles")
     all_styles_file_paths = []
-    if not os.path.isdir(ext_styles_dir):
+    if os.path.isdir(ext_styles_dir):
         for fname in sorted(os.listdir(ext_styles_dir)):
             if fname.lower().endswith(".csv"):
                 filepath = os.path.join(ext_styles_dir, fname)

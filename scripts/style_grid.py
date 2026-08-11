@@ -127,6 +127,7 @@ class StyleGridScript(scripts.Script):
         }
         prompts_add = []
         neg_add = []
+        style_names = []
         for entry in silent_entries:
             if isinstance(entry, str):
                 s = style_map.get(entry)
@@ -148,6 +149,7 @@ class StyleGridScript(scripts.Script):
                 continue
             if not s:
                 continue
+            style_names.append(s["name"])
             if s["prompt"]:
                 if "{prompt}" in s["prompt"]:
                     for i in range(len(p.all_prompts)):

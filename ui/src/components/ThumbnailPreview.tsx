@@ -1,7 +1,7 @@
 import { createPortal } from 'react-dom'
 import { useEffect, useRef, useState } from 'react'
 import { onHostMessage, type Style } from '../bridge'
-import { useStylesStore } from '../store/stylesStore'
+import { styleRowKey, useStylesStore } from '../store/stylesStore'
 
 interface Props {
   style: Style
@@ -19,8 +19,9 @@ export function ThumbnailPreview({ style, children, presetName }: Props) {
   const [imgOk, setImgOk] = useState(false)
   const [above, setAbove] = useState(true)
   const [popupPos, setPopupPos] = useState({ left: 0, top: 0 })
+  const thumbVersionLsKey = `sg_thumb_v_${styleRowKey(style)}`
   const [localVersion, setLocalVersion] = useState(
-    localStorage.getItem(`sg_thumb_v_${style.name}`) || '1'
+    localStorage.getItem(thumbVersionLsKey) || '1'
   )
   const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -63,18 +64,19 @@ export function ThumbnailPreview({ style, children, presetName }: Props) {
 
   useEffect(() => {
     const unsub = onHostMessage((msg) => {
-      if (msg.type === 'SG_THUMB_DONE' && msg.styleId === style.name) {
+      if (
+        msg.type === 'SG_THUMB_DONE' &&
+        msg.styleId === style.name &&
+        msg.source_file === style.source_file
+      ) {
         const v = String(msg.version)
-        localStorage.setItem(
-          `sg_thumb_v_${style.name}`,
-          v
-        )
+        localStorage.setItem(thumbVersionLsKey, v)
         setLocalVersion(v)
         setImgOk(false)
       }
     })
     return unsub
-  }, [style.name])
+  }, [style.name, style.source_file, thumbVersionLsKey])
 
   if (presetName) {
     return <>{children}</>

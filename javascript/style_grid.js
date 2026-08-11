@@ -3351,14 +3351,17 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         state[tabName].selected.clear();
         state[tabName].selectedOrder = [];
         state[tabName].applied.clear();
+
+        var basePrompt = state[tabName].userPromptBase || "";
+        var baseNeg = state[tabName].userPromptBaseNeg || "";
         state[tabName].userPromptBase = "";
         state[tabName].userPromptBaseNeg = "";
 
         (function () {
             var promptEl = qs("#" + tabName + "_prompt textarea");
             var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-            if (promptEl) setPromptValue(promptEl, "");
-            if (negEl)    setPromptValue(negEl, "");
+            if (promptEl) setPromptValue(promptEl, basePrompt);
+            if (negEl)    setPromptValue(negEl, baseNeg);
         })();
 
         if (state[tabName].panel) {

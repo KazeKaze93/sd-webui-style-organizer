@@ -64,6 +64,8 @@ The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegr
 
 Bridge types are declared in `ui/src/bridge.ts`.
 
+**Name+source identity:** Favorites / Recent use `styleRowKey(name, source_file)` in localStorage (legacy bare names migrate on style load). Presets store `{name, source_file}` (normalized on load). Host applied records remember apply-time `source_file`. V2 **`SG_APPLY`** always includes `source_file`; host resolve uses `findStyleByNameAndSource`. Thumbnail messages **`SG_GENERATE_PREVIEW` / `SG_UPLOAD_PREVIEW`** require `source`; host completion **`SG_THUMB_DONE`** includes `source_file` so duplicate-name cards cache-bust independently.
+
 ```mermaid
 sequenceDiagram
   participant H as Host (style_grid.js)
@@ -73,33 +75,40 @@ sequenceDiagram
   F->>H: SG_READY
   H->>API: GET /style_grid/styles
   API-->>H: categories + usage
-  H->>F: SG_INIT (styles array)
-  H->>F: SG_HOST_TAB (when visible txt2img/img2img changes)
-  F->>H: SG_APPLY / SG_UNAPPLY / actions
+  H->>F: SG_INIT (styles array, silentMode)
+  Note over F: Tab identity from SG_INIT only; SG_HOST_TAB ignored for per-frame tab
+  F->>H: SG_APPLY (styleId + source_file) / SG_UNAPPLY / actions
   H->>API: CRUD/thumbnail/preset/etc requests
-  H->>F: SG_STYLES_UPDATE / SG_TOAST / progress messages
+  H->>F: SG_STYLES_UPDATE / SG_TOAST / SG_THUMB_DONE (name+source) / progress
 ```
 
-**Source filter ↔ host:** `SG_SOURCE_CHANGE` carries the selected CSV path (or `null` for All Sources). The host updates `state[tab].selectedSource` / `selectedSourceFile` and the visible source button label. The store avoids echoing duplicate posts when the path is unchanged. **`SG_GENERATE_CATEGORY_PREVIEWS`** may include optional `source`; the host fetches `/style_grid/styles` and filters by category and that source so batch thumbnail jobs match the iframe’s active CSV (not a stale name-only cache).
+**Source filter ↔ host:** `SG_SOURCE_CHANGE` carries the selected CSV path (or `null` for All Sources). The host updates `state[tab].selectedSource` / `selectedSourceFile`, the visible source button label, and V1 localStorage via `setStoredSource`. V2 persists active source **per tab** (`sg_v2_last_source_*`) and **always** posts `SG_SOURCE_CHANGE` from `setStyles` (including All Sources) so Gradio clears stale paths. The store avoids echoing duplicate posts when the path is unchanged. **`SG_GENERATE_CATEGORY_PREVIEWS`** may include optional `source`; the host fetches `/style_grid/styles` and filters by category and that source so batch thumbnail jobs match the iframe’s active CSV.
 
 **Iframe routing:** Forge mounts **two** Style Grid iframes (txt2img / img2img). Each tab’s `window.addEventListener("message", …)` must ignore events where `event.source !== frame.contentWindow`, otherwise both handlers would run for every postMessage (wrong tab, wrong `selectedSource`, etc.).
 
-**Thumbnails:** Cached CSV files live under `data/thumbnails/` with names derived from `stylegrid.thumbnails.get_thumbnail_path(name, source_file)`. `GET /style_grid/thumbnail` resolves CSV files using the style `name` and the cached styles list, and LoRA sibling previews when `source` / name indicates a LoRA row (see `docs/API.md` § GET `/thumbnail`). Per-style **Generate preview** uses `POST /style_grid/thumbnail/generate` with optional `source` in the JSON body (host passes `selectedSource`) so the worker picks the right row when names collide — refused for LoRA.
-**Silent mode:** injection for `scripts/style_grid.py` `process()` reads the hidden Gradio component `style_grid_silent_<tab>` (JSON array of style names). The host keeps that in sync via `setSilentGradio()` from `state[tab].selected` while `silentMode` is on. `SG_UNAPPLY` must remove the id from both `applied` and `selected`; `SG_TOGGLE_SILENT` with `value: false` runs `clearHostSilentSelection` and `postClearSelectionToIframes` (`SG_CLEAR_SELECTION`). **Source of truth for generation is the host textbox**, not the iframe selection UI: after silent turns off, V2 may still show tiles/chips as selected until the user toggles or clears — that mismatch is visual-only and must not imply silent styles are still injected.
+**Thumbnails:** Cached CSV files live under `data/thumbnails/` via `get_thumbnail_path(name, source_file)` (required source). HTTP GET/upload/generate/delete require `source` for CSV styles — see `docs/API.md`. Generation uses the FIFO **`ThumbnailGenerationManager`**: poll `job_id`, cancel via `POST /thumbnail/cancel`. Missing-preview counts come from `GET /thumbnails/list` (`{name, source_file}`), not bare-name localStorage. Per-style generate/upload posts the style’s `source_file` on the bridge (not only the active filter).
 
-**Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** In **non-silent** mode the host must still maintain `state[tab].selected` and `selectedOrder` (not only in silent mode), because presets and other features read that set — applying a style adds the id; unapply removes it. This keeps **Save preset** consistent with what is actually selected.
+**Silent mode:** injection for `scripts/style_grid.py` `process()` reads the hidden Gradio component `style_grid_silent_<tab>` (JSON array of `{name, source_file}` or legacy bare names, ordered by `selectedOrder`). The host keeps that in sync via `setSilentGradio()` from `state[tab].selected` while `silentMode` is on. `SG_UNAPPLY` must remove the id from both `applied` and `selected`; `SG_TOGGLE_SILENT` with `value: false` runs `clearHostSilentSelection` and `postClearSelectionToIframes` (`SG_CLEAR_SELECTION`). Turning silent **on** converts live applies into silent records (strip prompt deltas). Every **`SG_INIT`** includes `silentMode`; V2 hydrates via `setState` without posting `SG_TOGGLE_SILENT`. `{sg:…}` wildcards also resolve inside silently injected style text. **Source of truth for generation is the host textbox**, not the iframe selection UI: after silent turns off, V2 may still show tiles/chips as selected until the user toggles or clears — that mismatch is visual-only and must not imply silent styles are still injected.
+
+**Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** In **non-silent** mode the host must still maintain `state[tab].selected` and `selectedOrder` (not only in silent mode), because presets and other features read that set — applying a style adds the id and remembers `source_file` on the applied record; unapply removes it. This keeps **Save preset** consistent with what is actually selected. **Reorder** updates `selectedOrder` and rebuilds prompts from existing additive/wrap records (including wrap templates) without fabricating full-prompt deltas.
+
+**Clear:** host `clearAll` restores textareas from `userPromptBase` / `userPromptBaseNeg` instead of wiping typed user text.
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
-**Backup (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host `fetch`es `POST /style_grid/backup`, checks `response.ok` before `json()`, and maps `{ error }`, `{ ok: false }`, and thrown errors to **`SG_TOAST`**. See `docs/API.md` § POST `/backup`.
+**Backup (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host `fetch`es `POST /style_grid/backup`, checks `response.ok` before `json()`, and maps `{ error }`, `{ ok: false }`, and thrown errors to **`SG_TOAST`**. Backup members keep directory distinction (`styles/` vs `samples/` vs `external/…`). See `docs/API.md` § POST `/backup`.
 
-**Presets — Load:** **`loadPreset(tabName, presetName)`** (shared by the modal **Load** button and the iframe) clears the selection, posts **`SG_CLEAR_SELECTION`**, applies each saved style name (`applyStyleImmediate`, host `.sg-card` classes), posts **`SG_STYLE_APPLIED`** per resolved style, and calls **`updateSelectedUI`**. The classic presets UI (`showPresetsMenu`) runs on the host DOM and calls **`loadPreset`** from the **Load** button.
+**Import:** failed `POST /import` (including name **collisions**) is shown to the user (alert with error + colliding names); success path unchanged.
 
-The React sidebar **Presets** view (`activeCategory === 'presets'`) renders preset names with the same **`StyleCard`** component as ordinary styles (`presetName` prop); a click sends **`SG_LOAD_PRESET`** with the preset name. The host handler calls **`loadPreset(tab, name)`**; if **`state[tab].presets`** does not yet include that key, it **`fetch`es `GET /style_grid/presets/list`**, merges into **`state[tab].presets`**, then invokes **`loadPreset`** — so loading from the iframe works even when the host cache was empty.
+**Presets — Load:** **`loadPreset(tabName, presetName)`** (shared by the modal **Load** button and the iframe) clears the selection, posts **`SG_CLEAR_SELECTION`**, applies each saved style with name+source resolve (`applyStyleImmediate`, host `.sg-card` classes), posts **`SG_STYLE_APPLIED`** per resolved style, and calls **`updateSelectedUI`**. The classic presets UI (`showPresetsMenu`) runs on the host DOM and calls **`loadPreset`** from the **Load** button.
+
+The React sidebar **Presets** view (`activeCategory === 'presets'`) renders preset names with the same **`StyleCard`** component as ordinary styles (`presetName` prop); a click sends **`SG_LOAD_PRESET`** with the preset name. The host handler calls **`loadPreset(tab, name)`**; if **`state[tab].presets`** does not yet include that key, it **`fetch`es `GET /style_grid/presets/list`**, merges into **`state[tab].presets`**, then invokes **`loadPreset`** — so loading from the iframe works even when the host cache was empty. V2 preset category filter accepts dual-format `{name, source_file}` entries.
 
 **Thumbnail hover:** **`ThumbnailPreview`** skips the hover popup wrapper when **`presetName`** is set (preset tiles are name-only; no thumbnail preview for the preset name string).
 
-**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, and returns **`[silent_styles, source_filter]`**. In `process(*args)`, `args[0]` is silent JSON and `args[1]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
+**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, and returns **`[silent_styles, source_filter]`**. In `process(*args)`, `args[0]` is silent JSON and `args[1]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools — paths compared via `normalize_source_path`. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
+
+**CSV / samples:** `samples/` is read-only for save/delete (**403**). Basename resolve prefers writable CSVs over the demo pack (`is_samples_source`, `_resolve_target_csv_path`).
 
 **CSV table editor (currently disabled):** The 📋 control appears in both the **React header** (`ui/src/App.tsx`, disabled `ToolBtn`) and the **classic host panel** toolbar (`javascript/style_grid.js`, disabled button after Refresh). Tooltips state that the editor is **temporarily unavailable**. The live `openCsvTableEditor` in the host script is a **no-op stub**; the previous full implementation is kept in a **block comment** directly above that stub (search for `CSV table editor — full implementation`). Styles for the overlay live in **`style.css`** under `.sg-csv-*` and `.sg-csv-editor-btn-disabled`.
 
@@ -119,7 +128,7 @@ The React sidebar **Presets** view (`activeCategory === 'presets'`) renders pres
 - `data/lora_titles.json`: CivitAI title cache keyed by `modelId` (created on first successful/failed fetch).
 - `config/lora_roots.json`: optional user LoRA roots (gitignored; see `.example`).
 
-Client-side localStorage keys are also used for UI state (`favorites`, `recent`, source filter, collapsed categories, etc.).
+Client-side localStorage keys are also used for UI state (`favorites` / `recent` as name+source composite keys, per-tab source filter, collapsed categories, etc.).
 
 ## Testing
 

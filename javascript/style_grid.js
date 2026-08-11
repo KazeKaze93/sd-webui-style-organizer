@@ -228,6 +228,10 @@
             if (order.indexOf(n) === -1) order.push(n);
         });
         return order.map(function (n) {
+            var rec = state[tabName].applied.get(n);
+            if (rec && rec.source_file) {
+                return { name: n, source_file: rec.source_file };
+            }
             var s = findStyleByName(tabName, n);
             return s
                 ? { name: s.name, source_file: s.source_file || "" }
@@ -697,7 +701,12 @@
 
         if (state[tabName].silentMode) {
             // Silent: just track, don't touch prompt fields
-            state[tabName].applied.set(styleName, { prompt: style.prompt || null, negative: style.negative_prompt || null, silent: true });
+            state[tabName].applied.set(styleName, {
+                prompt: style.prompt || null,
+                negative: style.negative_prompt || null,
+                silent: true,
+                source_file: style.source_file || "",
+            });
             setSilentGradio(tabName);
             return;
         }
@@ -778,7 +787,8 @@
             wrapTemplate: isPromptWrap ? style.prompt : null,
             negWrapTemplate: isNegWrap ? style.negative_prompt : null,
             originalPrompt: isPromptWrap ? snapshotPrompt : null,
-            originalNeg: isNegWrap ? snapshotNeg : null
+            originalNeg: isNegWrap ? snapshotNeg : null,
+            source_file: style.source_file || "",
         });
         if (restoreOnly) {
             state[tabName]._restoreSimP = prompt;
@@ -850,11 +860,14 @@
             var record = state[tabName].applied.get(name);
             if (!record || record.silent) return;
             stripLiveApplyFromTextareas(tabName, name, record);
-            var style = findStyleByName(tabName, name);
+            var style = record.source_file
+                ? findStyleByNameAndSource(tabName, name, record.source_file)
+                : findStyleByName(tabName, name);
             state[tabName].applied.set(name, {
                 prompt: style ? (style.prompt || null) : (record.prompt || null),
                 negative: style ? (style.negative_prompt || null) : (record.negative || null),
-                silent: true
+                silent: true,
+                source_file: (style && style.source_file) || record.source_file || "",
             });
         });
     }
@@ -2528,7 +2541,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                                     if (state[tabName].selectedOrder.indexOf(styleObj.name) === -1) {
                                         state[tabName].selectedOrder.push(styleObj.name);
                                     }
-                                    applyStyleImmediate(tabName, styleObj.name);
+                                    applyStyleImmediate(tabName, styleObj.name, {
+                                        source_file: styleObj.source_file || "",
+                                    });
                                     qsa('.sg-card[data-style-name="' + CSS.escape(styleObj.name) + '"]', state[tabName].panel).forEach(function (c) {
                                         c.classList.add("sg-selected");
                                         c.classList.add("sg-applied");
@@ -3385,7 +3400,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         } else {
             state[tabName].selected.add(styleName);
             if (state[tabName].selectedOrder.indexOf(styleName) === -1) state[tabName].selectedOrder.push(styleName);
-            applyStyleImmediate(tabName, styleName);
+            if (cardEl && cardEl._styleRef && cardEl._styleRef.source_file) {
+                applyStyleImmediate(tabName, styleName, {
+                    source_file: cardEl._styleRef.source_file,
+                });
+            } else {
+                applyStyleImmediate(tabName, styleName);
+            }
             // Update all matching cards
             qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
                 c.classList.add("sg-selected");
@@ -3449,7 +3470,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 if (!state[tabName].selected.has(name)) {
                     state[tabName].selected.add(name);
                     if (state[tabName].selectedOrder.indexOf(name) === -1) state[tabName].selectedOrder.push(name);
-                    applyStyleImmediate(tabName, name);
+                    if (c._styleRef && c._styleRef.source_file) {
+                        applyStyleImmediate(tabName, name, {
+                            source_file: c._styleRef.source_file,
+                        });
+                    } else {
+                        applyStyleImmediate(tabName, name);
+                    }
                 }
                 c.classList.add("sg-selected");
                 c.classList.add("sg-applied");

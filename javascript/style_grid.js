@@ -4311,7 +4311,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         state[tab].selectedOrder.push(msg.styleId);
                     }
                 }
-                window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
+                window._sgApplyStyle(tab, msg.styleId, {
+                    silent: msg.silent,
+                    source_file: msg.source_file,
+                });
                 setSilentGradio(tab);
             }
 

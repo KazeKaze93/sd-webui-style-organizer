@@ -797,26 +797,8 @@
     window._sgApplyStyle = applyStyleImmediate;
     window._sgUnapplyStyle = unapplyStyle;
 
-    function unapplyStyle(tabName, styleName) {
-        const record = state[tabName].applied.get(styleName);
-        if (!record) {
-            if (state[tabName].selected && state[tabName].selected.has(styleName)) {
-                state[tabName].selected.delete(styleName);
-                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
-                setSilentGradio(tabName);
-            }
-            return;
-        }
-
-        if (record.silent || state[tabName].silentMode) {
-            state[tabName].applied.delete(styleName);
-            if (state[tabName].selected) state[tabName].selected.delete(styleName);
-            state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
-            setSilentGradio(tabName);
-            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
-            return;
-        }
-
+    /** Live-branch textarea cleanup shared by unapplyStyle and convertLiveAppliesToSilent. */
+    function stripLiveApplyFromTextareas(tabName, styleName, record) {
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
@@ -852,6 +834,52 @@
         } else if (record.negative) {
             setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
         }
+    }
+
+    /**
+     * OFF→ON silent: strip live prompt deltas, mark records silent:true.
+     * Does not call setSilentGradio — that must run after silentMode is true
+     * (setSilentGradio writes [] while silentMode is false).
+     */
+    function convertLiveAppliesToSilent(tabName) {
+        var toConvert = [];
+        state[tabName].applied.forEach(function (rec, name) {
+            if (!rec.silent) toConvert.push(name);
+        });
+        toConvert.forEach(function (name) {
+            var record = state[tabName].applied.get(name);
+            if (!record || record.silent) return;
+            stripLiveApplyFromTextareas(tabName, name, record);
+            var style = findStyleByName(tabName, name);
+            state[tabName].applied.set(name, {
+                prompt: style ? (style.prompt || null) : (record.prompt || null),
+                negative: style ? (style.negative_prompt || null) : (record.negative || null),
+                silent: true
+            });
+        });
+    }
+
+    function unapplyStyle(tabName, styleName) {
+        const record = state[tabName].applied.get(styleName);
+        if (!record) {
+            if (state[tabName].selected && state[tabName].selected.has(styleName)) {
+                state[tabName].selected.delete(styleName);
+                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+                setSilentGradio(tabName);
+            }
+            return;
+        }
+
+        if (record.silent) {
+            state[tabName].applied.delete(styleName);
+            if (state[tabName].selected) state[tabName].selected.delete(styleName);
+            state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+            setSilentGradio(tabName);
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+            return;
+        }
+
+        stripLiveApplyFromTextareas(tabName, styleName, record);
 
         state[tabName].applied.delete(styleName);
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
@@ -2532,6 +2560,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             textContent: "👁 Silent",
             title: "Silent mode: styles won't appear in prompt fields but will be applied during generation",
             onClick: function () {
+                var turningOn = !state[tabName].silentMode;
+                if (turningOn) {
+                    convertLiveAppliesToSilent(tabName);
+                }
                 state[tabName].silentMode = !state[tabName].silentMode;
                 setSilentMode(tabName, state[tabName].silentMode);
                 if (!state[tabName].silentMode) {
@@ -2539,6 +2571,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     postClearSelectionToIframes();
                 }
                 silentBtn.classList.toggle("sg-active", state[tabName].silentMode);
+                // Required after ON: convert cannot write Gradio while silentMode is still false
                 setSilentGradio(tabName);
             }
         });
@@ -4265,6 +4298,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (msg.type === "SG_TOGGLE_SILENT") {
                 var t = msg.tab || tab;
                 if (state[t]) {
+                    if (msg.value) {
+                        convertLiveAppliesToSilent(t);
+                    }
                     state[t].silentMode = msg.value;
                     setSilentMode(t, msg.value);
                     if (!msg.value) {

@@ -144,6 +144,10 @@ export default function App() {
             : useStylesStore.getState().tab,
         )
         void useStylesStore.getState().fetchPresets()
+        if (msg.type === 'SG_INIT') {
+          // Direct set — do not call toggleSilent (would post SG_TOGGLE_SILENT back to host)
+          useStylesStore.setState({ silentMode: !!msg.silentMode })
+        }
       }
       if (msg.type === 'SG_HOST_TAB') {
         useStylesStore.setState({ tab: msg.tab })

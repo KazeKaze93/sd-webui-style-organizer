@@ -1,7 +1,7 @@
 /** Messages sent from Forge host script to the React iframe. */
 export type HostMessage =
   | { type: 'SG_CLEAR_SELECTION' }
-  | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
+  | { type: 'SG_INIT';           tab: Tab; styles: Style[]; silentMode: boolean }
   | { type: 'SG_HOST_TAB';       tab: Tab }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
   | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }

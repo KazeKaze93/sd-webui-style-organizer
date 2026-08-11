@@ -536,7 +536,18 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     try {
       const r = await fetch('/style_grid/usage')
       const data = await r.json()
-      set({ usageCounts: data || {} })
+      const usageCounts: Record<string, number> = {}
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+          if (typeof value === 'number') {
+            usageCounts[key] = value
+          } else if (value && typeof value === 'object' && 'count' in value) {
+            const count = (value as { count: unknown }).count
+            usageCounts[key] = typeof count === 'number' ? count : 0
+          }
+        }
+      }
+      set({ usageCounts })
     } catch {
       // ignore usage load errors
     }
@@ -545,12 +556,14 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const counts = { ...get().usageCounts }
     counts[name] = (counts[name] || 0) + 1
     set({ usageCounts: counts })
-    // Persist to backend
-    fetch('/style_grid/usage/increment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    }).catch(() => {})
+    // Persist on live apply only; silent mode is counted at generate time in Python
+    if (!get().silentMode) {
+      fetch('/style_grid/usage/increment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ styles: [name] })
+      }).catch(() => {})
+    }
   },
   fetchPresets: async () => {
     const parse = (raw: unknown): Record<string, { styles: string[]; created: string }> =>

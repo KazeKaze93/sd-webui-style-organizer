@@ -3774,6 +3774,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     type: "SG_INIT",
                     tab: tabName,
                     styles: styles,
+                    silentMode: !!getSilentMode(tabName),
                 }, "*");
                 state[tabName].sgV2HostInitSent = true;
             })
@@ -4153,6 +4154,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                                 type: "SG_INIT",
                                 tab: tab,
                                 styles: allStyles,
+                                silentMode: !!getSilentMode(tab),
                             }, "*");
                         }
                     });
@@ -4221,6 +4223,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             type: "SG_INIT",
                             tab: tab,
                             styles: allStyles,
+                            silentMode: !!getSilentMode(tab),
                         }, "*");
                         state[tab].sgV2HostInitSent = true;
                     })

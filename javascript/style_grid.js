@@ -204,6 +204,40 @@
         }
         return null;
     }
+    /** Prefer name+source_file match; fall back to name-only when source missing or no hit. */
+    function findStyleByNameAndSource(t, name, sourceFile) {
+        var want = String(sourceFile || "").replace(/\\/g, "/");
+        if (!want) return findStyleByName(t, name);
+        for (const styles of Object.values(state[t].categories)) {
+            const f = styles.find(function (s) {
+                return s.name === name && String(s.source_file || "").replace(/\\/g, "/") === want;
+            });
+            if (f) return f;
+        }
+        return findStyleByName(t, name);
+    }
+    /** Map selected styles → {name, source_file}[] for presets / silent Gradio.
+     * Prefer selectedOrder (apply order); skip order entries not in selected;
+     * append any selected names missing from order (same reconcile as updateSelectedUI). */
+    function selectedAsNameSourceEntries(tabName) {
+        var selected = state[tabName].selected;
+        var order = (state[tabName].selectedOrder || []).filter(function (n) {
+            return selected.has(n);
+        });
+        selected.forEach(function (n) {
+            if (order.indexOf(n) === -1) order.push(n);
+        });
+        return order.map(function (n) {
+            var rec = state[tabName].applied.get(n);
+            if (rec && rec.source_file) {
+                return { name: n, source_file: rec.source_file };
+            }
+            var s = findStyleByName(tabName, n);
+            return s
+                ? { name: s.name, source_file: s.source_file || "" }
+                : { name: n, source_file: "" };
+        });
+    }
     function getLoadedStylesWithCategory(tabName) {
         var out = [];
         var cats = state[tabName].categories || {};
@@ -445,7 +479,7 @@
     }
     function setSilentGradio(tabName) {
         var silentEl = qs("#style_grid_silent_" + tabName + " textarea");
-        var names = state[tabName].silentMode ? [...state[tabName].selected] : [];
+        var names = state[tabName].silentMode ? selectedAsNameSourceEntries(tabName) : [];
         if (!silentEl) return;
         setPromptValue(silentEl, JSON.stringify(names));
         syncSourceInput(tabName);
@@ -540,20 +574,35 @@
         return fetch(endpoint).then(function (r) { return r.json(); });
     }
 
+    /** Canonical host-side thumbnail identity; must match list API name+source_file. */
+    function thumbIdentityKey(name, sourceFile) {
+        return String(name) + "::" + String(sourceFile || "");
+    }
+
     // ════════════════════════════════════════════════════
     // THUMBNAILS
     // ════════════════════════════════════════════════════
     function loadThumbnailList(tabName) {
         apiGet("/style_grid/thumbnails/list")
             .then(function (data) {
-                state[tabName].hasThumbnail = new Set(data.has_thumbnail || []);
+                var entries = data.has_thumbnail || [];
+                state[tabName].hasThumbnail = new Set(entries.map(function (e) {
+                    return thumbIdentityKey(e.name, e.source_file);
+                }));
                 var panel = state[tabName].panel;
                 if (!panel) return;
                 qsa(".sg-card", panel).forEach(function (card) {
                     var name = card.getAttribute("data-style-name");
+                    var styleRef = card._styleRef;
+                    var sourceFile = styleRef && styleRef.source_file ? styleRef.source_file : "";
+                    if (!sourceFile) {
+                        // TODO: no source_file on card at paint — cannot resolve thumb identity
+                        card.classList.remove("sg-has-thumb");
+                        return;
+                    }
                     card.classList.toggle(
                         "sg-has-thumb",
-                        state[tabName].hasThumbnail.has(name)
+                        state[tabName].hasThumbnail.has(thumbIdentityKey(name, sourceFile))
                     );
                 });
             })
@@ -645,12 +694,19 @@
         opts = opts || {};
         var restoreOnly = opts.silent === true;
         if (!restoreOnly && state[tabName].applied.has(styleName)) return;
-        const style = findStyleByName(tabName, styleName);
+        const style = opts.source_file
+            ? findStyleByNameAndSource(tabName, styleName, opts.source_file)
+            : findStyleByName(tabName, styleName);
         if (!style) return;
 
         if (state[tabName].silentMode) {
             // Silent: just track, don't touch prompt fields
-            state[tabName].applied.set(styleName, { prompt: style.prompt || null, negative: style.negative_prompt || null, silent: true });
+            state[tabName].applied.set(styleName, {
+                prompt: style.prompt || null,
+                negative: style.negative_prompt || null,
+                silent: true,
+                source_file: style.source_file || "",
+            });
             setSilentGradio(tabName);
             return;
         }
@@ -731,7 +787,8 @@
             wrapTemplate: isPromptWrap ? style.prompt : null,
             negWrapTemplate: isNegWrap ? style.negative_prompt : null,
             originalPrompt: isPromptWrap ? snapshotPrompt : null,
-            originalNeg: isNegWrap ? snapshotNeg : null
+            originalNeg: isNegWrap ? snapshotNeg : null,
+            source_file: style.source_file || "",
         });
         if (restoreOnly) {
             state[tabName]._restoreSimP = prompt;
@@ -750,26 +807,8 @@
     window._sgApplyStyle = applyStyleImmediate;
     window._sgUnapplyStyle = unapplyStyle;
 
-    function unapplyStyle(tabName, styleName) {
-        const record = state[tabName].applied.get(styleName);
-        if (!record) {
-            if (state[tabName].selected && state[tabName].selected.has(styleName)) {
-                state[tabName].selected.delete(styleName);
-                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
-                setSilentGradio(tabName);
-            }
-            return;
-        }
-
-        if (record.silent || state[tabName].silentMode) {
-            state[tabName].applied.delete(styleName);
-            if (state[tabName].selected) state[tabName].selected.delete(styleName);
-            state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
-            setSilentGradio(tabName);
-            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
-            return;
-        }
-
+    /** Live-branch textarea cleanup shared by unapplyStyle and convertLiveAppliesToSilent. */
+    function stripLiveApplyFromTextareas(tabName, styleName, record) {
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
@@ -805,6 +844,55 @@
         } else if (record.negative) {
             setPromptValue(negEl, removeSubstringFromPrompt(negEl.value, record.negative));
         }
+    }
+
+    /**
+     * OFF→ON silent: strip live prompt deltas, mark records silent:true.
+     * Does not call setSilentGradio — that must run after silentMode is true
+     * (setSilentGradio writes [] while silentMode is false).
+     */
+    function convertLiveAppliesToSilent(tabName) {
+        var toConvert = [];
+        state[tabName].applied.forEach(function (rec, name) {
+            if (!rec.silent) toConvert.push(name);
+        });
+        toConvert.forEach(function (name) {
+            var record = state[tabName].applied.get(name);
+            if (!record || record.silent) return;
+            stripLiveApplyFromTextareas(tabName, name, record);
+            var style = record.source_file
+                ? findStyleByNameAndSource(tabName, name, record.source_file)
+                : findStyleByName(tabName, name);
+            state[tabName].applied.set(name, {
+                prompt: style ? (style.prompt || null) : (record.prompt || null),
+                negative: style ? (style.negative_prompt || null) : (record.negative || null),
+                silent: true,
+                source_file: (style && style.source_file) || record.source_file || "",
+            });
+        });
+    }
+
+    function unapplyStyle(tabName, styleName) {
+        const record = state[tabName].applied.get(styleName);
+        if (!record) {
+            if (state[tabName].selected && state[tabName].selected.has(styleName)) {
+                state[tabName].selected.delete(styleName);
+                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+                setSilentGradio(tabName);
+            }
+            return;
+        }
+
+        if (record.silent) {
+            state[tabName].applied.delete(styleName);
+            if (state[tabName].selected) state[tabName].selected.delete(styleName);
+            state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+            setSilentGradio(tabName);
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+            return;
+        }
+
+        stripLiveApplyFromTextareas(tabName, styleName, record);
 
         state[tabName].applied.delete(styleName);
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
@@ -832,7 +920,7 @@
     }
 
    // THUMBNAILS (batch / generate / upload — context menu entry points below)
-   var _batchState = { running: false, cancelled: false, skipped: false };
+   var _batchState = { running: false, cancelled: false, skipped: false, jobId: null };
 
    function startBatchThumbnails(tabName, catName, styles) {
        if (_batchState.running) {
@@ -841,14 +929,14 @@
        }
 
        var queue = styles.filter(function (s) {
-           return !state[tabName].hasThumbnail.has(s.name);
+           return !state[tabName].hasThumbnail.has(thumbIdentityKey(s.name, s.source_file));
        });
        if (queue.length === 0) {
            showStatusMessage(tabName, "All styles already have previews");
            return;
        }
 
-       _batchState = { running: true, cancelled: false, skipped: false };
+       _batchState = { running: true, cancelled: false, skipped: false, jobId: null };
        var total = queue.length;
        var done = 0;
        var failed = 0;
@@ -869,11 +957,33 @@
        var progressFill = el("div", { className: "sg-batch-bar-fill" });
        progressBar.appendChild(progressFill);
 
+       function cancelCurrentJobThen(next) {
+           var jobId = _batchState.jobId;
+           _batchState.jobId = null;
+           if (!jobId) {
+               next();
+               return;
+           }
+           var settled = false;
+           function finish() {
+               if (settled) return;
+               settled = true;
+               next();
+           }
+           apiPost("/style_grid/thumbnail/cancel", { job_id: jobId })
+               .then(finish)
+               .catch(finish);
+           setTimeout(finish, 2000);
+       }
+
        var btnRow = el("div", { className: "sg-editor-btns" });
        var skipBtn = el("button", {
            className: "sg-btn sg-btn-secondary",
            textContent: "⏭ Skip",
-           onClick: function () { _batchState.skipped = true; }
+           onClick: function () {
+               _batchState.skipped = true;
+               cancelCurrentJobThen(function () {});
+           }
        });
        var cancelBtn = el("button", {
            className: "sg-btn",
@@ -883,6 +993,7 @@
                _batchState.cancelled = true;
                cancelBtn.textContent = "Cancelling...";
                cancelBtn.disabled = true;
+               cancelCurrentJobThen(function () {});
            }
        });
        btnRow.appendChild(skipBtn);
@@ -908,6 +1019,7 @@
            if (_batchState.cancelled || index >= queue.length) {
                // Finished
                _batchState.running = false;
+               _batchState.jobId = null;
                overlay.remove();
                var msg = "Done: " + done + "/" + total + " generated";
                if (failed > 0) msg += ", " + failed + " failed";
@@ -918,23 +1030,19 @@
            }
 
            var styleName = queue[index].name;
+           var styleSourceFile = queue[index].source_file || "";
            _batchState.skipped = false;
            updateProgress(index + 1, styleName, "generating...");
 
-           apiPost("/style_grid/thumbnail/generate", { name: styleName })
+           apiPost("/style_grid/thumbnail/generate", { name: styleName, source: styleSourceFile })
                .then(function (r) {
-                   if (r.error) {
-                       if (r.error.indexOf("busy") !== -1) {
-                           // SD busy — wait and retry same index
-                           updateProgress(index + 1, styleName, "SD busy, waiting...");
-                           setTimeout(function () { processNext(index); }, 5000);
-                           return;
-                       }
+                   if (r.error || !r.job_id) {
                        failed++;
                        processNext(index + 1);
                        return;
                    }
-                   pollBatchStatus(tabName, styleName, index, 0);
+                   _batchState.jobId = r.job_id;
+                   pollBatchStatus(tabName, styleName, styleSourceFile, index, 0, r.job_id);
                })
                .catch(function () {
                    failed++;
@@ -942,54 +1050,76 @@
                });
        }
 
-       function pollBatchStatus(tabName2, styleName, index, attempts) {
+       function pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts, jobId) {
            if (_batchState.cancelled) {
-               _batchState.running = false;
-               overlay.remove();
-               showStatusMessage(tabName2, "Cancelled. " + done + "/" + total + " completed.");
-               loadThumbnailList(tabName2);
+               cancelCurrentJobThen(function () {
+                   _batchState.running = false;
+                   overlay.remove();
+                   showStatusMessage(tabName2, "Cancelled. " + done + "/" + total + " completed.");
+                   loadThumbnailList(tabName2);
+               });
                return;
            }
            if (_batchState.skipped) {
-               skipped++;
-               processNext(index + 1);
+               cancelCurrentJobThen(function () {
+                   skipped++;
+                   processNext(index + 1);
+               });
                return;
            }
            if (attempts > 60) {
+               _batchState.jobId = null;
                failed++;
                processNext(index + 1);
                return;
            }
 
-           apiGet("/style_grid/thumbnail/gen_status?name=" +
-               encodeURIComponent(styleName))
+           apiGet("/style_grid/thumbnail/gen_status?job_id=" +
+               encodeURIComponent(jobId))
                .then(function (r) {
                    if (!r || r.detail === "Not Found" || r.status === undefined) {
+                       _batchState.jobId = null;
                        failed++;
                        processNext(index + 1);
                        return;
                    }
                    if (r.status === "done") {
+                       _batchState.jobId = null;
                        done++;
-                       state[tabName2].hasThumbnail.add(styleName);
+                       state[tabName2].hasThumbnail.add(thumbIdentityKey(styleName, styleSourceFile));
                        _thumbVersions[styleName] = Date.now();
                        localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                        _saveThumbVersions();
                        qsa('.sg-card[data-style-name="' +
                            CSS.escape(styleName) + '"]', state[tabName2].panel)
-                           .forEach(function (c) { c.classList.add("sg-has-thumb"); });
+                           .forEach(function (c) {
+                               var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
+                               if (sf && sf === styleSourceFile) {
+                                   c.classList.add("sg-has-thumb");
+                               }
+                           });
                        updateProgress(index + 1, styleName, "✓");
                        setTimeout(function () { processNext(index + 1); }, 300);
-                   } else if (r.status === "error") {
+                   } else if (r.status === "error" || r.status === "cancelled") {
+                       _batchState.jobId = null;
+                       if (r.status === "cancelled") {
+                           skipped++;
+                       } else {
+                           failed++;
+                       }
+                       processNext(index + 1);
+                   } else if (r.status === "queued" || r.status === "running") {
+                       setTimeout(function () {
+                           pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts + 1, jobId);
+                       }, 2000);
+                   } else {
+                       _batchState.jobId = null;
                        failed++;
                        processNext(index + 1);
-                   } else {
-                       setTimeout(function () {
-                           pollBatchStatus(tabName2, styleName, index, attempts + 1);
-                       }, 2000);
                    }
                })
                .catch(function () {
+                   _batchState.jobId = null;
                    failed++;
                    processNext(index + 1);
                });
@@ -998,23 +1128,24 @@
        processNext(0);
    }
 
-   function generateThumbnail(tabName, styleName, onDone, onProgress) {
+   function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
+        var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
         showStatusMessage(tabName, "🎨 Generating preview for " +
             styleName.split("_").slice(1).join(" ") + "...");
         if (typeof onProgress === "function") {
             onProgress("generating", 0);
         }
 
-        apiPost("/style_grid/thumbnail/generate", { name: styleName, source: state[tabName].selectedSource || "" })
+        apiPost("/style_grid/thumbnail/generate", { name: styleName, source: resolvedSource })
             .then(function (r) {
-                if (r.error) {
-                    showStatusMessage(tabName, "Generation failed: " + r.error, true);
+                if (r.error || !r.job_id) {
+                    showStatusMessage(tabName, "Generation failed: " + (r.error || "missing job_id"), true);
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
                     return;
                 }
-                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress);
+                pollGenerationStatus(tabName, styleName, 0, onDone, onProgress, resolvedSource, r.job_id);
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
@@ -1024,7 +1155,7 @@
             });
     }
 
-    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress) {
+    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile, jobId) {
         if (attempts > 60) {
             showStatusMessage(tabName, "Generation timed out", true);
             if (typeof onProgress === "function") {
@@ -1032,8 +1163,8 @@
             }
             return;
         }
-        apiGet("/style_grid/thumbnail/gen_status?name=" +
-            encodeURIComponent(styleName))
+        apiGet("/style_grid/thumbnail/gen_status?job_id=" +
+            encodeURIComponent(jobId))
             .then(function (r) {
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     showStatusMessage(tabName, "Generation endpoint not found", true);
@@ -1043,7 +1174,7 @@
                     return;
                 }
                 if (r.status === "done") {
-                    state[tabName].hasThumbnail.add(styleName);
+                    state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, sourceFile));
                     _thumbVersions[styleName] = Date.now();
                     localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                     _saveThumbVersions();
@@ -1051,25 +1182,30 @@
                         CSS.escape(styleName) + '"]',
                         state[tabName].panel)
                         .forEach(function (c) {
-                            c.classList.add("sg-has-thumb");
+                            var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
+                            if (sf && sf === sourceFile) {
+                                c.classList.add("sg-has-thumb");
+                            }
                         });
                     showStatusMessage(tabName, "✓ Preview ready!");
                     if (typeof onProgress === "function") {
                         onProgress("done", 100);
                     }
                     if (typeof onDone === "function") onDone(_thumbVersions[styleName]);
-                } else if (r.status === "error") {
+                } else if (r.status === "error" || r.status === "cancelled") {
                     showStatusMessage(tabName,
-                        "Generation failed: " + (r.message || "unknown"), true);
+                        r.status === "cancelled"
+                            ? "Generation cancelled"
+                            : ("Generation failed: " + (r.message || "unknown")), true);
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
-                } else if (r.status === "running" || r.status === "idle") {
+                } else if (r.status === "queued" || r.status === "running") {
                     if (typeof onProgress === "function") {
                         onProgress("generating", Math.min(90, Math.round((attempts / 60) * 100)));
                     }
                     setTimeout(function () {
-                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress);
+                        pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress, sourceFile, jobId);
                     }, 2000);
                 } else {
                     showStatusMessage(tabName, "Unknown generation status: " + r.status, true);
@@ -1086,7 +1222,8 @@
             });
     }
 
-    function uploadThumbnail(tabName, styleName) {
+    function uploadThumbnail(tabName, styleName, sourceFile) {
+        var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
         var input = document.createElement("input");
         input.type = "file";
         input.accept = "image/*";
@@ -1097,21 +1234,34 @@
             reader.onload = function () {
                 apiPost("/style_grid/thumbnail/upload", {
                     name: styleName,
-                    image: reader.result
+                    image: reader.result,
+                    source: resolvedSource
                 })
                     .then(function (r) {
                         if (r.ok) {
-                            state[tabName].hasThumbnail.add(styleName);
+                            state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, resolvedSource));
                             qsa('.sg-card[data-style-name="' +
                                 CSS.escape(styleName) + '"]',
                                 state[tabName].panel)
                                 .forEach(function (c) {
-                                    c.classList.add("sg-has-thumb");
+                                    var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
+                                    if (sf && sf === resolvedSource) {
+                                        c.classList.add("sg-has-thumb");
+                                    }
                                 });
                             _thumbVersions[styleName] = Date.now();
                             localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                             _saveThumbVersions();
                             showStatusMessage(tabName, "Preview saved ✓");
+                            var fr = state[tabName] && state[tabName].sgFrame;
+                            if (fr && fr.contentWindow) {
+                                fr.contentWindow.postMessage({
+                                    type: "SG_THUMB_DONE",
+                                    styleId: styleName,
+                                    version: _thumbVersions[styleName],
+                                    source_file: resolvedSource,
+                                }, "*");
+                            }
                         } else {
                             showStatusMessage(tabName,
                                 "Upload failed: " + (r.error || "?"), true);
@@ -1149,13 +1299,59 @@
 
         items.push({
             label: "🎨 Generate preview (SD)",
-            action: function () { generateThumbnail(tabName, styleName); }
+            action: function () { generateThumbnail(tabName, styleName, undefined, undefined, style.source_file); }
         });
 
         items.push({
             label: "🖼️ Upload preview image",
-            action: function () { uploadThumbnail(tabName, styleName); }
+            action: function () { uploadThumbnail(tabName, styleName, style.source_file); }
         });
+
+        var sourceFile = style.source_file || "";
+        if (sourceFile &&
+            state[tabName].hasThumbnail.has(thumbIdentityKey(styleName, sourceFile))) {
+            items.push({
+                label: "🗑️ Remove preview image",
+                action: function () {
+                    fetch(
+                        "/style_grid/thumbnail?name=" + encodeURIComponent(styleName) +
+                        "&source=" + encodeURIComponent(sourceFile),
+                        { method: "DELETE" }
+                    ).then(function (r) {
+                        return r.text().then(function (text) {
+                            var body = {};
+                            if (text) {
+                                try { body = JSON.parse(text); } catch (_e) { /* ignore */ }
+                            }
+                            if (!r.ok || (body && body.ok === false)) {
+                                showStatusMessage(
+                                    tabName,
+                                    "Remove failed: " + ((body && body.error) || ("HTTP " + r.status)),
+                                    true
+                                );
+                                return;
+                            }
+                            state[tabName].hasThumbnail.delete(thumbIdentityKey(styleName, sourceFile));
+                            delete _thumbVersions[styleName];
+                            if (typeof _saveThumbVersions === "function") _saveThumbVersions();
+                            try { localStorage.removeItem("sg_thumb_v_" + styleName); } catch (_e) { /* ignore */ }
+                            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]',
+                                state[tabName].panel)
+                                .forEach(function (c) {
+                                    var sf = c._styleRef && c._styleRef.source_file
+                                        ? c._styleRef.source_file : "";
+                                    if (sf === sourceFile) {
+                                        c.classList.remove("sg-has-thumb");
+                                    }
+                                });
+                            showStatusMessage(tabName, "Preview removed");
+                        });
+                    }).catch(function () {
+                        showStatusMessage(tabName, "Remove failed", true);
+                    });
+                }
+            });
+        }
 
         items.forEach(function (item) {
             const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
@@ -1877,17 +2073,30 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         if (!p) return;
         var sgFrame = document.getElementById("sg-frame-" + tabName);
         const presetStyles = p.styles || [];
-        presetStyles.forEach(function (sn) {
-            if (state[tabName].selected.has(sn)) return;
-            state[tabName].selected.add(sn);
-            state[tabName].selectedOrder.push(sn);
-            applyStyleImmediate(tabName, sn);
-            qsa('.sg-card[data-style-name="' + CSS.escape(sn) + '"]', state[tabName].panel).forEach(function (c) {
+        presetStyles.forEach(function (entry) {
+            var styleName;
+            var styleObj;
+            if (entry && typeof entry === "object") {
+                styleName = entry.name;
+                styleObj = findStyleByNameAndSource(tabName, styleName, entry.source_file || "");
+            } else {
+                styleName = entry;
+                styleObj = findStyleByName(tabName, styleName);
+            }
+            if (!styleName) return;
+            if (state[tabName].selected.has(styleName)) return;
+            state[tabName].selected.add(styleName);
+            state[tabName].selectedOrder.push(styleName);
+            if (styleObj && styleObj.source_file) {
+                applyStyleImmediate(tabName, styleName, { source_file: styleObj.source_file });
+            } else {
+                applyStyleImmediate(tabName, styleName);
+            }
+            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
                 c.classList.add("sg-selected");
                 c.classList.add("sg-applied");
             });
             if (sgFrame && sgFrame.contentWindow) {
-                var styleObj = findStyleByName(tabName, sn);
                 if (styleObj) {
                     sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
                 }
@@ -1915,7 +2124,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             onClick: function () {
                 const name = nameIn.value.trim();
                 if (!name) return;
-                apiPost("/style_grid/presets/save", { name: name, styles: [...state[tabName].selected] }).then(function (r) {
+                apiPost("/style_grid/presets/save", { name: name, styles: selectedAsNameSourceEntries(tabName) }).then(function (r) {
                     state[tabName].presets = r.presets || {};
                     renderPresetsList();
                     nameIn.value = "";
@@ -2016,12 +2225,40 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             reader.onload = function () {
                 try {
                     const data = JSON.parse(reader.result);
-                    apiPost("/style_grid/import", data).then(function () {
+                    fetch("/style_grid/import", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data),
+                    }).then(function (r) {
+                        return r.text().then(function (text) {
+                            var body = {};
+                            if (text) {
+                                try {
+                                    body = JSON.parse(text);
+                                } catch (_e) {
+                                    if (!r.ok) {
+                                        return Promise.reject(new Error("HTTP " + r.status));
+                                    }
+                                    return Promise.reject(new Error("Invalid JSON in response"));
+                                }
+                            }
+                            if (!r.ok || (body && body.error)) {
+                                var msg = (body && body.error) || ("HTTP " + r.status);
+                                if (body && Array.isArray(body.collisions) && body.collisions.length) {
+                                    msg += "\n\nColliding names: " + body.collisions.join(", ");
+                                }
+                                return Promise.reject(new Error(msg));
+                            }
+                            return body;
+                        });
+                    }).then(function () {
                         overlay.remove();
                         refreshPanel(tabName);
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
-                    }).catch(function () {});
+                    }).catch(function (err) {
+                        alert((err && err.message) ? err.message : "Import failed");
+                    });
                 } catch (_e) { alert("Invalid JSON file"); }
             };
             reader.readAsText(file);
@@ -2351,7 +2588,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                                     if (state[tabName].selectedOrder.indexOf(styleObj.name) === -1) {
                                         state[tabName].selectedOrder.push(styleObj.name);
                                     }
-                                    applyStyleImmediate(tabName, styleObj.name);
+                                    applyStyleImmediate(tabName, styleObj.name, {
+                                        source_file: styleObj.source_file || "",
+                                    });
                                     qsa('.sg-card[data-style-name="' + CSS.escape(styleObj.name) + '"]', state[tabName].panel).forEach(function (c) {
                                         c.classList.add("sg-selected");
                                         c.classList.add("sg-applied");
@@ -2411,6 +2650,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             textContent: "👁 Silent",
             title: "Silent mode: styles won't appear in prompt fields but will be applied during generation",
             onClick: function () {
+                var turningOn = !state[tabName].silentMode;
+                if (turningOn) {
+                    convertLiveAppliesToSilent(tabName);
+                }
                 state[tabName].silentMode = !state[tabName].silentMode;
                 setSilentMode(tabName, state[tabName].silentMode);
                 if (!state[tabName].silentMode) {
@@ -2418,6 +2661,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     postClearSelectionToIframes();
                 }
                 silentBtn.classList.toggle("sg-active", state[tabName].silentMode);
+                // Required after ON: convert cannot write Gradio while silentMode is still false
                 setSilentGradio(tabName);
             }
         });
@@ -2758,7 +3002,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
            }
            var missingCount = 0;
            stylesInCat.forEach(function (s) {
-               if (!state[tabName].hasThumbnail.has(s.name)) missingCount++;
+               if (!state[tabName].hasThumbnail.has(thumbIdentityKey(s.name, s.source_file))) missingCount++;
            });
            if (missingCount > 0) {
                var batchItem = el("div", {
@@ -2839,7 +3083,8 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     showThumbPopup(card, name, tabName, displayName, promptText);
                 }, 700);
 
-                if (state[tabName].hasThumbnail && state[tabName].hasThumbnail.has(name)) {
+                if (state[tabName].hasThumbnail && styleRef && styleRef.source_file &&
+                    state[tabName].hasThumbnail.has(thumbIdentityKey(name, styleRef.source_file))) {
                     card.classList.add("sg-thumb-loading");
                     _thumbProgressTimer = setTimeout(function () {
                         card.classList.remove("sg-thumb-loading");
@@ -2895,7 +3140,15 @@ CSV table editor — full implementation kept for restoration; currently inactiv
 
     function showThumbPopup(card, styleName, tabName, displayName, promptText) {
         var popup = createThumbPopup();
-        var hasThumbnail = state[tabName].hasThumbnail.has(styleName);
+        var styleRef = card._styleRef;
+        var sourceFile = styleRef && styleRef.source_file ? styleRef.source_file : "";
+        var hasThumbnail = false;
+        if (!sourceFile) {
+            // TODO: no source_file on card at paint — cannot resolve thumb identity
+            hasThumbnail = false;
+        } else {
+            hasThumbnail = state[tabName].hasThumbnail.has(thumbIdentityKey(styleName, sourceFile));
+        }
 
         var rect = card.getBoundingClientRect();
         var popupW = 253;
@@ -3194,7 +3447,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         } else {
             state[tabName].selected.add(styleName);
             if (state[tabName].selectedOrder.indexOf(styleName) === -1) state[tabName].selectedOrder.push(styleName);
-            applyStyleImmediate(tabName, styleName);
+            if (cardEl && cardEl._styleRef && cardEl._styleRef.source_file) {
+                applyStyleImmediate(tabName, styleName, {
+                    source_file: cardEl._styleRef.source_file,
+                });
+            } else {
+                applyStyleImmediate(tabName, styleName);
+            }
             // Update all matching cards
             qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
                 c.classList.add("sg-selected");
@@ -3221,14 +3480,17 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         state[tabName].selected.clear();
         state[tabName].selectedOrder = [];
         state[tabName].applied.clear();
+
+        var basePrompt = state[tabName].userPromptBase || "";
+        var baseNeg = state[tabName].userPromptBaseNeg || "";
         state[tabName].userPromptBase = "";
         state[tabName].userPromptBaseNeg = "";
 
         (function () {
             var promptEl = qs("#" + tabName + "_prompt textarea");
             var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-            if (promptEl) setPromptValue(promptEl, "");
-            if (negEl)    setPromptValue(negEl, "");
+            if (promptEl) setPromptValue(promptEl, basePrompt);
+            if (negEl)    setPromptValue(negEl, baseNeg);
         })();
 
         if (state[tabName].panel) {
@@ -3255,7 +3517,13 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 if (!state[tabName].selected.has(name)) {
                     state[tabName].selected.add(name);
                     if (state[tabName].selectedOrder.indexOf(name) === -1) state[tabName].selectedOrder.push(name);
-                    applyStyleImmediate(tabName, name);
+                    if (c._styleRef && c._styleRef.source_file) {
+                        applyStyleImmediate(tabName, name, {
+                            source_file: c._styleRef.source_file,
+                        });
+                    } else {
+                        applyStyleImmediate(tabName, name);
+                    }
                 }
                 c.classList.add("sg-selected");
                 c.classList.add("sg-applied");
@@ -3375,20 +3643,24 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         if (!promptEl || !negEl) return;
         const order = state[tabName].selectedOrder || [];
         const orderedApplied = order.filter(function (n) { return state[tabName].applied.has(n); });
-        const prompts = orderedApplied.map(function (n) {
-            const r = state[tabName].applied.get(n);
-            return r && r.prompt ? r.prompt : null;
-        }).filter(Boolean);
-        const negs = orderedApplied.map(function (n) {
-            const r = state[tabName].applied.get(n);
-            return r && r.negative ? r.negative : null;
-        }).filter(Boolean);
-        const base = (state[tabName].userPromptBase || "").trim();
-        const newPrompt = base + (prompts.length ? (base ? ", " : "") + prompts.join(", ") : "");
-        const baseNeg = (state[tabName].userPromptBaseNeg || "").trim();
-        const newNeg = baseNeg + (negs.length ? (baseNeg ? ", " : "") + negs.join(", ") : "");
-        setPromptValue(promptEl, newPrompt);
-        setPromptValue(negEl, newNeg);
+        let p = (state[tabName].userPromptBase || "").trim();
+        let n = (state[tabName].userPromptBaseNeg || "").trim();
+        orderedApplied.forEach(function (name) {
+            const r = state[tabName].applied.get(name);
+            if (!r) return;
+            if (r.wrapTemplate) {
+                p = r.wrapTemplate.replace("{prompt}", p);
+            } else if (r.prompt) {
+                p = p + (p ? ", " : "") + r.prompt;
+            }
+            if (r.negWrapTemplate) {
+                n = r.negWrapTemplate.replace("{prompt}", n);
+            } else if (r.negative) {
+                n = n + (n ? ", " : "") + r.negative;
+            }
+        });
+        setPromptValue(promptEl, p);
+        setPromptValue(negEl, n);
     }
 
     function updateSelectedUI(tabName) {
@@ -3641,6 +3913,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     type: "SG_INIT",
                     tab: tabName,
                     styles: styles,
+                    silentMode: !!getSilentMode(tabName),
                 }, "*");
                 state[tabName].sgV2HostInitSent = true;
             })
@@ -4020,6 +4293,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                                 type: "SG_INIT",
                                 tab: tab,
                                 styles: allStyles,
+                                silentMode: !!getSilentMode(tab),
                             }, "*");
                         }
                     });
@@ -4088,6 +4362,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             type: "SG_INIT",
                             tab: tab,
                             styles: allStyles,
+                            silentMode: !!getSilentMode(tab),
                         }, "*");
                         state[tab].sgV2HostInitSent = true;
                     })
@@ -4103,8 +4378,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         state[tab].selectedOrder.push(msg.styleId);
                     }
                     state[tab].silentMode = true;
+                    setSilentMode(tab, true);
                 } else {
                     state[tab].silentMode = false;
+                    setSilentMode(tab, false);
                     if (!state[tab].selected) state[tab].selected = new Set();
                     state[tab].selected.add(msg.styleId);
                     state[tab].selectedOrder = state[tab].selectedOrder || [];
@@ -4112,7 +4389,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         state[tab].selectedOrder.push(msg.styleId);
                     }
                 }
-                window._sgApplyStyle(tab, msg.styleId, { silent: msg.silent });
+                window._sgApplyStyle(tab, msg.styleId, {
+                    silent: msg.silent,
+                    source_file: msg.source_file,
+                });
                 setSilentGradio(tab);
             }
 
@@ -4127,6 +4407,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (msg.type === "SG_TOGGLE_SILENT") {
                 var t = msg.tab || tab;
                 if (state[t]) {
+                    if (msg.value) {
+                        convertLiveAppliesToSilent(t);
+                    }
                     state[t].silentMode = msg.value;
                     setSilentMode(t, msg.value);
                     if (!msg.value) {
@@ -4140,22 +4423,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (msg.type === "SG_REORDER_STYLES") {
                 var ids = Array.isArray(msg.styleIds) ? msg.styleIds : [];
                 state[tab].selectedOrder = ids;
-                ids.forEach(function (styleId) {
-                    if (!state[tab].applied.has(styleId)) {
-                        var styleObj = findStyleByName(styleId);
-                        if (styleObj) {
-                            state[tab].applied.set(styleId, {
-                                prompt: styleObj.prompt,
-                                negative: styleObj.negative_prompt,
-                                wrapTemplate: null,
-                                negWrapTemplate: null,
-                                originalPrompt: styleObj.prompt,
-                                originalNeg: styleObj.negative_prompt
-                            });
-                        }
-                    }
-                });
-                
+                // Preserve existing applied deltas — do not fabricate full-prompt records
                 if (typeof rebuildPromptFromOrder === "function") {
                     rebuildPromptFromOrder(tab);
                 }
@@ -4331,6 +4599,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 if (syncBtn) {
                     syncBtn.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
                 }
+                setStoredSource(tab, state[tab].selectedSource || "All");
                 syncSourceInput(tab);
             }
             if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {
@@ -4399,6 +4668,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 }
             }
             if (msg.type === "SG_GENERATE_PREVIEW") {
+                var genSource = msg.source || state[tab].selectedSourceFile || "";
                 generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
                     if (frame.contentWindow) {
                         frame.contentWindow.postMessage({
@@ -4420,6 +4690,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                                         type: "SG_THUMB_DONE",
                                         styleId: msg.styleId,
                                         version: Date.now(),
+                                        source_file: genSource,
                                     }, "*");
                                 }
                             }, 300);
@@ -4432,10 +4703,11 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                             }, "*");
                         }
                     }
-                });
+                }, genSource);
             }
             if (msg.type === "SG_UPLOAD_PREVIEW") {
-                uploadThumbnail(tab, msg.styleId);
+                var uploadSource = msg.source || state[tab].selectedSourceFile || "";
+                uploadThumbnail(tab, msg.styleId, uploadSource);
             }
             if (msg.type === "SG_DELETE_STYLE") {
                 var styleToDelete = findStyleByName(msg.styleId);

@@ -15,7 +15,7 @@ from modules import script_callbacks, scripts  # type: ignore[reportMissingImpor
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR
-from stylegrid.csv_io import categorize_styles, load_all_styles
+from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
 from stylegrid.data_files import increment_usage, load_presets, load_usage
 from stylegrid.routes import register_api
 from stylegrid.wildcards import resolve_sg_wildcards
@@ -90,7 +90,10 @@ class StyleGridScript(scripts.Script):
         # args[1] = active source filter passed from UI ("" means All Sources)
         active_source = (args[1] if len(args) >= 2 else "") or ""
         if active_source:
-            wildcard_pool = [s for s in all_styles if (s.get("source_file") or "") == active_source]
+            wildcard_pool = [
+                s for s in all_styles
+                if normalize_source_path(s.get("source_file") or "") == normalize_source_path(active_source)
+            ]
             if not wildcard_pool:           # unknown source — fall back to all
                 wildcard_pool = all_styles
         else:
@@ -112,30 +115,55 @@ class StyleGridScript(scripts.Script):
         if not silent_json or silent_json == "[]":
             return
         try:
-            style_names = json.loads(silent_json)
+            silent_entries = json.loads(silent_json)
         except Exception:
             return
-        if not style_names or not isinstance(style_names, list):
+        if not silent_entries or not isinstance(silent_entries, list):
             return
         style_map = {s["name"]: s for s in all_styles}
+        style_by_name_source = {
+            (s["name"], normalize_source_path(s.get("source_file") or "")): s
+            for s in all_styles
+        }
         prompts_add = []
         neg_add = []
-        for name in style_names:
-            s = style_map.get(name)
+        style_names = []
+        for entry in silent_entries:
+            if isinstance(entry, str):
+                s = style_map.get(entry)
+            elif isinstance(entry, dict):
+                name = entry.get("name", "")
+                if not isinstance(name, str) or not name:
+                    continue
+                source_file = entry.get("source_file") or ""
+                if isinstance(source_file, str) and source_file.strip():
+                    s = style_by_name_source.get(
+                        (name, normalize_source_path(source_file))
+                    )
+                    if not s:
+                        # Deliberate: stale/missing source falls back to name-only
+                        s = style_map.get(name)
+                else:
+                    s = style_map.get(name)
+            else:
+                continue
             if not s:
                 continue
-            if s["prompt"]:
-                if "{prompt}" in s["prompt"]:
+            style_names.append(s["name"])
+            prompt_text = resolve_sg_wildcards(s["prompt"], styles_by_cat) if s["prompt"] else ""
+            neg_text = resolve_sg_wildcards(s["negative_prompt"], styles_by_cat) if s["negative_prompt"] else ""
+            if prompt_text:
+                if "{prompt}" in prompt_text:
                     for i in range(len(p.all_prompts)):
-                        p.all_prompts[i] = s["prompt"].replace("{prompt}", p.all_prompts[i])
+                        p.all_prompts[i] = prompt_text.replace("{prompt}", p.all_prompts[i])
                 else:
-                    prompts_add.append(s["prompt"])
-            if s["negative_prompt"]:
-                if "{prompt}" in s["negative_prompt"]:
+                    prompts_add.append(prompt_text)
+            if neg_text:
+                if "{prompt}" in neg_text:
                     for i in range(len(p.all_negative_prompts)):
-                        p.all_negative_prompts[i] = s["negative_prompt"].replace("{prompt}", p.all_negative_prompts[i])
+                        p.all_negative_prompts[i] = neg_text.replace("{prompt}", p.all_negative_prompts[i])
                 else:
-                    neg_add.append(s["negative_prompt"])
+                    neg_add.append(neg_text)
         if prompts_add:
             style_tags = [t.strip() for s in prompts_add for t in s.split(",") if t.strip()]
             for i in range(len(p.all_prompts)):

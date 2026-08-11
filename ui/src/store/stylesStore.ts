@@ -69,6 +69,78 @@ export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
   return `${s.source_file}\0${s.name}`
 }
 
+/** Preset style ref: legacy bare name, or backend-normalized {name, source_file}. */
+export type PresetStyleEntry = string | { name: string; source_file?: string }
+
+type StyleIdentity = Pick<Style, 'name' | 'source_file'>
+
+/** Resolve a preset styles[] entry to a library row (name+source, else name-only). */
+function resolvePresetStyleEntry(
+  entry: PresetStyleEntry,
+  styles: Style[],
+  bySource: (s: Style) => boolean,
+): Style | undefined {
+  if (typeof entry === 'string') {
+    return styles.find((s) => s.name === entry && bySource(s))
+  }
+  if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
+    return undefined
+  }
+  const name = entry.name
+  const source = typeof entry.source_file === 'string' ? entry.source_file : ''
+  if (source) {
+    const want = styleRowKey({ name, source_file: source })
+    const hit = styles.find((s) => styleRowKey(s) === want && bySource(s))
+    if (hit) return hit
+  }
+  return styles.find((s) => s.name === name && bySource(s))
+}
+
+function presetEntryDedupeKey(entry: PresetStyleEntry): string | null {
+  if (typeof entry === 'string') {
+    return entry || null
+  }
+  if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
+    return null
+  }
+  const source = typeof entry.source_file === 'string' ? entry.source_file : ''
+  return source ? styleRowKey({ name: entry.name, source_file: source }) : entry.name
+}
+
+/** Safe localStorage JSON array read — never throws on corrupt data. */
+function loadStringArrayFromLs(key: string): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(key) || '[]')
+    if (!Array.isArray(raw)) return []
+    return raw.filter((x): x is string => typeof x === 'string')
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Upgrade legacy bare-name favorites/recent entries to styleRowKey composites.
+ * Entries that already contain '\0' are left as-is. Unresolvable names are dropped.
+ */
+function migrateLegacyNameKeys(entries: string[], styles: Style[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    let key: string | null
+    if (entry.includes('\0')) {
+      key = entry
+    } else {
+      const match = styles.find((s) => s.name === entry)
+      key = match ? styleRowKey(match) : null
+    }
+    if (key && !seen.has(key)) {
+      seen.add(key)
+      out.push(key)
+    }
+  }
+  return out
+}
+
 /** First occurrence wins; use only when the active source is "All sources". */
 export function dedupeStylesByNameForAllSources(styles: Style[]): Style[] {
   const seen = new Set<string>()
@@ -150,9 +222,9 @@ interface StylesStore {
   collapsedCategories: Set<string>
   silentMode: boolean
   compactMode: boolean
-  /** Favorite style names persisted in localStorage. */
+  /** Favorite style row keys (styleRowKey) persisted in localStorage. */
   favorites: Set<string>
-  /** Most recently applied style names (max 10). */
+  /** Most recently applied style row keys (styleRowKey, max 10). */
   recentNames: string[]
   /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
@@ -161,7 +233,7 @@ interface StylesStore {
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
   /** Saved style presets from backend (`/style_grid/presets` / list API). */
-  presets: Record<string, { styles: string[]; created: string }>
+  presets: Record<string, { styles: PresetStyleEntry[]; created: string }>
   
   // Actions
   setStyles: (styles: Style[], tab: Tab) => void
@@ -182,9 +254,9 @@ interface StylesStore {
   loadUsage: () => Promise<void>
   incrementUsage: (name: string) => void
   setCategoryOrder: (order: string[]) => void
-  toggleFavorite: (name: string) => void
-  isFavorite: (name: string) => boolean
-  addToRecent: (name: string) => void
+  toggleFavorite: (style: StyleIdentity) => void
+  isFavorite: (style: StyleIdentity) => boolean
+  addToRecent: (style: StyleIdentity) => void
   fetchPresets: () => Promise<void>
   
   // Derived
@@ -198,36 +270,36 @@ export function selectFilteredStyles(
   activeSource: string | null,
   favorites: Set<string>,
   recentNames: string[],
-  presets: Record<string, { styles: string[]; created: string }>,
+  presets: Record<string, { styles: PresetStyleEntry[]; created: string }>,
 ): Style[] {
   const bySource = (s: Style) => !activeSource || s.source_file === activeSource
 
   if (activeCategory === '★ Favorites') {
-    let favStyles = styles.filter(s => favorites.has(s.name) && bySource(s) && matchesSearch(s, search))
-    if (!activeSource) favStyles = dedupeStylesByNameForAllSources(favStyles)
-    return favStyles
+    return styles.filter(
+      (s) => favorites.has(styleRowKey(s)) && bySource(s) && matchesSearch(s, search),
+    )
   }
 
   if (activeCategory === '🕑 Recent') {
     return recentNames
-      .map(name => styles.find(s => s.name === name && bySource(s)))
+      .map((key) => styles.find((s) => styleRowKey(s) === key && bySource(s)))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
 
   if (activeCategory === 'presets') {
-    const order: string[] = []
+    const order: PresetStyleEntry[] = []
     const seen = new Set<string>()
     for (const key of Object.keys(presets).sort()) {
-      for (const n of presets[key]?.styles ?? []) {
-        if (!seen.has(n)) {
-          seen.add(n)
-          order.push(n)
-        }
+      for (const entry of presets[key]?.styles ?? []) {
+        const dedupe = presetEntryDedupeKey(entry)
+        if (!dedupe || seen.has(dedupe)) continue
+        seen.add(dedupe)
+        order.push(entry)
       }
     }
     return order
-      .map(name => styles.find(s => s.name === name && bySource(s)))
+      .map((entry) => resolvePresetStyleEntry(entry, styles, bySource))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
@@ -265,12 +337,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   collapsedCategories: new Set(),
   silentMode: false,
   compactMode: false,
-  favorites: new Set(
-    JSON.parse(localStorage.getItem('sg_v2_favorites') || '[]')
-  ),
-  recentNames: JSON.parse(
-    localStorage.getItem('sg_v2_recent') || '[]'
-  ),
+  favorites: new Set(loadStringArrayFromLs('sg_v2_favorites')),
+  recentNames: loadStringArrayFromLs('sg_v2_recent'),
   presets: {},
 
   setStyles: (styles, tab) => {
@@ -279,26 +347,58 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     )].sort()
 
     // Restore selection: exact match can fail when host path strings differ from LS (basename must match)
-    const lastSource = localStorage.getItem('sg_v2_last_source')
+    const lastSourceKey = `sg_v2_last_source_${tab}`
+    const lastSource =
+      localStorage.getItem(lastSourceKey) ??
+      localStorage.getItem('sg_v2_last_source') // legacy global (pre per-tab)
     const prevActive = get().activeSource
     const activeSource =
       resolveSourceInList(sources, prevActive) ??
       resolveSourceInList(sources, lastSource)
 
-    set({ styles, tab, sources, activeSource })
-    if (activeSource) {
-      localStorage.setItem('sg_v2_last_source', activeSource)
-      sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
+    const prevFavs = [...get().favorites]
+    const prevRecent = get().recentNames
+    const nextFavs = migrateLegacyNameKeys(prevFavs, styles)
+    const nextRecent = migrateLegacyNameKeys(prevRecent, styles)
+    const favsChanged =
+      nextFavs.length !== prevFavs.length || nextFavs.some((k, i) => k !== prevFavs[i])
+    const recentChanged =
+      nextRecent.length !== prevRecent.length || nextRecent.some((k, i) => k !== prevRecent[i])
+    if (favsChanged) {
+      localStorage.setItem('sg_v2_favorites', JSON.stringify(nextFavs))
     }
+    if (recentChanged) {
+      localStorage.setItem('sg_v2_recent', JSON.stringify(nextRecent))
+    }
+
+    set({
+      styles,
+      tab,
+      sources,
+      activeSource,
+      ...(favsChanged ? { favorites: new Set(nextFavs) } : {}),
+      ...(recentChanged ? { recentNames: nextRecent } : {}),
+    })
+    if (activeSource) {
+      localStorage.setItem(lastSourceKey, activeSource)
+    } else {
+      localStorage.removeItem(lastSourceKey)
+    }
+    localStorage.removeItem('sg_v2_last_source')
+    // Always notify — including All (null) so Gradio clears a stale source path
+    sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
   setSearch: (search) => set({ search }),
   setCategory: (activeCategory) => set({ activeCategory }),
   setActiveSource: (activeSource) => {
+    const tab = get().tab
+    const lastSourceKey = `sg_v2_last_source_${tab}`
     if (activeSource) {
-      localStorage.setItem('sg_v2_last_source', activeSource)
+      localStorage.setItem(lastSourceKey, activeSource)
     } else {
-      localStorage.removeItem('sg_v2_last_source')
+      localStorage.removeItem(lastSourceKey)
     }
+    localStorage.removeItem('sg_v2_last_source')
     set({ activeSource })
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
@@ -362,26 +462,30 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     set({ selectedStyles: [...selectedStyles, ...toAdd] })
     toAdd.forEach((style) => {
-      get().addToRecent(style.name)
+      get().addToRecent(style)
       sendToHost({
         type: 'SG_APPLY',
         styleId: style.name,
         prompt: style.prompt,
         neg: style.negative_prompt,
+        source_file: style.source_file,
         silent: silentMode,
       })
     })
+    get().detectConflicts()
   },
-  toggleFavorite: (name) => {
+  toggleFavorite: (style) => {
+    const key = styleRowKey(style)
     const favs = new Set(get().favorites)
-    if (favs.has(name)) favs.delete(name)
-    else favs.add(name)
+    if (favs.has(key)) favs.delete(key)
+    else favs.add(key)
     localStorage.setItem('sg_v2_favorites', JSON.stringify([...favs]))
     set({ favorites: favs })
   },
-  isFavorite: (name) => get().favorites.has(name),
-  addToRecent: (name) => {
-    const recent = [name, ...get().recentNames.filter(n => n !== name)]
+  isFavorite: (style) => get().favorites.has(styleRowKey(style)),
+  addToRecent: (style) => {
+    const key = styleRowKey(style)
+    const recent = [key, ...get().recentNames.filter((n) => n !== key)]
       .slice(0, 10)
     localStorage.setItem('sg_v2_recent', JSON.stringify(recent))
     set({ recentNames: recent })
@@ -397,13 +501,14 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       get().detectConflicts()
     } else {
       set({ selectedStyles: [...selectedStyles, style] })
-      get().addToRecent(style.name)
+      get().addToRecent(style)
       get().incrementUsage(style.name)
       sendToHost({ 
         type: 'SG_APPLY', 
         styleId: style.name,
         prompt: style.prompt,
         neg: style.negative_prompt,
+        source_file: style.source_file,
         silent: get().silentMode,
       })
       get().detectConflicts()
@@ -425,24 +530,33 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     })), 3000)
   },
   detectConflicts: () => {
-    // Conflict heuristic: compare normalized prompt tags against each
-    // other style's negative tags; any overlap is treated as a conflict.
+    // Exact-set match (same as routes.py detect_conflicts / V1 checkConflictsLocal):
+    // comma-split → trim → lower → Set membership; skip empty and "{prompt}".
     const { selectedStyles } = get()
     const conflicts: Conflict[] = []
 
-    for (let i = 0; i < selectedStyles.length; i++) {
-      for (let j = i + 1; j < selectedStyles.length; j++) {
-        const a = selectedStyles[i]
-        const b = selectedStyles[j]
+    const tokenize = (text: string): Set<string> => {
+      const out = new Set<string>()
+      for (const raw of (text || '').split(',')) {
+        const t = raw.trim().toLowerCase()
+        if (t && t !== '{prompt}') out.add(t)
+      }
+      return out
+    }
 
-        // Check if style A's negative prompt contains tags from B's prompt
-        const aTags = a.prompt.toLowerCase().split(',').map(t => t.trim())
-        const bTags = b.prompt.toLowerCase().split(',').map(t => t.trim())
-        const aNeg = (a.negative_prompt || '').toLowerCase().split(',').map(t => t.trim())
-        const bNeg = (b.negative_prompt || '').toLowerCase().split(',').map(t => t.trim())
+    const tokenMap = selectedStyles.map((s) => ({
+      name: s.name,
+      pos: tokenize(s.prompt || ''),
+      neg: tokenize(s.negative_prompt || ''),
+    }))
 
-        const aKillsB = bTags.some(tag => tag && aNeg.some(n => n && n.includes(tag)))
-        const bKillsA = aTags.some(tag => tag && bNeg.some(n => n && n.includes(tag)))
+    for (let i = 0; i < tokenMap.length; i++) {
+      for (let j = i + 1; j < tokenMap.length; j++) {
+        const a = tokenMap[i]
+        const b = tokenMap[j]
+
+        const aKillsB = [...b.pos].some((tag) => a.neg.has(tag))
+        const bKillsA = [...a.pos].some((tag) => b.neg.has(tag))
 
         if (aKillsB) conflicts.push({
           styleA: a.name, styleB: b.name,
@@ -460,7 +574,18 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     try {
       const r = await fetch('/style_grid/usage')
       const data = await r.json()
-      set({ usageCounts: data || {} })
+      const usageCounts: Record<string, number> = {}
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+          if (typeof value === 'number') {
+            usageCounts[key] = value
+          } else if (value && typeof value === 'object' && 'count' in value) {
+            const count = (value as { count: unknown }).count
+            usageCounts[key] = typeof count === 'number' ? count : 0
+          }
+        }
+      }
+      set({ usageCounts })
     } catch {
       // ignore usage load errors
     }
@@ -469,17 +594,19 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const counts = { ...get().usageCounts }
     counts[name] = (counts[name] || 0) + 1
     set({ usageCounts: counts })
-    // Persist to backend
-    fetch('/style_grid/usage/increment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name })
-    }).catch(() => {})
+    // Persist on live apply only; silent mode is counted at generate time in Python
+    if (!get().silentMode) {
+      fetch('/style_grid/usage/increment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ styles: [name] })
+      }).catch(() => {})
+    }
   },
   fetchPresets: async () => {
-    const parse = (raw: unknown): Record<string, { styles: string[]; created: string }> =>
+    const parse = (raw: unknown): Record<string, { styles: PresetStyleEntry[]; created: string }> =>
       raw && typeof raw === 'object' && !Array.isArray(raw)
-        ? raw as Record<string, { styles: string[]; created: string }>
+        ? raw as Record<string, { styles: PresetStyleEntry[]; created: string }>
         : {}
     try {
       let r = await fetch('/style_grid/presets/list')

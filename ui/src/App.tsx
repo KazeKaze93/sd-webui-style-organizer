@@ -144,9 +144,15 @@ export default function App() {
             : useStylesStore.getState().tab,
         )
         void useStylesStore.getState().fetchPresets()
+        if (msg.type === 'SG_INIT') {
+          // Direct set — do not call toggleSilent (would post SG_TOGGLE_SILENT back to host)
+          useStylesStore.setState({ silentMode: !!msg.silentMode })
+        }
       }
       if (msg.type === 'SG_HOST_TAB') {
-        useStylesStore.setState({ tab: msg.tab })
+        // Intentionally ignored for tab identity: host broadcasts which Forge
+        // main tab is visible to BOTH iframes. This iframe's tab is fixed at
+        // SG_INIT (txt2img | img2img) and must not be overwritten.
       }
       if (msg.type === 'SG_CLOSE') {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })
@@ -155,11 +161,12 @@ export default function App() {
         useStylesStore.setState({ selectedStyles: [], conflicts: [] })
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
-        const { selectedStyles, addToRecent } = useStylesStore.getState()
+        const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
         const exists = selectedStyles.some(s => s.name === msg.style.name)
         if (!exists) {
           useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
-          addToRecent(msg.style.name)
+          addToRecent(msg.style)
+          detectConflicts()
         }
       }
     })

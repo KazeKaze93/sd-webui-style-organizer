@@ -1,12 +1,12 @@
 /** Messages sent from Forge host script to the React iframe. */
 export type HostMessage =
   | { type: 'SG_CLEAR_SELECTION' }
-  | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
+  | { type: 'SG_INIT';           tab: Tab; styles: Style[]; silentMode: boolean }
   | { type: 'SG_HOST_TAB';       tab: Tab }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
   | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
   | { type: 'SG_STYLE_APPLIED'; style: Style }
-  | { type: 'SG_THUMB_DONE';     styleId: string; version: number }
+  | { type: 'SG_THUMB_DONE';     styleId: string; version: number; source_file: string }
   | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
@@ -15,13 +15,13 @@ export type HostMessage =
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
   | { type: 'SG_READY' }
-  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; silent?: boolean }
+  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string; silent?: boolean }
   | { type: 'SG_UNAPPLY';       styleId: string }
   | { type: 'SG_EDIT_STYLE';      styleId: string }
   | { type: 'SG_DUPLICATE_STYLE'; styleId: string }
   | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string }
-  | { type: 'SG_GENERATE_PREVIEW'; styleId: string }
-  | { type: 'SG_UPLOAD_PREVIEW';   styleId: string }
+  | { type: 'SG_GENERATE_PREVIEW'; styleId: string; source: string }
+  | { type: 'SG_UPLOAD_PREVIEW';   styleId: string; source: string }
   | { type: 'SG_WILDCARD_CATEGORY'; category: string }
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }

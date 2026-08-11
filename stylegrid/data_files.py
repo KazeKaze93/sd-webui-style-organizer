@@ -7,7 +7,7 @@ import threading
 import time
 import zipfile
 
-from stylegrid.config import BACKUP_DIR, PRESETS_FILE, USAGE_FILE, get_all_styles_file_paths
+from stylegrid.config import BACKUP_DIR, EXT_DIR, PRESETS_FILE, USAGE_FILE, get_all_styles_file_paths
 from stylegrid.csv_io import load_all_styles
 
 
@@ -113,6 +113,22 @@ def increment_usage(style_names):
         save_usage(usage)
 
 
+def _backup_rel_name(fp):
+    """Collision-safe relative path for backup zip/folder members."""
+    abs_fp = os.path.abspath(fp)
+    ext_root = os.path.abspath(EXT_DIR)
+    try:
+        if os.path.normcase(os.path.commonpath([abs_fp, ext_root])) == os.path.normcase(ext_root):
+            return os.path.relpath(abs_fp, ext_root).replace("\\", "/")
+    except ValueError:
+        pass
+    sanitized = abs_fp.replace("\\", "/")
+    if len(sanitized) >= 2 and sanitized[1] == ":":
+        sanitized = sanitized[2:]
+    sanitized = sanitized.lstrip("/")
+    return "external/" + sanitized
+
+
 def backup_csv_files():
     ts = time.strftime("%Y%m%d_%H%M%S")
     backup_subdir = os.path.join(BACKUP_DIR, ts)
@@ -124,8 +140,12 @@ def backup_csv_files():
         if not backed_up:
             os.makedirs(backup_subdir, exist_ok=True)
             backed_up = True
-        fname = os.path.basename(fp)
-        shutil.copy2(fp, os.path.join(backup_subdir, fname))
+        rel = _backup_rel_name(fp)
+        dest = os.path.join(backup_subdir, *rel.split("/"))
+        dest_dir = os.path.dirname(dest)
+        if dest_dir:
+            os.makedirs(dest_dir, exist_ok=True)
+        shutil.copy2(fp, dest)
 
     if os.path.isfile(PRESETS_FILE):
         if not backed_up:
@@ -138,7 +158,7 @@ def backup_csv_files():
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             for fp in get_all_styles_file_paths():
                 if os.path.isfile(fp):
-                    zf.write(fp, arcname=os.path.basename(fp))
+                    zf.write(fp, arcname=_backup_rel_name(fp))
             if os.path.isfile(PRESETS_FILE):
                 zf.write(PRESETS_FILE, arcname="presets.json")
 

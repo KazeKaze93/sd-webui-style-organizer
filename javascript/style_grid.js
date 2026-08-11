@@ -216,9 +216,18 @@
         }
         return findStyleByName(t, name);
     }
-    /** Map name-only selected Set → {name, source_file}[] for presets / silent Gradio. */
+    /** Map selected styles → {name, source_file}[] for presets / silent Gradio.
+     * Prefer selectedOrder (apply order); skip order entries not in selected;
+     * append any selected names missing from order (same reconcile as updateSelectedUI). */
     function selectedAsNameSourceEntries(tabName) {
-        return [...state[tabName].selected].map(function (n) {
+        var selected = state[tabName].selected;
+        var order = (state[tabName].selectedOrder || []).filter(function (n) {
+            return selected.has(n);
+        });
+        selected.forEach(function (n) {
+            if (order.indexOf(n) === -1) order.push(n);
+        });
+        return order.map(function (n) {
             var s = findStyleByName(tabName, n);
             return s
                 ? { name: s.name, source_file: s.source_file || "" }

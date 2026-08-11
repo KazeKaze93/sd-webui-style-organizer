@@ -90,7 +90,7 @@ The small tab badge in the panel header shows the active host context.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
 ### 4) Favorites, recent, and LoRA
-- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites** (there is no star icon on the tile itself).
+- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites** (there is no star icon on the tile itself). Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
 - **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
 - Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
@@ -153,16 +153,17 @@ The small tab badge in the panel header shows the active host context.
 | Item | What it does |
 |---|---|
 | **Select** / **Deselect** | Same as a left-click on the card: applies or removes the style from the active selection (and host prompt), without opening the duplicate-source picker. |
-| **Add to Favorites** / **Remove from Favorites** | Toggles the star list for this style name. |
+| **Add to Favorites** / **Remove from Favorites** | Toggles the star list for this style **row** (name + source). |
 | **Copy prompt** | Copies this style’s **`prompt`** text to the clipboard. |
 | **Edit** | Opens the host **style editor** for this style. |
 | **Duplicate** | Opens the host flow to duplicate the style (typically into the same or chosen source). |
 | **Move to category…** | Opens the host dialog to change the style’s **category** field. |
 | **Generate preview (SD)** | Runs **thumbnail generation** for this style (Stable Diffusion–based preview in the host). |
 | **Upload preview image** | Opens the host **file picker** to set a custom thumbnail image. |
-| **Delete** | Removes the style (host confirms and updates CSV). |
+| **Remove preview image** | Deletes the cached WebP for this style’s **name + source** (surfaces errors instead of silently no-oping). |
+| **Delete** | Removes the style (host confirms and updates CSV). Styles from the shipped **`samples/`** pack cannot be modified via the API (read-only). |
 
-**LoRA cards:** Edit / Duplicate / Move / Generate preview / Upload preview / Delete are **hidden**. Select, Favorites, and Copy prompt remain. The server also rejects CSV save/delete for LoRA-sourced rows.
+**LoRA cards:** Edit / Duplicate / Move / Generate preview / Upload preview / Remove preview / Delete are **hidden**. Select, Favorites, and Copy prompt remain. The server also rejects CSV save/delete for LoRA-sourced rows.
 
 Click **outside** the menu, or move the pointer **off** the menu panel, to close it.
 
@@ -177,7 +178,7 @@ Click **outside** the menu, or move the pointer **off** the menu panel, to close
 
 After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.
 
-Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…` (the server picks the on-disk file from the legacy hash or from cached rows with that name). Preview URLs may still include `source` / version for browser cache. When **generating** a preview for a specific CSV row, the host sends the active source in **`POST /style_grid/thumbnail/generate`** so the correct row is used if names overlap.
+Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…&source=…` (CSV styles **require** `source` = that row’s `source_file`). Preview URLs may also include a version for browser cache. **Generate / upload / delete** send the same source identity so duplicate names across CSVs keep separate previews. Generation is queued (`job_id`); the host polls status and can cancel.
 
 **What the card shows**
 
@@ -216,10 +217,10 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 | 👁 | **Silent mode** — styles are applied **at generate time** (hidden JSON on the Forge host), not in the prompt text fields. Turning silent **off** clears that host list, so **the next generation no longer uses silent injection**. The V2 grid may still **look** as if styles are selected (highlight/chips/count) until you click them or use Clear — that is **visual only** and does not change what silent mode already cleared for generation. Toggling a style off while silent still updates the host list. |
 | 🎲 | **Random style** — picks a random style (respects the active source filter). |
 | 📦 | **Presets** — save/load/delete style sets from the host modal. **Load** runs the same **`loadPreset`** path as choosing a preset in the sidebar **Presets** view (iframe posts **`SG_LOAD_PRESET`**). Both clear/apply on the host and sync the V2 selected bar (`SG_CLEAR_SELECTION` / `SG_STYLE_APPLIED` per style). |
-| 💾 | **Backup** — creates CSV backup snapshot(s) under `data/backups/`. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
-| 📥 | **Import / Export** — export/import styles, presets, usage. |
+| 💾 | **Backup** — creates CSV backup snapshot(s) under `data/backups/`, keeping directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
+| 📥 | **Import / Export** — export/import styles, presets, usage. Style import is **rejected** if any imported name already exists in the library (toast/alert lists collisions); presets still merge. |
 | 📋 | **CSV table editor** — **temporarily unavailable** (control is semi-transparent / disabled; tooltip explains this). The full-screen table UI is **not** opened. Implementation is preserved in **`javascript/style_grid.js`** as a block comment for maintainers who want to turn it back on; see `docs/DEVELOPMENT.md`. When re-enabled, it would target the **same CSV** as **New style** (a specific file in the source dropdown, not **All Sources**), using the persisted source filter. |
-| 🧹 | **Clear** — clears all selected styles in the panel and on the host prompt. |
+| 🧹 | **Clear** — clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
 | ▪ | **Compact mode** — toggles a denser card layout. |
 | ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
 | ➕ | **New style** — creates a style in the **currently selected CSV** (`All Sources` must be switched to a specific file first). |
@@ -306,9 +307,11 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | Styles missing | CSV location/encoding/header correctness. |
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
-| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. If a name exists in several CSVs, generation must target the intended row (body `source` on `POST /style_grid/thumbnail/generate`); `GET /style_grid/thumbnail` resolves from the cached style list when the legacy file is missing. LoRA cards only show sibling preview files on disk. |
+| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. CSV preview URLs and generate/upload/delete **must** include `source` (`source_file`). Generation is async by `job_id` — wait for completion / check cancel. LoRA cards only show sibling preview files on disk. |
 | **🧬 LoRA** missing in sidebar | No scanned models yet — check Forge LoRA folder / `config/lora_roots.json`, then reload styles or `POST /style_grid/lora/rescan`. |
 | LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
+| Import fails with “names that already exist” | Rename or remove colliding styles in the export, or delete/rename the existing library entries first. LoRA synthetic names are excluded from the collision check. |
+| Cannot edit/delete a sample style | Expected: CSVs under `samples/` are **read-only**. Copy the style into your own `styles/` CSV (or another writable source) first. |
 | CSV table editor grayed out / toast “temporarily unavailable” | Expected: the feature is **disabled** by design. Edit styles per row via the **style editor** or CSV on disk; see `docs/DEVELOPMENT.md` to restore the table editor from the commented source. |
 
 ---

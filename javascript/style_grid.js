@@ -4314,22 +4314,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (msg.type === "SG_REORDER_STYLES") {
                 var ids = Array.isArray(msg.styleIds) ? msg.styleIds : [];
                 state[tab].selectedOrder = ids;
-                ids.forEach(function (styleId) {
-                    if (!state[tab].applied.has(styleId)) {
-                        var styleObj = findStyleByName(styleId);
-                        if (styleObj) {
-                            state[tab].applied.set(styleId, {
-                                prompt: styleObj.prompt,
-                                negative: styleObj.negative_prompt,
-                                wrapTemplate: null,
-                                negWrapTemplate: null,
-                                originalPrompt: styleObj.prompt,
-                                originalNeg: styleObj.negative_prompt
-                            });
-                        }
-                    }
-                });
-                
+                // Preserve existing applied deltas — do not fabricate full-prompt records
                 if (typeof rebuildPromptFromOrder === "function") {
                     rebuildPromptFromOrder(tab);
                 }

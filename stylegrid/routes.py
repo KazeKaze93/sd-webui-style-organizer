@@ -356,9 +356,14 @@ def _register_crud_routes(app):
 
         # FIX B: surface LoRA/validation ValueError as 400
         try:
-            delete_style_from_csv(name, data.get("source"))
+            deleted = delete_style_from_csv(name, data.get("source"))
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        if not deleted:
+            return JSONResponse(
+                {"ok": False, "error": "Style not found"},
+                status_code=404,
+            )
         return {"ok": True}
 
     @app.post("/style_grid/backup")

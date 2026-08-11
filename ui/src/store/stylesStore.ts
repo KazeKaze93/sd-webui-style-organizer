@@ -69,7 +69,43 @@ export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
   return `${s.source_file}\0${s.name}`
 }
 
+/** Preset style ref: legacy bare name, or backend-normalized {name, source_file}. */
+export type PresetStyleEntry = string | { name: string; source_file?: string }
+
 type StyleIdentity = Pick<Style, 'name' | 'source_file'>
+
+/** Resolve a preset styles[] entry to a library row (name+source, else name-only). */
+function resolvePresetStyleEntry(
+  entry: PresetStyleEntry,
+  styles: Style[],
+  bySource: (s: Style) => boolean,
+): Style | undefined {
+  if (typeof entry === 'string') {
+    return styles.find((s) => s.name === entry && bySource(s))
+  }
+  if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
+    return undefined
+  }
+  const name = entry.name
+  const source = typeof entry.source_file === 'string' ? entry.source_file : ''
+  if (source) {
+    const want = styleRowKey({ name, source_file: source })
+    const hit = styles.find((s) => styleRowKey(s) === want && bySource(s))
+    if (hit) return hit
+  }
+  return styles.find((s) => s.name === name && bySource(s))
+}
+
+function presetEntryDedupeKey(entry: PresetStyleEntry): string | null {
+  if (typeof entry === 'string') {
+    return entry || null
+  }
+  if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
+    return null
+  }
+  const source = typeof entry.source_file === 'string' ? entry.source_file : ''
+  return source ? styleRowKey({ name: entry.name, source_file: source }) : entry.name
+}
 
 /** Safe localStorage JSON array read — never throws on corrupt data. */
 function loadStringArrayFromLs(key: string): string[] {
@@ -197,7 +233,7 @@ interface StylesStore {
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
   /** Saved style presets from backend (`/style_grid/presets` / list API). */
-  presets: Record<string, { styles: string[]; created: string }>
+  presets: Record<string, { styles: PresetStyleEntry[]; created: string }>
   
   // Actions
   setStyles: (styles: Style[], tab: Tab) => void
@@ -234,7 +270,7 @@ export function selectFilteredStyles(
   activeSource: string | null,
   favorites: Set<string>,
   recentNames: string[],
-  presets: Record<string, { styles: string[]; created: string }>,
+  presets: Record<string, { styles: PresetStyleEntry[]; created: string }>,
 ): Style[] {
   const bySource = (s: Style) => !activeSource || s.source_file === activeSource
 
@@ -252,18 +288,18 @@ export function selectFilteredStyles(
   }
 
   if (activeCategory === 'presets') {
-    const order: string[] = []
+    const order: PresetStyleEntry[] = []
     const seen = new Set<string>()
     for (const key of Object.keys(presets).sort()) {
-      for (const n of presets[key]?.styles ?? []) {
-        if (!seen.has(n)) {
-          seen.add(n)
-          order.push(n)
-        }
+      for (const entry of presets[key]?.styles ?? []) {
+        const dedupe = presetEntryDedupeKey(entry)
+        if (!dedupe || seen.has(dedupe)) continue
+        seen.add(dedupe)
+        order.push(entry)
       }
     }
     return order
-      .map(name => styles.find(s => s.name === name && bySource(s)))
+      .map((entry) => resolvePresetStyleEntry(entry, styles, bySource))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }
@@ -566,9 +602,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   fetchPresets: async () => {
-    const parse = (raw: unknown): Record<string, { styles: string[]; created: string }> =>
+    const parse = (raw: unknown): Record<string, { styles: PresetStyleEntry[]; created: string }> =>
       raw && typeof raw === 'object' && !Array.isArray(raw)
-        ? raw as Record<string, { styles: string[]; created: string }>
+        ? raw as Record<string, { styles: PresetStyleEntry[]; created: string }>
         : {}
     try {
       let r = await fetch('/style_grid/presets/list')

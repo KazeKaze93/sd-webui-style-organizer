@@ -3643,20 +3643,24 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         if (!promptEl || !negEl) return;
         const order = state[tabName].selectedOrder || [];
         const orderedApplied = order.filter(function (n) { return state[tabName].applied.has(n); });
-        const prompts = orderedApplied.map(function (n) {
-            const r = state[tabName].applied.get(n);
-            return r && r.prompt ? r.prompt : null;
-        }).filter(Boolean);
-        const negs = orderedApplied.map(function (n) {
-            const r = state[tabName].applied.get(n);
-            return r && r.negative ? r.negative : null;
-        }).filter(Boolean);
-        const base = (state[tabName].userPromptBase || "").trim();
-        const newPrompt = base + (prompts.length ? (base ? ", " : "") + prompts.join(", ") : "");
-        const baseNeg = (state[tabName].userPromptBaseNeg || "").trim();
-        const newNeg = baseNeg + (negs.length ? (baseNeg ? ", " : "") + negs.join(", ") : "");
-        setPromptValue(promptEl, newPrompt);
-        setPromptValue(negEl, newNeg);
+        let p = (state[tabName].userPromptBase || "").trim();
+        let n = (state[tabName].userPromptBaseNeg || "").trim();
+        orderedApplied.forEach(function (name) {
+            const r = state[tabName].applied.get(name);
+            if (!r) return;
+            if (r.wrapTemplate) {
+                p = r.wrapTemplate.replace("{prompt}", p);
+            } else if (r.prompt) {
+                p = p + (p ? ", " : "") + r.prompt;
+            }
+            if (r.negWrapTemplate) {
+                n = r.negWrapTemplate.replace("{prompt}", n);
+            } else if (r.negative) {
+                n = n + (n ? ", " : "") + r.negative;
+            }
+        });
+        setPromptValue(promptEl, p);
+        setPromptValue(negEl, n);
     }
 
     function updateSelectedUI(tabName) {

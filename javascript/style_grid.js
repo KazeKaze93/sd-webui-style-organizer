@@ -4233,8 +4233,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         state[tab].selectedOrder.push(msg.styleId);
                     }
                     state[tab].silentMode = true;
+                    setSilentMode(tab, true);
                 } else {
                     state[tab].silentMode = false;
+                    setSilentMode(tab, false);
                     if (!state[tab].selected) state[tab].selected = new Set();
                     state[tab].selected.add(msg.styleId);
                     state[tab].selectedOrder = state[tab].selectedOrder || [];

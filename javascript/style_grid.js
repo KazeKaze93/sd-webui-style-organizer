@@ -1306,6 +1306,52 @@
             action: function () { uploadThumbnail(tabName, styleName, style.source_file); }
         });
 
+        var sourceFile = style.source_file || "";
+        if (sourceFile &&
+            state[tabName].hasThumbnail.has(thumbIdentityKey(styleName, sourceFile))) {
+            items.push({
+                label: "🗑️ Remove preview image",
+                action: function () {
+                    fetch(
+                        "/style_grid/thumbnail?name=" + encodeURIComponent(styleName) +
+                        "&source=" + encodeURIComponent(sourceFile),
+                        { method: "DELETE" }
+                    ).then(function (r) {
+                        return r.text().then(function (text) {
+                            var body = {};
+                            if (text) {
+                                try { body = JSON.parse(text); } catch (_e) { /* ignore */ }
+                            }
+                            if (!r.ok || (body && body.ok === false)) {
+                                showStatusMessage(
+                                    tabName,
+                                    "Remove failed: " + ((body && body.error) || ("HTTP " + r.status)),
+                                    true
+                                );
+                                return;
+                            }
+                            state[tabName].hasThumbnail.delete(thumbIdentityKey(styleName, sourceFile));
+                            delete _thumbVersions[styleName];
+                            if (typeof _saveThumbVersions === "function") _saveThumbVersions();
+                            try { localStorage.removeItem("sg_thumb_v_" + styleName); } catch (_e) { /* ignore */ }
+                            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]',
+                                state[tabName].panel)
+                                .forEach(function (c) {
+                                    var sf = c._styleRef && c._styleRef.source_file
+                                        ? c._styleRef.source_file : "";
+                                    if (sf === sourceFile) {
+                                        c.classList.remove("sg-has-thumb");
+                                    }
+                                });
+                            showStatusMessage(tabName, "Preview removed");
+                        });
+                    }).catch(function () {
+                        showStatusMessage(tabName, "Remove failed", true);
+                    });
+                }
+            });
+        }
+
         items.forEach(function (item) {
             const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
             menu.appendChild(btn);

@@ -2165,12 +2165,40 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             reader.onload = function () {
                 try {
                     const data = JSON.parse(reader.result);
-                    apiPost("/style_grid/import", data).then(function () {
+                    fetch("/style_grid/import", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(data),
+                    }).then(function (r) {
+                        return r.text().then(function (text) {
+                            var body = {};
+                            if (text) {
+                                try {
+                                    body = JSON.parse(text);
+                                } catch (_e) {
+                                    if (!r.ok) {
+                                        return Promise.reject(new Error("HTTP " + r.status));
+                                    }
+                                    return Promise.reject(new Error("Invalid JSON in response"));
+                                }
+                            }
+                            if (!r.ok || (body && body.error)) {
+                                var msg = (body && body.error) || ("HTTP " + r.status);
+                                if (body && Array.isArray(body.collisions) && body.collisions.length) {
+                                    msg += "\n\nColliding names: " + body.collisions.join(", ");
+                                }
+                                return Promise.reject(new Error(msg));
+                            }
+                            return body;
+                        });
+                    }).then(function () {
                         overlay.remove();
                         refreshPanel(tabName);
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
-                    }).catch(function () {});
+                    }).catch(function (err) {
+                        alert((err && err.message) ? err.message : "Import failed");
+                    });
                 } catch (_e) { alert("Invalid JSON file"); }
             };
             reader.readAsText(file);

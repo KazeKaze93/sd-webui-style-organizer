@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import threading
 import time
 import zipfile
 
@@ -97,15 +98,19 @@ def save_usage(usage):
         json.dump(usage, f, indent=2, ensure_ascii=False)
 
 
+_usage_lock = threading.Lock()
+
+
 def increment_usage(style_names):
-    usage = load_usage()
-    ts = time.strftime("%Y-%m-%dT%H:%M:%S")
-    for name in style_names:
-        if name not in usage:
-            usage[name] = {"count": 0, "last_used": None, "first_used": ts}
-        usage[name]["count"] = usage[name].get("count", 0) + 1
-        usage[name]["last_used"] = ts
-    save_usage(usage)
+    with _usage_lock:
+        usage = load_usage()
+        ts = time.strftime("%Y-%m-%dT%H:%M:%S")
+        for name in style_names:
+            if name not in usage:
+                usage[name] = {"count": 0, "last_used": None, "first_used": ts}
+            usage[name]["count"] = usage[name].get("count", 0) + 1
+            usage[name]["last_used"] = ts
+        save_usage(usage)
 
 
 def backup_csv_files():

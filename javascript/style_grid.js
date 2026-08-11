@@ -1259,6 +1259,7 @@
                                     type: "SG_THUMB_DONE",
                                     styleId: styleName,
                                     version: _thumbVersions[styleName],
+                                    source_file: resolvedSource,
                                 }, "*");
                             }
                         } else {
@@ -4685,6 +4686,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                                         type: "SG_THUMB_DONE",
                                         styleId: msg.styleId,
                                         version: Date.now(),
+                                        source_file: genSource,
                                     }, "*");
                                 }
                             }, 300);

@@ -5,7 +5,7 @@ import os
 
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import DATA_DIR, EXT_DIR, get_all_styles_file_paths, is_samples_source
-from stylegrid.lora_scan import LORA_SOURCE
+from stylegrid.lora_scan import LORA_SOURCE, get_cached_lora_styles
 from modules import shared
 
 # Canonical CSV column order used when writing style rows back to disk.
@@ -218,6 +218,9 @@ def delete_style_from_csv(name, source_file=None):
                 source_file = s.get("source", "styles.csv")
                 break
     if not source_file:
+        for s in get_cached_lora_styles():
+            if s.get("name") == name:
+                raise ValueError("LoRA-sourced styles are read-only and cannot be deleted.")
         return False
     if source_file:
         source_file = os.path.basename(source_file)

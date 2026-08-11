@@ -653,13 +653,26 @@ The host UI (`SG_BACKUP` in `javascript/style_grid.js`) should treat `{ "error":
 
 **Response:**
 
+Success (no name collisions, or no `styles` / empty `styles`):
+
 
 | field | type    | description           |
 | ----- | ------- | --------------------- |
 | `ok`  | boolean | `true` on completion. |
 
 
-**Error cases:** None explicitly returned as `{error}`.
+When `styles` is present and non-empty, the handler writes a new `styles/imported_YYYYMMDD_HHMMSS.csv` (same as before). Presets continue to merge via update. There is no merge/upsert of styles into an existing CSV.
+
+**Error cases:**
+
+
+| case | response body | HTTP |
+| ---- | ------------- | ---- |
+| One or more imported style names already exist in the library (LoRA-sourced styles are excluded from the check) | `{ "ok": false, "error": "Import contains style names that already exist in the library.", "collisions": ["…"] }` — `collisions` is a sorted list of conflicting names; no CSV is written and the styles cache is not invalidated | 400 |
+| Invalid JSON body | FastAPI `422` detail | 422 |
+
+
+Zip (`PK`) bodies remain presets-only and are unchanged by this collision check.
 
 ## POST /category_order/save
 

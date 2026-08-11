@@ -4,8 +4,8 @@ import csv
 import os
 
 from stylegrid.cache import invalidate_styles_cache
-from stylegrid.config import EXT_DIR, get_all_styles_file_paths
-from stylegrid.lora_scan import LORA_SOURCE
+from stylegrid.config import DATA_DIR, EXT_DIR, get_all_styles_file_paths, is_samples_source
+from stylegrid.lora_scan import LORA_SOURCE, get_cached_lora_styles
 from modules import shared
 
 # Canonical CSV column order used when writing style rows back to disk.
@@ -17,6 +17,38 @@ def _sanitize_csv_cell(value):
     if isinstance(value, str) and value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
         return "'" + value
     return value
+
+
+def normalize_source_path(path: str) -> str:
+    """Normalize a source path for reliable comparison across OS/JS boundaries."""
+    if not path:
+        return path
+    return os.path.abspath(path).replace("\\", "/")
+
+
+def _path_under_dir(path: str, root_dir: str) -> bool:
+    normalized = os.path.abspath(path).replace("\\", "/")
+    root = os.path.abspath(root_dir).replace("\\", "/")
+    return normalized == root or normalized.startswith(root + "/")
+
+
+def _resolve_target_csv_path(source_basename: str):
+    """Resolve a CSV basename to a full path with deterministic writable-first priority.
+
+    When multiple discovered files share the same basename, prefer DATA_DIR,
+    then any non-samples path, then samples/ (read matches only; write guards
+    live in routes).
+    """
+    matches = [fp for fp in get_all_styles_file_paths() if os.path.basename(fp) == source_basename]
+    if not matches:
+        return None
+    for fp in matches:
+        if _path_under_dir(fp, DATA_DIR):
+            return fp
+    for fp in matches:
+        if not is_samples_source(fp):
+            return fp
+    return matches[0]
 
 
 def parse_styles_csv(filepath):
@@ -56,7 +88,7 @@ def parse_styles_csv(filepath):
                         "category_explicit": category_explicit,
                         "source": base,
                         "_source": base,
-                        "source_file": os.path.abspath(filepath),
+                        "source_file": normalize_source_path(filepath),
                     })
     except Exception:
         return styles
@@ -121,7 +153,7 @@ def categorize_styles(styles):
 
 def save_style_to_csv(name, prompt, negative_prompt, description="", source_file=None, category=None):
     """
-    Upsert a style row in target CSV: replace the first matching name row, or append new row.
+    Upsert a style row in target CSV: replace all matching name rows, or append new row.
     """
     if source_file == LORA_SOURCE:
         raise ValueError("LoRA-sourced styles are read-only and cannot be edited or saved.")
@@ -131,11 +163,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
             source_file = source_file + '.csv'
     if not source_file:
         source_file = "styles.csv"
-    target_path = None
-    for fp in get_all_styles_file_paths():
-        if os.path.basename(fp) == source_file:
-            target_path = fp
-            break
+    target_path = _resolve_target_csv_path(source_file)
     if not target_path:
         ext_styles = os.path.join(EXT_DIR, "styles")
         os.makedirs(ext_styles, exist_ok=True)
@@ -168,7 +196,6 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         if row and row[0].strip() == name:
             rows[i] = make_row(rows[i])
             found = True
-            break
     if not found:
         rows.append(make_row())
     with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
@@ -191,16 +218,15 @@ def delete_style_from_csv(name, source_file=None):
                 source_file = s.get("source", "styles.csv")
                 break
     if not source_file:
+        for s in get_cached_lora_styles():
+            if s.get("name") == name:
+                raise ValueError("LoRA-sourced styles are read-only and cannot be deleted.")
         return False
     if source_file:
         source_file = os.path.basename(source_file)
         if not source_file.lower().endswith('.csv'):
             source_file = source_file + '.csv'
-    target_path = None
-    for fp in get_all_styles_file_paths():
-        if os.path.basename(fp) == source_file:
-            target_path = fp
-            break
+    target_path = _resolve_target_csv_path(source_file)
     if not target_path:
         return False
     rows = []

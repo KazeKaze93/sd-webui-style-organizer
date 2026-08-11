@@ -25,11 +25,12 @@ from stylegrid.cache import (
     invalidate_styles_cache,
     styles_cache_hashes,
 )
-from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR
+from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR, get_all_styles_file_paths, is_samples_source
 from stylegrid.csv_io import (
     categorize_styles,
     delete_style_from_csv,
     load_all_styles,
+    normalize_source_path,
     save_style_to_csv,
 )
 from stylegrid.data_files import (
@@ -57,27 +58,55 @@ from stylegrid.lora_titles import title_fetch_manager
 
 
 def detect_conflicts(style_names):
-    styles_map = {s["name"]: s for s in get_cached_styles()}
+    all_styles = get_cached_styles()
+    # Composite identity — same name from different CSVs must not collapse.
+    styles_map = {
+        (s["name"], normalize_source_path(s.get("source_file") or "")): s
+        for s in all_styles
+    }
+    # Name-only fallback for legacy bare-string request entries (last match wins).
+    styles_by_name = {s["name"]: s for s in all_styles}
     conflicts = []
     style_tokens = {}
-    for name in style_names:
-        s = styles_map.get(name)
+    for entry in style_names:
+        s = None
+        if isinstance(entry, str):
+            s = styles_by_name.get(entry)
+        elif isinstance(entry, dict):
+            name = entry.get("name", "")
+            if not isinstance(name, str) or not name:
+                continue
+            source_file = entry.get("source_file") or ""
+            if isinstance(source_file, str) and source_file.strip():
+                s = styles_map.get((name, normalize_source_path(source_file)))
+                if not s:
+                    s = styles_by_name.get(name)
+            else:
+                s = styles_by_name.get(name)
+        else:
+            continue
         if not s:
             continue
-        style_tokens[name] = {"positive": set(), "negative": set()}
+        key = (s["name"], normalize_source_path(s.get("source_file") or ""))
+        if key in style_tokens:
+            continue
+        label = s["name"]
+        style_tokens[key] = {"positive": set(), "negative": set(), "label": label}
         for token in (s.get("prompt") or "").split(","):
             t = token.strip().lower()
             if t and t != "{prompt}":
-                style_tokens[name]["positive"].add(t)
+                style_tokens[key]["positive"].add(t)
         for token in (s.get("negative_prompt") or "").split(","):
             t = token.strip().lower()
             if t and t != "{prompt}":
-                style_tokens[name]["negative"].add(t)
-    names = list(style_tokens.keys())
-    for i in range(len(names)):
-        for j in range(i + 1, len(names)):
-            a, b = names[i], names[j]
-            overlap1 = style_tokens[a]["positive"] & style_tokens[b]["negative"]
+                style_tokens[key]["negative"].add(t)
+    keys = list(style_tokens.keys())
+    for i in range(len(keys)):
+        for j in range(i + 1, len(keys)):
+            ka, kb = keys[i], keys[j]
+            a = style_tokens[ka]["label"]
+            b = style_tokens[kb]["label"]
+            overlap1 = style_tokens[ka]["positive"] & style_tokens[kb]["negative"]
             if overlap1:
                 conflicts.append({
                     "styles": [a, b],
@@ -85,7 +114,7 @@ def detect_conflicts(style_names):
                     "tokens": list(overlap1)[:5],
                     "message": f"'{a}' adds tokens that '{b}' negates: {', '.join(list(overlap1)[:3])}"
                 })
-            overlap2 = style_tokens[b]["positive"] & style_tokens[a]["negative"]
+            overlap2 = style_tokens[kb]["positive"] & style_tokens[ka]["negative"]
             if overlap2:
                 conflicts.append({
                     "styles": [b, a],
@@ -165,6 +194,28 @@ def _register_style_routes(app):
             p.update(data["presets"])
             save_presets(p)
         if "styles" in data and data["styles"]:
+            existing_names = {
+                s["name"]
+                for s in get_cached_styles()
+                if s.get("source_file") != LORA_SOURCE and s.get("name")
+            }
+            imported_names = set()
+            for s in data["styles"]:
+                if not isinstance(s, dict):
+                    continue
+                name = s.get("name", "")
+                if isinstance(name, str) and name.strip():
+                    imported_names.add(name.strip())
+            collisions = existing_names & imported_names
+            if collisions:
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": "Import contains style names that already exist in the library.",
+                        "collisions": sorted(collisions),
+                    },
+                    status_code=400,
+                )
             ext_styles = os.path.join(EXT_DIR, "styles")
             os.makedirs(ext_styles, exist_ok=True)
             target = os.path.join(ext_styles, f"imported_{time.strftime('%Y%m%d_%H%M%S')}.csv")
@@ -243,14 +294,36 @@ def _register_crud_routes(app):
         name = data.get("name", "").strip()
         if not name:
             return {"error": "Name required"}
-        save_style_to_csv(
-            name,
-            data.get("prompt", ""),
-            data.get("negative_prompt", ""),
-            data.get("description", ""),
-            data.get("source"),
-            category=data.get("category"),
-        )
+
+        # FIX A: reject writes into read-only samples/
+        source = data.get("source")
+        resolved_path = None
+        if source:
+            source_base = os.path.basename(source)
+            if not source_base.lower().endswith(".csv"):
+                source_base = source_base + ".csv"
+            for fp in get_all_styles_file_paths():
+                if os.path.basename(fp) == source_base:
+                    resolved_path = fp
+                    break
+        if resolved_path and is_samples_source(resolved_path):
+            return JSONResponse(
+                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                status_code=403,
+            )
+
+        # FIX B: surface LoRA/validation ValueError as 400
+        try:
+            save_style_to_csv(
+                name,
+                data.get("prompt", ""),
+                data.get("negative_prompt", ""),
+                data.get("description", ""),
+                data.get("source"),
+                category=data.get("category"),
+            )
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
         return {"ok": True}
 
     @app.post("/style_grid/style/delete")
@@ -258,7 +331,39 @@ def _register_crud_routes(app):
         name = data.get("name", "").strip()
         if not name:
             return {"error": "Name required"}
-        delete_style_from_csv(name, data.get("source"))
+
+        # FIX A: reject deletes from read-only samples/
+        source = data.get("source")
+        if not source:
+            for s in load_all_styles():
+                if s["name"] == name:
+                    source = s.get("source", "styles.csv")
+                    break
+        resolved_path = None
+        if source:
+            source_base = os.path.basename(source)
+            if not source_base.lower().endswith(".csv"):
+                source_base = source_base + ".csv"
+            for fp in get_all_styles_file_paths():
+                if os.path.basename(fp) == source_base:
+                    resolved_path = fp
+                    break
+        if resolved_path and is_samples_source(resolved_path):
+            return JSONResponse(
+                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                status_code=403,
+            )
+
+        # FIX B: surface LoRA/validation ValueError as 400
+        try:
+            deleted = delete_style_from_csv(name, data.get("source"))
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        if not deleted:
+            return JSONResponse(
+                {"ok": False, "error": "Style not found"},
+                status_code=404,
+            )
         return {"ok": True}
 
     @app.post("/style_grid/backup")
@@ -275,7 +380,7 @@ def _register_thumbnail_routes(app):
 
     @app.get("/style_grid/thumbnails/list")
     async def api_list_thumbnails():
-        return {"has_thumbnail": list(list_thumbnails())}
+        return {"has_thumbnail": list_thumbnails()}
 
     @app.get("/style_grid/thumbnail")
     async def api_get_thumbnail(name: str = "", source: str = ""):
@@ -293,7 +398,13 @@ def _register_thumbnail_routes(app):
                 )
             return Response(status_code=404)
 
-        path = get_thumbnail_path(name)
+        if not source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
+
+        path = get_thumbnail_path(name, source)
         if os.path.isfile(path):
             return FileResponse(
                 path,
@@ -301,31 +412,22 @@ def _register_thumbnail_routes(app):
                 headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
             )
 
-        all_styles = get_cached_styles()
-        matches = [s for s in all_styles if s.get("name") == name]
-        seen = set()
-        for style in reversed(matches):
-            sf = style.get("source_file") or ""
-            candidate = get_thumbnail_path(name, sf)
-            if candidate not in seen:
-                seen.add(candidate)
-                if os.path.isfile(candidate):
-                    return FileResponse(
-                        candidate,
-                        media_type="image/webp",
-                        headers={"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0"}
-                    )
-
         return Response(status_code=404)
 
     @app.post("/style_grid/thumbnail/upload")
     async def api_upload_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
         image_data = data.get("image", "")
-        if data.get("source") == LORA_SOURCE or style_name.startswith("LORA_"):
+        source = (data.get("source") or "").strip()
+        if source == LORA_SOURCE or style_name.startswith("LORA_"):
             return {"error": "LoRA thumbnails come from the model's own preview file and can't be replaced here."}
         if not style_name or not image_data:
             return {"error": "name and image required"}
+        if not source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
         try:
             if "," in image_data:
                 image_data = image_data.split(",", 1)[1]
@@ -344,17 +446,41 @@ def _register_thumbnail_routes(app):
                 is_valid_image = False
             if not is_valid_image:
                 return {"error": "Invalid image format. Allowed: JPEG, PNG, WEBP, GIF"}
-            path = get_thumbnail_path(style_name)
-            with open(path, "wb") as f:
-                f.write(raw)
+            path = get_thumbnail_path(style_name, source)
+            try:
+                from PIL import Image  # type: ignore[reportMissingImports]
+                img = Image.open(io.BytesIO(raw))
+                if getattr(img, "is_animated", False):
+                    img.seek(0)
+                has_alpha = (
+                    img.mode in ("RGBA", "LA")
+                    or (img.mode == "P" and "transparency" in img.info)
+                )
+                img = img.convert("RGBA" if has_alpha else "RGB")
+                buf = io.BytesIO()
+                img.save(buf, "WEBP", quality=85)
+                webp_bytes = buf.getvalue()
+            except Exception as e:
+                return JSONResponse(
+                    {"ok": False, "error": f"Failed to convert image to WebP: {e}"},
+                    status_code=400,
+                )
+            tmp_path = path + ".tmp"
+            with open(tmp_path, "wb") as f:
+                f.write(webp_bytes)
+            os.replace(tmp_path, path)
             return {"ok": True}
         except Exception as e:
             return {"error": str(e)}
 
     @app.get("/style_grid/thumbnail/gen_status")
-    async def api_gen_status(name: str = ""):
-        style_name = name
-        return mgr.get_status(style_name)
+    async def api_gen_status(job_id: str = ""):
+        if not job_id:
+            return JSONResponse(
+                {"ok": False, "error": "job_id is required"},
+                status_code=400,
+            )
+        return mgr.get_status(job_id)
 
     @app.post("/style_grid/thumbnail/generate")
     async def api_generate_thumbnail(data: dict):
@@ -364,23 +490,36 @@ def _register_thumbnail_routes(app):
             return {"error": "LoRA cards only show their own preview file; SD-generated previews are disabled for them."}
         if not style_name:
             return {"error": "name required"}
+        if not requested_source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
 
         try:
-            from modules.shared import state as forge_state  # type: ignore[reportMissingImports]
-            if getattr(forge_state, 'job', None):
-                return {"error": "SD is busy, try again after current generation finishes"}
-        except Exception:
-            pass
+            job_id = mgr.enqueue(style_name, requested_source)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        return {"ok": True, "job_id": job_id, "status": "queued"}
 
-        if not mgr.try_begin(style_name):
-            return {"error": "already generating"}
-
-        mgr.spawn_generate(style_name, requested_source)
-        return {"ok": True, "status": "running"}
+    @app.post("/style_grid/thumbnail/cancel")
+    async def api_cancel_thumbnail(data: dict):
+        job_id = (data.get("job_id") or "").strip()
+        if not job_id:
+            return JSONResponse(
+                {"ok": False, "error": "job_id is required"},
+                status_code=400,
+            )
+        return {"ok": mgr.cancel(job_id)}
 
     @app.delete("/style_grid/thumbnail")
-    async def api_delete_thumbnail(name: str = ""):
-        path = get_thumbnail_path(name)
+    async def api_delete_thumbnail(name: str = "", source: str = ""):
+        if not source:
+            return JSONResponse(
+                {"ok": False, "error": "source is required for CSV thumbnails"},
+                status_code=400,
+            )
+        path = get_thumbnail_path(name, source)
         if os.path.isfile(path):
             os.remove(path)
         return {"ok": True}

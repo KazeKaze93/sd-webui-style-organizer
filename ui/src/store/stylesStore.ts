@@ -468,6 +468,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         styleId: style.name,
         prompt: style.prompt,
         neg: style.negative_prompt,
+        source_file: style.source_file,
         silent: silentMode,
       })
     })
@@ -507,6 +508,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         styleId: style.name,
         prompt: style.prompt,
         neg: style.negative_prompt,
+        source_file: style.source_file,
         silent: get().silentMode,
       })
       get().detectConflicts()

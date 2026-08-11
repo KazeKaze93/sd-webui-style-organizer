@@ -194,6 +194,28 @@ def _register_style_routes(app):
             p.update(data["presets"])
             save_presets(p)
         if "styles" in data and data["styles"]:
+            existing_names = {
+                s["name"]
+                for s in get_cached_styles()
+                if s.get("source_file") != LORA_SOURCE and s.get("name")
+            }
+            imported_names = set()
+            for s in data["styles"]:
+                if not isinstance(s, dict):
+                    continue
+                name = s.get("name", "")
+                if isinstance(name, str) and name.strip():
+                    imported_names.add(name.strip())
+            collisions = existing_names & imported_names
+            if collisions:
+                return JSONResponse(
+                    {
+                        "ok": False,
+                        "error": "Import contains style names that already exist in the library.",
+                        "collisions": sorted(collisions),
+                    },
+                    status_code=400,
+                )
             ext_styles = os.path.join(EXT_DIR, "styles")
             os.makedirs(ext_styles, exist_ok=True)
             target = os.path.join(ext_styles, f"imported_{time.strftime('%Y%m%d_%H%M%S')}.csv")

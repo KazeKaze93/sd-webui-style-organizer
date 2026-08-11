@@ -15,7 +15,7 @@ export type HostMessage =
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
   | { type: 'SG_READY' }
-  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; silent?: boolean }
+  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string; silent?: boolean }
   | { type: 'SG_UNAPPLY';       styleId: string }
   | { type: 'SG_EDIT_STYLE';      styleId: string }
   | { type: 'SG_DUPLICATE_STYLE'; styleId: string }

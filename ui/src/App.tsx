@@ -150,7 +150,9 @@ export default function App() {
         }
       }
       if (msg.type === 'SG_HOST_TAB') {
-        useStylesStore.setState({ tab: msg.tab })
+        // Intentionally ignored for tab identity: host broadcasts which Forge
+        // main tab is visible to BOTH iframes. This iframe's tab is fixed at
+        // SG_INIT (txt2img | img2img) and must not be overwritten.
       }
       if (msg.type === 'SG_CLOSE') {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })

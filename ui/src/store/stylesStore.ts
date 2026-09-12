@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { sendToHost, type Style, type Tab } from '../bridge'
+import { sendToHost, type Style, type Tab, type WildcardRef } from '../bridge'
 
 /** Matches the backend's LORA_SOURCE marker (stylegrid/lora_scan.py). LoRA
  * cards use this as their synthetic source_file so they can be excluded
@@ -249,9 +249,19 @@ interface StylesStore {
   toggleStyle: (style: Style) => void
   setSelectedStyles: (styles: Style[]) => void
   clearAll: () => void
-  activeWildcards: string[]
-  setActiveWildcards: (categories: string[]) => void
-  removeWildcard: (category: string) => void
+  activeWildcards: WildcardRef[]
+  setActiveWildcards: (refs: WildcardRef[]) => void
+  removeWildcard: (ref: WildcardRef) => void
+  /** When set, the grid is picking styles for a `{sg:category:spec}` slice. */
+  sliceMode: { category: string } | null
+  /** Full style names selected for the current slice. */
+  sliceSelection: string[]
+  startSliceMode: (category: string) => void
+  exitSliceMode: () => void
+  toggleSliceSelection: (name: string) => void
+  /** Select all currently visible (search/filter-applied) names — caller supplies the list. */
+  selectAllSlice: (names: string[]) => void
+  clearSliceSelection: () => void
   showToast: (message: string, variant?: 'success' | 'error' | 'info') => void
   detectConflicts: () => void
   loadUsage: () => Promise<void>
@@ -526,11 +536,40 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({ selectedStyles: [], conflicts: [] })
   },
   activeWildcards: [],
-  setActiveWildcards: (categories) => set({ activeWildcards: categories }),
-  removeWildcard: (category) => {
-    set((s) => ({ activeWildcards: s.activeWildcards.filter(c => c !== category) }))
-    sendToHost({ type: 'SG_REMOVE_WILDCARD', category })
+  setActiveWildcards: (refs) => set({ activeWildcards: refs }),
+  removeWildcard: (ref) => {
+    const catKey = String(ref.category || '').toLowerCase()
+    const specKey = String(ref.spec || '').toLowerCase()
+    set((s) => ({
+      activeWildcards: s.activeWildcards.filter(
+        (c) =>
+          String(c.category || '').toLowerCase() !== catKey ||
+          String(c.spec || '').toLowerCase() !== specKey,
+      ),
+    }))
+    sendToHost({
+      type: 'SG_REMOVE_WILDCARD',
+      category: ref.category,
+      spec: ref.spec ?? '',
+    })
   },
+  sliceMode: null,
+  sliceSelection: [],
+  startSliceMode: (category) => set({
+    sliceMode: { category },
+    sliceSelection: [],
+  }),
+  exitSliceMode: () => set({ sliceMode: null, sliceSelection: [] }),
+  toggleSliceSelection: (name) => set((s) => {
+    const has = s.sliceSelection.includes(name)
+    return {
+      sliceSelection: has
+        ? s.sliceSelection.filter((n) => n !== name)
+        : [...s.sliceSelection, name],
+    }
+  }),
+  selectAllSlice: (names) => set({ sliceSelection: [...names] }),
+  clearSliceSelection: () => set({ sliceSelection: [] }),
   showToast: (message, variant = 'info') => {
     const id = Date.now()
     set((s) => ({ toasts: [...s.toasts, { id, message, variant }] }))

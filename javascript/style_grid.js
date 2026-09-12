@@ -29,6 +29,7 @@
             silentMode: false,
             userPromptBase: "",
             userPromptBaseNeg: "",
+            appliedNestOrder: [],
             hasThumbnail: new Set(),
             sgFrame: null,
             sgFrameWrapper: null,
@@ -361,6 +362,29 @@
         const after = val.substring(idx + sub.length).replace(/^,\s*/, "");
         if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
         return (before + after).trim();
+    }
+
+    /** Strip one style's wrap template or tag delta from text (mirrors stripLiveApplyFromTextareas). */
+    function stripWrapOrTagsFromText(text, wrapTemplate, tagDelta) {
+        if (text == null) return "";
+        if (wrapTemplate) {
+            const parts = wrapTemplate.split("{prompt}");
+            const prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
+            const suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
+            let current = String(text).trim();
+            if (prefix && current.indexOf(prefix) === 0) {
+                current = current.slice(prefix.length).replace(/^,\s*/, "").trim();
+            }
+            if (suffix && current.length >= suffix.length &&
+                current.lastIndexOf(suffix) === current.length - suffix.length) {
+                current = current.slice(0, current.length - suffix.length).replace(/,\s*$/, "").trim();
+            }
+            return current;
+        }
+        if (tagDelta) {
+            return removeSubstringFromPrompt(text, tagDelta);
+        }
+        return text;
     }
 
     // Canonical copy in javascript/sg_prompt_utils.js — keep in sync (Forge loads this file only).
@@ -839,6 +863,13 @@
             originalNeg: isNegWrap ? snapshotNeg : null,
             source_file: style.source_file || "",
         });
+        if (!restoreOnly) {
+            if (!state[tabName].appliedNestOrder) state[tabName].appliedNestOrder = [];
+            state[tabName].appliedNestOrder = state[tabName].appliedNestOrder.filter(function (n) {
+                return n !== styleName;
+            });
+            state[tabName].appliedNestOrder.push(styleName);
+        }
         if (restoreOnly) {
             state[tabName]._restoreSimP = prompt;
             state[tabName]._restoreSimN = neg;
@@ -937,6 +968,7 @@
             state[tabName].applied.delete(styleName);
             if (state[tabName].selected) state[tabName].selected.delete(styleName);
             state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+            state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) { return n !== styleName; });
             setSilentGradio(tabName);
             qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
             syncWildcards(tabName);
@@ -946,6 +978,7 @@
         stripLiveApplyFromTextareas(tabName, styleName, record);
 
         state[tabName].applied.delete(styleName);
+        state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) { return n !== styleName; });
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
         syncWildcards(tabName);
     }
@@ -3694,10 +3727,22 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
+
+        // Live-derived base: unwind current nesting from the live textareas.
+        var nest = state[tabName].appliedNestOrder || [];
+        var p = promptEl.value || "";
+        var n = negEl.value || "";
+        for (var i = nest.length - 1; i >= 0; i--) {
+            var unwindName = nest[i];
+            var unwindRec = state[tabName].applied.get(unwindName);
+            if (!unwindRec) continue;
+            p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
+            n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
+        }
+
+        // Re-append in the new selectedOrder (filtered to still-applied styles).
         const order = state[tabName].selectedOrder || [];
-        const orderedApplied = order.filter(function (n) { return state[tabName].applied.has(n); });
-        let p = (state[tabName].userPromptBase || "").trim();
-        let n = (state[tabName].userPromptBaseNeg || "").trim();
+        const orderedApplied = order.filter(function (name) { return state[tabName].applied.has(name); });
         orderedApplied.forEach(function (name) {
             const r = state[tabName].applied.get(name);
             if (!r) return;
@@ -3714,6 +3759,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         });
         setPromptValue(promptEl, p);
         setPromptValue(negEl, n);
+        state[tabName].appliedNestOrder = orderedApplied.slice();
         syncWildcards(tabName);
     }
 

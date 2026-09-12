@@ -712,10 +712,28 @@
     }
 
     // -----------------------------------------------------------------------
-    // Wildcard {sg:category} tracking (sync chips ↔ prompt textareas)
+    // Wildcard {sg:category} / {sg:category:spec} tracking (sync chips ↔ prompt textareas)
     // -----------------------------------------------------------------------
+    function parseSgInner(inner) {
+        var s = String(inner || "");
+        var idx = s.indexOf(":");
+        if (idx === -1) {
+            return { category: s.trim(), spec: "" };
+        }
+        return { category: s.slice(0, idx).trim(), spec: s.slice(idx + 1).trim() };
+    }
+
+    function buildSgToken(category, spec) {
+        var cat = String(category || "").toLowerCase();
+        var sp = spec == null ? "" : String(spec);
+        return "{sg:" + cat + (sp ? ":" + sp : "") + "}";
+    }
+
     function extractWildcardCategories(str) {
-        return [...(str || "").matchAll(/\{sg:([^}]+)\}/gi)].map(function (m) { return m[1].trim(); });
+        return [...(str || "").matchAll(/\{sg:([^}]+)\}/gi)].map(function (m) {
+            var parsed = parseSgInner(m[1]);
+            return { category: parsed.category, spec: parsed.spec, token: m[0] };
+        });
     }
 
     function activeWildcardCategories(text, negativeText) {
@@ -723,11 +741,11 @@
         var seen = new Set();
         var result = [];
         for (var i = 0; i < all.length; i++) {
-            var c = all[i];
-            var key = c.toLowerCase();
+            var entry = all[i];
+            var key = String(entry.category || "").toLowerCase() + "\0" + String(entry.spec || "").toLowerCase();
             if (!seen.has(key)) {
                 seen.add(key);
-                result.push(c);
+                result.push(entry);
             }
         }
         return result;
@@ -739,17 +757,19 @@
         var categories = activeWildcardCategories(
             promptEl ? promptEl.value || "" : "",
             negEl ? negEl.value || "" : ""
-        );
+        ).map(function (entry) {
+            return { category: entry.category, spec: entry.spec };
+        });
         var frame = document.getElementById("sg-frame-" + tabName);
         if (frame && frame.contentWindow) {
             frame.contentWindow.postMessage({ type: "SG_WILDCARDS_ACTIVE", categories: categories }, "*");
         }
     }
 
-    function removeWildcardCategory(tabName, category) {
+    function removeWildcardCategory(tabName, category, spec) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
-        var token = ("{sg:" + category + "}").toLowerCase();
+        var token = buildSgToken(category, spec || "").toLowerCase();
         var strip = function (s) {
             return (s || "").split(",").map(function (t) { return t.trim(); }).filter(function (t) {
                 return t && t.toLowerCase() !== token;
@@ -766,6 +786,10 @@
         var order = Array.isArray(newOrder) ? newOrder : [];
         var wcRe = /^\{sg:([^}]+)\}$/i;
 
+        function orderKey(category, spec) {
+            return String(category || "").toLowerCase() + "\0" + String(spec || "").toLowerCase();
+        }
+
         function reorderOne(text) {
             var tokens = splitTopLevelCommas(text || "");
             var present = {};
@@ -776,7 +800,8 @@
                 var m = wcRe.exec(t);
                 if (m) {
                     if (firstWcIdx === -1) firstWcIdx = i;
-                    present[m[1].trim().toLowerCase()] = true;
+                    var parsed = parseSgInner(m[1]);
+                    present[orderKey(parsed.category, parsed.spec)] = true;
                 } else {
                     nonWildcards.push(t);
                 }
@@ -785,9 +810,12 @@
 
             var reorderedWc = [];
             for (var j = 0; j < order.length; j++) {
-                var cat = String(order[j] || "").trim().toLowerCase();
-                if (cat && present[cat]) {
-                    reorderedWc.push("{sg:" + cat + "}");
+                var item = order[j];
+                if (!item || typeof item !== "object") continue;
+                var cat = String(item.category || "").trim();
+                var sp = item.spec == null ? "" : String(item.spec);
+                if (cat && present[orderKey(cat, sp)]) {
+                    reorderedWc.push(buildSgToken(cat, sp));
                 }
             }
 
@@ -3114,7 +3142,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                textContent: "🎲 Add category as wildcard",
                onClick: function () {
                    menu.remove();
-                   const wcTag = "{sg:" + catId.toLowerCase() + "}";
+                   const wcTag = buildSgToken(catId, "");
                    const promptEl = qs("#" + tabName + "_prompt textarea");
                    if (promptEl) {
                        const sep = promptEl.value.trim() ? ", " : "";
@@ -4723,7 +4751,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (msg.type === "SG_WILDCARD_CATEGORY") {
                 var catId = msg.category || "";
                 if (catId) {
-                    var wcTag = "{sg:" + String(catId).toLowerCase() + "}";
+                    var wcTag = buildSgToken(catId, msg.spec || "");
                     var promptEl = qs("#" + tab + "_prompt textarea");
                     if (promptEl) {
                         var sep = promptEl.value.trim() ? ", " : "";
@@ -4734,7 +4762,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             }
             if (msg.type === "SG_REMOVE_WILDCARD") {
                 if (msg.category) {
-                    removeWildcardCategory(tab, msg.category);
+                    removeWildcardCategory(tab, msg.category, msg.spec || "");
                 }
             }
             if (msg.type === "SG_REORDER_WILDCARDS") {

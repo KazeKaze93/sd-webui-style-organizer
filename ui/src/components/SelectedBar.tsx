@@ -4,13 +4,25 @@ import { sendToHost } from '../bridge'
 import { describeSpec } from '../lib/wildcardSlice'
 
 export function SelectedBar() {
-  const { selectedStyles, toggleStyle, setSelectedStyles, activeWildcards, setActiveWildcards, removeWildcard } = useStylesStore()
+  const {
+    selectedStyles, toggleStyle, setSelectedStyles,
+    activeWildcards, setActiveWildcards, removeWildcard,
+    styles, activeSource,
+  } = useStylesStore()
 
   if (selectedStyles.length === 0 && activeWildcards.length === 0) return null
 
   const displayName = (name: string) =>
     name.includes('_') ? name.split('_').slice(1).join(' ') : name
 
+  const namesInCategory = (category: string) =>
+    styles
+      .filter((s) => {
+        if ((s.category || 'OTHER').toLowerCase() !== category.toLowerCase()) return false
+        if (activeSource && s.source_file !== activeSource) return false
+        return true
+      })
+      .map((s) => s.name)
   return (
     <AnimatePresence>
       <motion.div
@@ -72,9 +84,9 @@ export function SelectedBar() {
           >
             {activeWildcards.map((ref) => {
               const { category, spec } = ref
-              const { count, entries } = describeSpec(spec)
+              const { count, names } = describeSpec(category, spec, namesInCategory(category))
               const label = spec === '' ? category : `${category} (${count})`
-              const title = spec === '' ? undefined : entries.join(', ')
+              const title = spec === '' ? undefined : names.join(', ')
               return (
                 <Reorder.Item
                   key={`${category}:${spec}`}

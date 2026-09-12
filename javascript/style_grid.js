@@ -4760,6 +4760,18 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     syncWildcards(tab);
                 }
             }
+            if (msg.type === "SG_WILDCARD_SLICE") {
+                var sliceCat = msg.category || "";
+                if (sliceCat) {
+                    var sliceTag = buildSgToken(sliceCat, msg.spec || "");
+                    var slicePromptEl = qs("#" + tab + "_prompt textarea");
+                    if (slicePromptEl) {
+                        var sliceSep = slicePromptEl.value.trim() ? ", " : "";
+                        setPromptValue(slicePromptEl, slicePromptEl.value.replace(/,\s*$/, "") + sliceSep + sliceTag);
+                    }
+                    syncWildcards(tab);
+                }
+            }
             if (msg.type === "SG_REMOVE_WILDCARD") {
                 if (msg.category) {
                     removeWildcardCategory(tab, msg.category, msg.spec || "");

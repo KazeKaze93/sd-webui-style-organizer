@@ -169,6 +169,9 @@ export default function App() {
           detectConflicts()
         }
       }
+      if (msg.type === 'SG_WILDCARDS_ACTIVE') {
+        useStylesStore.getState().setActiveWildcards(msg.categories)
+      }
     })
     sendToHost({ type: 'SG_READY' })
     return unsub

@@ -249,6 +249,9 @@ interface StylesStore {
   toggleStyle: (style: Style) => void
   setSelectedStyles: (styles: Style[]) => void
   clearAll: () => void
+  activeWildcards: string[]
+  setActiveWildcards: (categories: string[]) => void
+  removeWildcard: (category: string) => void
   showToast: (message: string, variant?: 'success' | 'error' | 'info') => void
   detectConflicts: () => void
   loadUsage: () => Promise<void>
@@ -521,6 +524,12 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       sendToHost({ type: 'SG_UNAPPLY', styleId: s.name })
     )
     set({ selectedStyles: [], conflicts: [] })
+  },
+  activeWildcards: [],
+  setActiveWildcards: (categories) => set({ activeWildcards: categories }),
+  removeWildcard: (category) => {
+    set((s) => ({ activeWildcards: s.activeWildcards.filter(c => c !== category) }))
+    sendToHost({ type: 'SG_REMOVE_WILDCARD', category })
   },
   showToast: (message, variant = 'info') => {
     const id = Date.now()

@@ -15,16 +15,18 @@ export function SelectedBar() {
   const displayName = (name: string) =>
     name.includes('_') ? name.split('_').slice(1).join(' ') : name
 
-  /** Same scoping as StyleGrid's allNamesInCategory (category + activeSource). */
-  const allNamesInCategory = (category: string) =>
-    styles
+  /** Same scoping as StyleGrid's allNamesInCategory (category + activeSource).
+   * Category match is case-insensitive: chip categories come from lowercased tokens. */
+  const allNamesInCategory = (category: string) => {
+    const want = category.toLowerCase()
+    return styles
       .filter((s) => {
-        if ((s.category || 'OTHER') !== category) return false
+        if ((s.category || 'OTHER').toLowerCase() !== want) return false
         if (activeSource && s.source_file !== activeSource) return false
         return true
       })
       .map((s) => s.name)
-
+  }
   return (
     <AnimatePresence>
       <motion.div

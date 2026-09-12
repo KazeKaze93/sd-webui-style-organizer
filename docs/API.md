@@ -36,10 +36,15 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 
 | Topic | Behavior |
 |---|---|
-| Syntax | `{sg:<category>}` — matched by regex `\{sg:([^}]+)\}`. |
+| Syntax | `{sg:<category>}` (whole category) or `{sg:<category>:<spec>}` (slice). Matched by regex `\{sg:([^}]+)\}` (unchanged); the capture is split on the **first** `:` by `parse_sg_token`. |
+| Spec grammar | Implemented by `select_slice`: comma-separated entries; each entry is a style-name suffix with the category prefix omitted, optionally `-`-prefixed to exclude and/or `*`-suffixed as a prefix glob. Full names are reconstructed as `CATEGORY_suffix` and compared case-insensitively. |
+| Resolution | Include entries are unioned first (all candidates when there are no include entries); then excludes subtract. |
 | Lookup | Token category is lowercased; map key is lowercased category from loaded styles. |
-| Replacement | One random style in that category; inserts that style’s CSV **`prompt`** field. |
-| No match | Original `{sg:…}` text is kept. |
+| Replacement | One random style from the resolved pool; inserts that style’s CSV **`prompt`** field. |
+| Empty slice pool | Falls back to the full category (so a stale/missing-name token still generates). |
+| No match | Unknown category: original `{sg:…}` text is kept. |
+
+`parse_sg_token` and `select_slice` are module-level in `stylegrid/wildcards.py` and are the **single source of truth**. The frontend’s `resolveSliceNames` in `ui/src/lib/wildcardSlice.ts` mirrors their semantics purely to compute chip labels and must be kept in sync if the grammar changes.
 
 **Compatibility:** Automatic1111-style wildcard extensions (e.g. file-based **`__wildcard__`** tokens) use **different** syntax. They do not consume `{sg:…}` and Style Grid does not consume `__…__` — no mandatory conflict. **`{sg:…}` does not require** installing external wildcard extensions; it is self-contained in this extension. The same resolver also runs over **silently injected** style prompt/negative text at generate time (not only the user’s typed prompt boxes).
 

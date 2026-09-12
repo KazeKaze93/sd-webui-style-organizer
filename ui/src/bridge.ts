@@ -27,6 +27,7 @@ export type FrameMessage =
   | { type: 'SG_REMOVE_WILDCARD'; category: string }
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
+  | { type: 'SG_REORDER_WILDCARDS'; categories: string[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_RANDOM' }

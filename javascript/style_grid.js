@@ -760,6 +760,56 @@
         syncWildcards(tabName);
     }
 
+    function reorderWildcardCategories(tabName, newOrder) {
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        var order = Array.isArray(newOrder) ? newOrder : [];
+        var wcRe = /^\{sg:([^}]+)\}$/i;
+
+        function reorderOne(text) {
+            var tokens = splitTopLevelCommas(text || "");
+            var present = {};
+            var firstWcIdx = -1;
+            var nonWildcards = [];
+            for (var i = 0; i < tokens.length; i++) {
+                var t = tokens[i];
+                var m = wcRe.exec(t);
+                if (m) {
+                    if (firstWcIdx === -1) firstWcIdx = i;
+                    present[m[1].trim().toLowerCase()] = true;
+                } else {
+                    nonWildcards.push(t);
+                }
+            }
+            if (firstWcIdx === -1) return null;
+
+            var reorderedWc = [];
+            for (var j = 0; j < order.length; j++) {
+                var cat = String(order[j] || "").trim().toLowerCase();
+                if (cat && present[cat]) {
+                    reorderedWc.push("{sg:" + cat + "}");
+                }
+            }
+
+            var beforeCount = firstWcIdx;
+            return nonWildcards
+                .slice(0, beforeCount)
+                .concat(reorderedWc)
+                .concat(nonWildcards.slice(beforeCount))
+                .join(", ");
+        }
+
+        if (promptEl) {
+            var nextP = reorderOne(promptEl.value || "");
+            if (nextP !== null) setPromptValue(promptEl, nextP);
+        }
+        if (negEl) {
+            var nextN = reorderOne(negEl.value || "");
+            if (nextN !== null) setPromptValue(negEl, nextN);
+        }
+        syncWildcards(tabName);
+    }
+
     // -----------------------------------------------------------------------
     // Dynamic apply / unapply a single style
     // -----------------------------------------------------------------------
@@ -4685,6 +4735,11 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             if (msg.type === "SG_REMOVE_WILDCARD") {
                 if (msg.category) {
                     removeWildcardCategory(tab, msg.category);
+                }
+            }
+            if (msg.type === "SG_REORDER_WILDCARDS") {
+                if (Array.isArray(msg.categories) && msg.categories.length) {
+                    reorderWildcardCategories(tab, msg.categories);
                 }
             }
             if (msg.type === "SG_SOURCE_CHANGE") {

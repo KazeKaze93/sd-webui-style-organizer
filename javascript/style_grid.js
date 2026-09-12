@@ -742,7 +742,7 @@
 
         if (style.prompt) {
             if (style.prompt.includes("{prompt}")) {
-                prompt = style.prompt.replace("{prompt}", prompt);
+                prompt = style.prompt.split("{prompt}").join(prompt);
                 addedPrompt = null;
             } else {
                 if (prompt == null) prompt = "";
@@ -761,7 +761,7 @@
         }
         if (style.negative_prompt) {
             if (style.negative_prompt.includes("{prompt}")) {
-                neg = style.negative_prompt.replace("{prompt}", neg);
+                neg = style.negative_prompt.split("{prompt}").join(neg);
                 addedNeg = null;
             } else {
                 if (neg == null) neg = "";
@@ -3650,12 +3650,12 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             const r = state[tabName].applied.get(name);
             if (!r) return;
             if (r.wrapTemplate) {
-                p = r.wrapTemplate.replace("{prompt}", p);
+                p = r.wrapTemplate.split("{prompt}").join(p);
             } else if (r.prompt) {
                 p = p + (p ? ", " : "") + r.prompt;
             }
             if (r.negWrapTemplate) {
-                n = r.negWrapTemplate.replace("{prompt}", n);
+                n = r.negWrapTemplate.split("{prompt}").join(n);
             } else if (r.negative) {
                 n = n + (n ? ", " : "") + r.negative;
             }

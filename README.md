@@ -107,25 +107,28 @@ The small tab badge in the panel header shows the active host context.
 
 **Where to open it**
 
-- **Right-click** a **category row** in the **left sidebar** (the colored category list).
-- **Right-click** the **category header** in the **main grid** when the view is grouped by category (e.g. **All**, **Favorites**, **Recent** — the sticky row with `▼ CATEGORY (count)` and **Select All**).  
-  *(A normal **left-click** on that header only collapses/expands the section.)*
+- **Right-click** a **category row** in the **left sidebar** (the colored category list). This is the **only** category context menu.
+- Right-clicking a **category header** inside the main grid (the sticky `▼ CATEGORY (count)` row) **no longer opens a menu** — that duplicate entry point was removed. A normal **left-click** on the header still collapses/expands the section; **Select All** on that row is unchanged.
 
 **Menu actions**
 
 | Item | What it does |
 |---|---|
 | **Add category as wildcard** | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
-| **Generate previews** | Queues **thumbnail generation** for styles in that category (batch job in the host). |
+| **Select styles for wildcard…** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
+| **Generate previews…** | Queues **thumbnail generation** for styles in that category (batch job in the host). Always shown; does not report a missing-preview count. |
 
 **How `{sg:…}` wildcards work**
 
-- **Syntax:** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `stylegrid/wildcards.py`).
+- **Syntax (whole category):** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `stylegrid/wildcards.py`).
+- **Syntax (slice):** `{sg:<category>:<spec>}`. Spec entries are comma-separated **style-name suffixes without the category prefix** — e.g. `{sg:body:Tanned,Shortstack}`, not `BODY_Tanned`. A leading `-` excludes (`{sg:body:-Tanned}` = whole category minus that style); a trailing `*` is a prefix glob (`{sg:body:Male_*}`).
+- **Slice resolution:** include entries are **unioned** first, then excludes **subtract**. If every listed name is missing from the CSV, the token **falls back to the whole category** rather than breaking the prompt. The UI writes whichever form is shortest (so selecting almost an entire category often produces a compact exclude token); the resolver understands all forms regardless.
 - **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal Forge prompt.
-- **What gets inserted:** one **random** style from that category; the replacement text is that style’s **`prompt`** field from CSV (not `negative_prompt`). Category matching is **case-insensitive**.
+- **What gets inserted:** one **random** style from the resolved pool (whole category or slice); the replacement text is that style’s **`prompt`** field from CSV (not `negative_prompt`). Category matching is **case-insensitive**.
 - **Source-aware pool:** if a specific CSV is selected in the source filter, wildcard replacement picks styles only from that source; with **All Sources**, it uses the merged style pool.
 - **Where you can put it:** positive or negative prompt box — **both strings are scanned**. If the category is unknown or empty, the `{sg:…}` text is **left as-is** (no error).
-- You can type or paste tokens manually; the context menu only inserts the same format.
+- **Chips:** the selected bar shows each active `{sg:…}` as a chip. Slice chips display the **real** number of styles the token can resolve to, with those style names in the tooltip.
+- You can type or paste tokens manually; the context menu only inserts the same formats.
 
 **Compatibility with other “wildcard” extensions (e.g. `stable-diffusion-webui-wildcards` / Dynamic Prompts `__file__` style)**
 
@@ -133,14 +136,11 @@ The small tab badge in the panel header shows the active host context.
 - Style Grid only looks for **`{sg:…}`**; other extensions only interpret **their** patterns. The two do **not** use the same delimiters, so they **do not fight over the same text** in normal use.
 - **You do not need** the Automatic1111 wildcards extension (or any extra wildcard plugin) **for Style Grid’s `{sg:…}` feature** — it is implemented **inside this extension** (Python `resolve_sg_wildcards` + your style CSV data). Other wildcard extensions remain optional for their own `__…__` / file-based workflows.
 
-**Generate previews — sidebar vs grid**
+![TODO: re-capture from the sidebar category context menu (in-grid header menu removed)](docs/screenshots/category-context-wildcard-previews.png)
 
-- From the **grid** header menu, **Generate previews (N missing)** appears only when the UI thinks **N** styles in that category still need a cached preview.
-- From the **sidebar** category menu, **Generate previews…** is always shown for that category (full pass for the category).
+![TODO: re-capture from the sidebar category context menu (in-grid header menu removed)](docs/screenshots/category-context-wildcard-previews-2.png)
 
-![Category header context menu — wildcard and missing previews](docs/screenshots/category-context-wildcard-previews.png)
-
-![Category header context menu (alternate view)](docs/screenshots/category-context-wildcard-previews-2.png)
+<!-- TODO: screenshot of slice-selection mode (checkbox overlay + mode bar) is still missing. -->
 
 ### 6) Style card context menu
 

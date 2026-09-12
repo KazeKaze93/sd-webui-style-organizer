@@ -1966,6 +1966,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 apiPost("/style_grid/style/delete", { name: styleName, source: source })
                     .then(assertNoApiError)
                     .then(function () {
+                        fetch("/style_grid/thumbnail?name=" + encodeURIComponent(styleName) + "&source=" + encodeURIComponent(source || ""), { method: "DELETE" }).catch(function () { /* best-effort, style delete already succeeded */ });
                         refreshPanel(tabName);
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();

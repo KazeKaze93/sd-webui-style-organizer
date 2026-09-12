@@ -15,14 +15,16 @@ export function SelectedBar() {
   const displayName = (name: string) =>
     name.includes('_') ? name.split('_').slice(1).join(' ') : name
 
-  const namesInCategory = (category: string) =>
+  /** Same scoping as StyleGrid's allNamesInCategory (category + activeSource). */
+  const allNamesInCategory = (category: string) =>
     styles
       .filter((s) => {
-        if ((s.category || 'OTHER').toLowerCase() !== category.toLowerCase()) return false
+        if ((s.category || 'OTHER') !== category) return false
         if (activeSource && s.source_file !== activeSource) return false
         return true
       })
       .map((s) => s.name)
+
   return (
     <AnimatePresence>
       <motion.div
@@ -84,7 +86,7 @@ export function SelectedBar() {
           >
             {activeWildcards.map((ref) => {
               const { category, spec } = ref
-              const { count, names } = describeSpec(category, spec, namesInCategory(category))
+              const { count, names } = describeSpec(category, spec, allNamesInCategory(category))
               const label = spec === '' ? category : `${category} (${count})`
               const title = spec === '' ? undefined : names.join(', ')
               return (

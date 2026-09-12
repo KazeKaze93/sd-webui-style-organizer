@@ -92,7 +92,11 @@ sequenceDiagram
 
 **Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** In **non-silent** mode the host must still maintain `state[tab].selected` and `selectedOrder` (not only in silent mode), because presets and other features read that set — applying a style adds the id and remembers `source_file` on the applied record; unapply removes it. This keeps **Save preset** consistent with what is actually selected. **Reorder** updates `selectedOrder` and rebuilds prompts from existing additive/wrap records (including wrap templates) without fabricating full-prompt deltas.
 
-**Clear:** host `clearAll` restores textareas from `userPromptBase` / `userPromptBaseNeg` instead of wiping typed user text.
+**Clear:** host `clearAll` restores textareas from `userPromptBase` / `userPromptBaseNeg` instead of wiping typed user text. That snapshot usage is intentional and unchanged.
+
+**Reorder base (`rebuildPromptFromOrder`):** does **not** read `userPromptBase` / `userPromptBaseNeg` at all. It derives the base from the **live** textareas by unwinding each applied style in reverse `state[tab].appliedNestOrder` (wrap templates stripped by prefix/suffix, additive tags via `removeSubstringFromPrompt`), re-appends in the new order, then re-records `appliedNestOrder = orderedApplied`. Why: the old snapshot was captured once when `applied.size === 0`, so anything typed or inserted afterwards — including `{sg:…}` tokens — was silently dropped on the next reorder.
+
+**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`.
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 

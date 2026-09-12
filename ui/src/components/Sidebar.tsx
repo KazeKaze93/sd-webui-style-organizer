@@ -190,6 +190,15 @@ export function Sidebar() {
             <button
               className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
               onClick={() => {
+                useStylesStore.getState().startSliceMode(catMenu.cat)
+                setCatMenu(null)
+              }}
+            >
+              🎲 Select styles for wildcard...
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+              onClick={() => {
                 const rawSrc =
                   useStylesStore.getState().activeSource ??
                   (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)

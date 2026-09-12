@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
-import { onHostMessage, sendToHost, type Style } from '../bridge'
+import { sendToHost, type Style } from '../bridge'
 import { buildSliceSpec } from '../lib/wildcardSlice'
 import {
   getCategoryColor,
-  LORA_SOURCE,
   LORA_VIEW,
   selectFilteredStyles,
   styleRowKey,
@@ -20,7 +19,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     compactMode, collapsedCategories, toggleCollapse,
     selectedStyles, selectAllInCategory,
     sliceMode, sliceSelection,
-    startSliceMode, exitSliceMode, toggleSliceSelection,
+    exitSliceMode, toggleSliceSelection,
     selectAllSlice, clearSliceSelection,
   } = useStylesStore(
     useShallow(s => ({
@@ -38,40 +37,12 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       selectAllInCategory: s.selectAllInCategory,
       sliceMode: s.sliceMode,
       sliceSelection: s.sliceSelection,
-      startSliceMode: s.startSliceMode,
       exitSliceMode: s.exitSliceMode,
       toggleSliceSelection: s.toggleSliceSelection,
       selectAllSlice: s.selectAllSlice,
       clearSliceSelection: s.clearSliceSelection,
     }))
   )
-  const [catMenu, setCatMenu] = useState<{
-    x: number
-    y: number
-    cat: string
-    missingCount: number
-  } | null>(null)
-  const [thumbPresence, setThumbPresence] = useState<Set<string>>(() => new Set())
-
-  useEffect(() => {
-    const loadThumbPresence = () => {
-      fetch('/style_grid/thumbnails/list')
-        .then((r) => r.json())
-        .then((data: { has_thumbnail?: Array<{ name: string; source_file: string }> }) => {
-          const entries = data.has_thumbnail || []
-          setThumbPresence(new Set(entries.map((e) => styleRowKey(e))))
-        })
-        .catch(() => {
-          // ignore list load errors — missing count stays empty/stale
-        })
-    }
-    loadThumbPresence()
-    return onHostMessage((msg) => {
-      if (msg.type === 'SG_THUMB_DONE') {
-        loadThumbPresence()
-      }
-    })
-  }, [])
 
   const filtered = useMemo(
     () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames, presets),
@@ -321,17 +292,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
             <div
               className="flex items-center gap-2 mb-2 sticky top-0 
                             bg-sg-bg/95 backdrop-blur-sm py-1 z-10 cursor-pointer hover:bg-sg-surface/30 rounded-md transition-colors -mx-1 px-1"
-              title="Right-click for options"
               onClick={() => toggleCollapse(cat)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                const isLoraGroup = catStyles[0]?.source_file === LORA_SOURCE
-                const missing = isLoraGroup ? 0 : catStyles.filter(s =>
-                  !thumbPresence.has(styleRowKey(s))
-                ).length
-                setCatMenu({ x: e.clientX, y: e.clientY, cat, missingCount: missing })
-              }}
             >
               <span className="text-sg-muted">
                 {isCollapsed ? '▶' : '▼'}
@@ -385,59 +346,6 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
           </div>
         )
       })}
-      {catMenu && (
-        <>
-          <div
-            className="fixed inset-0 z-[9998]"
-            onClick={() => setCatMenu(null)}
-          />
-          <div
-            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
-            style={{ left: catMenu.x, top: catMenu.y }}
-          >
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                sendToHost({
-                  type: 'SG_WILDCARD_CATEGORY',
-                  category: catMenu.cat
-                })
-                setCatMenu(null)
-              }}
-            >
-              🎲 Add category as wildcard
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                startSliceMode(catMenu.cat)
-                setCatMenu(null)
-              }}
-            >
-              Select styles for wildcard...
-            </button>
-            {catMenu.missingCount > 0 && (
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-                onClick={() => {
-                  const rawSrc =
-                    useStylesStore.getState().activeSource ??
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
-                  sendToHost({
-                    type: 'SG_GENERATE_CATEGORY_PREVIEWS',
-                    category: catMenu.cat,
-                    missingCount: catMenu.missingCount,
-                    ...(rawSrc ? { source: rawSrc } : {}),
-                  })
-                  setCatMenu(null)
-                }}
-              >
-                🎨 Generate previews ({catMenu.missingCount} missing)
-              </button>
-            )}
-          </div>
-        </>
-      )}
     </div>
   )
 }

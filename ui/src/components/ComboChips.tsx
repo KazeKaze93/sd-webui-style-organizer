@@ -57,7 +57,6 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
               selectedStyles.some(s => s.name === resolved.style?.name)
 
             if (resolved.type === 'style') {
-              const styleName = resolved.style?.name
               return (
                 <button
                   key={token}

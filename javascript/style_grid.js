@@ -4168,6 +4168,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
         target.style.display = "block";
         setHostPageScrollLock(true);
+        syncWildcards(tabName);
         if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
         _sgLastBroadcastForgeTab = null;
         scheduleSyncForgeHostTabToV2Frames();

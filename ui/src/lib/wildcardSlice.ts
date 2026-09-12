@@ -102,9 +102,85 @@ export function buildSliceSpec(
   return includeForm.length <= excludeForm.length ? includeForm : excludeForm
 }
 
-/** Chip-tooltip helper: parse a spec into trimmed entries and a display count. */
-export function describeSpec(spec: string): { count: number | null; entries: string[] } {
-  if (!spec) return { count: null, entries: [] }
-  const entries = spec.split(',').map((e) => e.trim())
-  return { count: entries.length, entries }
+function fullName(category: string, suffix: string): string {
+  return `${category.toUpperCase()}_${suffix}`
+}
+
+function nameMatches(candidateName: string, pattern: string, isGlob: boolean): boolean {
+  const name = (candidateName || '').toLowerCase()
+  const pat = pattern.toLowerCase()
+  if (isGlob) return name.startsWith(pat)
+  return name === pat
+}
+
+/**
+ * TS mirror of ``stylegrid.wildcards.select_slice`` (+ empty-pool fallback from
+ * ``resolve_sg_wildcards``). Returns full style names in category order.
+ */
+export function resolveSliceNames(
+  category: string,
+  spec: string,
+  allNamesInCategory: string[],
+): string[] {
+  if (!spec) return [...allNamesInCategory]
+
+  const includes: Array<{ pattern: string; isGlob: boolean }> = []
+  const excludes: Array<{ pattern: string; isGlob: boolean }> = []
+  for (const raw of spec.split(',')) {
+    const entry = raw.trim()
+    if (!entry) continue
+    const isExclude = entry.startsWith('-')
+    const body = isExclude ? entry.slice(1).trim() : entry
+    if (!body) continue
+    const isGlob = body.endsWith('*')
+    const suffix = isGlob ? body.slice(0, -1) : body
+    const pattern = fullName(category, suffix)
+    ;(isExclude ? excludes : includes).push({ pattern, isGlob })
+  }
+
+  let selected: string[]
+  if (includes.length > 0) {
+    selected = []
+    const seen = new Set<string>()
+    for (const cname of allNamesInCategory) {
+      for (const { pattern, isGlob } of includes) {
+        if (nameMatches(cname, pattern, isGlob)) {
+          if (!seen.has(cname)) {
+            seen.add(cname)
+            selected.push(cname)
+          }
+          break
+        }
+      }
+    }
+  } else {
+    selected = [...allNamesInCategory]
+  }
+
+  let result: string[]
+  if (excludes.length === 0) {
+    result = selected
+  } else {
+    result = []
+    for (const cname of selected) {
+      if (excludes.some(({ pattern, isGlob }) => nameMatches(cname, pattern, isGlob))) {
+        continue
+      }
+      result.push(cname)
+    }
+  }
+
+  // Mirrors resolve_sg_wildcards empty-slice fallback.
+  return result.length > 0 ? result : [...allNamesInCategory]
+}
+
+/** Chip helper: real randomization pool size/names (not raw spec entry count). */
+export function describeSpec(
+  category: string,
+  spec: string,
+  allNamesInCategory: string[],
+): { count: number | null; names: string[] } {
+  if (!spec) return { count: null, names: [] }
+  const names = resolveSliceNames(category, spec, allNamesInCategory)
+  return { count: names.length, names }
 }

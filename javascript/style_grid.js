@@ -688,6 +688,55 @@
     }
 
     // -----------------------------------------------------------------------
+    // Wildcard {sg:category} tracking (sync chips ↔ prompt textareas)
+    // -----------------------------------------------------------------------
+    function extractWildcardCategories(str) {
+        return [...(str || "").matchAll(/\{sg:([^}]+)\}/gi)].map(function (m) { return m[1].trim(); });
+    }
+
+    function activeWildcardCategories(text, negativeText) {
+        var all = extractWildcardCategories(text).concat(extractWildcardCategories(negativeText));
+        var seen = new Set();
+        var result = [];
+        for (var i = 0; i < all.length; i++) {
+            var c = all[i];
+            var key = c.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                result.push(c);
+            }
+        }
+        return result;
+    }
+
+    function syncWildcards(tabName) {
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        var categories = activeWildcardCategories(
+            promptEl ? promptEl.value || "" : "",
+            negEl ? negEl.value || "" : ""
+        );
+        var frame = document.getElementById("sg-frame-" + tabName);
+        if (frame && frame.contentWindow) {
+            frame.contentWindow.postMessage({ type: "SG_WILDCARDS_ACTIVE", categories: categories }, "*");
+        }
+    }
+
+    function removeWildcardCategory(tabName, category) {
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        var token = ("{sg:" + category + "}").toLowerCase();
+        var strip = function (s) {
+            return (s || "").split(",").map(function (t) { return t.trim(); }).filter(function (t) {
+                return t && t.toLowerCase() !== token;
+            }).join(", ");
+        };
+        if (promptEl) setPromptValue(promptEl, strip(promptEl.value || ""));
+        if (negEl) setPromptValue(negEl, strip(negEl.value || ""));
+        syncWildcards(tabName);
+    }
+
+    // -----------------------------------------------------------------------
     // Dynamic apply / unapply a single style
     // -----------------------------------------------------------------------
     function applyStyleImmediate(tabName, styleName, opts) {
@@ -802,6 +851,7 @@
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
             c.classList.add("sg-applied");
         });
+        syncWildcards(tabName);
     }
 
     window._sgApplyStyle = applyStyleImmediate;
@@ -889,6 +939,7 @@
             state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
             setSilentGradio(tabName);
             qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+            syncWildcards(tabName);
             return;
         }
 
@@ -896,6 +947,7 @@
 
         state[tabName].applied.delete(styleName);
         qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
+        syncWildcards(tabName);
     }
 
     function clearHostSilentSelection(tabName) {
@@ -3662,6 +3714,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         });
         setPromptValue(promptEl, p);
         setPromptValue(negEl, n);
+        syncWildcards(tabName);
     }
 
     function updateSelectedUI(tabName) {
@@ -4579,6 +4632,12 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                         var sep = promptEl.value.trim() ? ", " : "";
                         setPromptValue(promptEl, promptEl.value.replace(/,\s*$/, "") + sep + wcTag);
                     }
+                    syncWildcards(tab);
+                }
+            }
+            if (msg.type === "SG_REMOVE_WILDCARD") {
+                if (msg.category) {
+                    removeWildcardCategory(tab, msg.category);
                 }
             }
             if (msg.type === "SG_SOURCE_CHANGE") {

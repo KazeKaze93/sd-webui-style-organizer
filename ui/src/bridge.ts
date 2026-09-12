@@ -4,7 +4,7 @@ export type HostMessage =
   | { type: 'SG_INIT';           tab: Tab; styles: Style[]; silentMode: boolean }
   | { type: 'SG_HOST_TAB';       tab: Tab }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
-  | { type: 'SG_WILDCARDS_ACTIVE'; categories: string[] }
+  | { type: 'SG_WILDCARDS_ACTIVE'; categories: WildcardRef[] }
   | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
   | { type: 'SG_STYLE_APPLIED'; style: Style }
   | { type: 'SG_THUMB_DONE';     styleId: string; version: number; source_file: string }
@@ -24,10 +24,11 @@ export type FrameMessage =
   | { type: 'SG_GENERATE_PREVIEW'; styleId: string; source: string }
   | { type: 'SG_UPLOAD_PREVIEW';   styleId: string; source: string }
   | { type: 'SG_WILDCARD_CATEGORY'; category: string }
-  | { type: 'SG_REMOVE_WILDCARD'; category: string }
+  | { type: 'SG_WILDCARD_SLICE'; category: string; spec: string }
+  | { type: 'SG_REMOVE_WILDCARD'; category: string; spec: string }
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
-  | { type: 'SG_REORDER_WILDCARDS'; categories: string[] }
+  | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_RANDOM' }
@@ -43,6 +44,12 @@ export type FrameMessage =
 
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'
+
+/** Category + optional slice spec for `{sg:category}` / `{sg:category:spec}` tokens. */
+export interface WildcardRef {
+  category: string
+  spec: string
+}
 
 export interface Style {
   name:              string

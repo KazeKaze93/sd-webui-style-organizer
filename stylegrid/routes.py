@@ -287,6 +287,15 @@ def _register_usage_routes(app):
         return {"ok": True}
 
 
+def _remove_thumbnail_file(name, source):
+    """Remove thumbnail for name+source if present. Shared by style delete and DELETE /thumbnail."""
+    if not name or not source:
+        return
+    path = get_thumbnail_path(name, source)
+    if os.path.isfile(path):
+        os.remove(path)
+
+
 def _register_crud_routes(app):
     """Register style save/delete and backup routes."""
     @app.post("/style_grid/style/save")
@@ -364,6 +373,7 @@ def _register_crud_routes(app):
                 {"ok": False, "error": "Style not found"},
                 status_code=404,
             )
+        _remove_thumbnail_file(name, source or "")
         return {"ok": True}
 
     @app.post("/style_grid/backup")
@@ -519,9 +529,7 @@ def _register_thumbnail_routes(app):
                 {"ok": False, "error": "source is required for CSV thumbnails"},
                 status_code=400,
             )
-        path = get_thumbnail_path(name, source)
-        if os.path.isfile(path):
-            os.remove(path)
+        _remove_thumbnail_file(name, source)
         return {"ok": True}
 
     @app.post("/style_grid/thumbnails/cleanup")

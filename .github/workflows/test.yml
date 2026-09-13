@@ -44,3 +44,5 @@ jobs:
         run: npx tsc --noEmit -p tsconfig.node.json
       - name: Typecheck test
         run: npx tsc --noEmit -p tsconfig.test.json
+      - name: Run eslint
+        run: npm run lint

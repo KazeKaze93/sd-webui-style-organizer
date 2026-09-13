@@ -1122,8 +1122,6 @@
 
    function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
         var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
-        showStatusMessage(tabName, "🎨 Generating preview for " +
-            styleName.split("_").slice(1).join(" ") + "...");
         if (typeof onProgress === "function") {
             onProgress("generating", 0);
         }
@@ -1203,7 +1201,6 @@
                     _thumbVersions[styleName] = Date.now();
                     localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                     _saveThumbVersions();
-                    showStatusMessage(tabName, "✓ Preview ready!");
                     if (typeof onProgress === "function") {
                         onProgress("done", 100);
                     }
@@ -1284,7 +1281,6 @@
                             _thumbVersions[styleName] = Date.now();
                             localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                             _saveThumbVersions();
-                            showStatusMessage(tabName, "Preview saved ✓");
                             var fr = state[tabName] && state[tabName].sgFrame;
                             if (fr && fr.contentWindow) {
                                 fr.contentWindow.postMessage({

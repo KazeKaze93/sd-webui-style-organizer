@@ -3398,6 +3398,7 @@
         updateConflicts(tabName);
         updateCombosPanel(tabName, null);
         syncWildcards(tabName);
+        postClearSelectionToIframes();
     }
 
     function toggleCategoryAll(tabName, catName) {

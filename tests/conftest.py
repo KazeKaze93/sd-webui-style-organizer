@@ -32,7 +32,9 @@ def tmp_csv(tmp_path):
 
 @pytest.fixture
 def patch_styles_dirs(monkeypatch, tmp_path):
-    """Make get_styles_dirs() return only tmp_path so save/delete use the test CSV."""
+    """Make get_all_styles_file_paths() return the test CSV so save/delete use it."""
     from stylegrid import csv_io as sg_csv_io
 
-    monkeypatch.setattr(sg_csv_io, "get_styles_dirs", lambda: [str(tmp_path)])
+    monkeypatch.setattr(
+        sg_csv_io, "get_all_styles_file_paths", lambda: [str(tmp_path / "styles.csv")]
+    )

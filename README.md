@@ -41,8 +41,7 @@ Restart Forge UI after cloning.
 3. Pick a source (`All Sources` or a specific CSV).
 4. Search or browse categories.
 5. Click a style card to apply/unapply.
-6. Use the **top bar** icon buttons (right of the search box) for presets, backup, import/export, etc.  
-   *(The **📋 CSV table editor** slot is visible but **temporarily disabled** — hover for the tooltip.)*
+6. Use the **top bar** icon buttons (right of the search box) for presets, backup, import/export, etc.
 
 ## img2img support
 
@@ -220,7 +219,6 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 | 📦 | **Presets** — save/load/delete style sets from the host modal. **Load** runs the same **`loadPreset`** path as choosing a preset in the sidebar **Presets** view (iframe posts **`SG_LOAD_PRESET`**). Both clear/apply on the host and sync the V2 selected bar (`SG_CLEAR_SELECTION` / `SG_STYLE_APPLIED` per style). |
 | 💾 | **Backup** — creates CSV backup snapshot(s) under `data/backups/`, keeping directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
 | 📥 | **Import / Export** — export/import styles, presets, usage. Style import is **rejected** if any imported name already exists in the library (toast/alert lists collisions); presets still merge. |
-| 📋 | **CSV table editor** — **temporarily unavailable** (control is semi-transparent / disabled; tooltip explains this). The full-screen table UI is **not** opened. Implementation is preserved in **`javascript/style_grid.js`** as a block comment for maintainers who want to turn it back on; see `docs/DEVELOPMENT.md`. When re-enabled, it would target the **same CSV** as **New style** (a specific file in the source dropdown, not **All Sources**), using the persisted source filter. |
 | 🧹 | **Clear** — clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
 | ▪ | **Compact mode** — toggles a denser card layout. |
 | ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
@@ -313,7 +311,6 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
 | Import fails with “names that already exist” | Rename or remove colliding styles in the export, or delete/rename the existing library entries first. LoRA synthetic names are excluded from the collision check. |
 | Cannot edit/delete a sample style | Expected: CSVs under `samples/` are **read-only**. Copy the style into your own `styles/` CSV (or another writable source) first. |
-| CSV table editor grayed out / toast “temporarily unavailable” | Expected: the feature is **disabled** by design. Edit styles per row via the **style editor** or CSV on disk; see `docs/DEVELOPMENT.md` to restore the table editor from the commented source. |
 
 ---
 

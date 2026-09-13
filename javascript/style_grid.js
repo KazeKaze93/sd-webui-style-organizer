@@ -2526,6 +2526,7 @@
                     source_file: msg.source_file,
                 });
                 setSilentGradio(tab);
+                syncSelectionChrome(tab);
             }
 
             if (msg.type === "SG_UNAPPLY") {
@@ -2534,6 +2535,7 @@
                     state[tab].selectedOrder = (state[tab].selectedOrder || []).filter(function (n) { return n !== msg.styleId; });
                 }
                 window._sgUnapplyStyle(tab, msg.styleId);
+                syncSelectionChrome(tab);
             }
 
             if (msg.type === "SG_TOGGLE_SILENT") {

@@ -156,3 +156,279 @@ def test_post_delete_nonexistent_graceful(style_grid_client):
     )
     assert r.status_code == 200
     assert r.json().get("ok") is True
+
+
+# --- POST /style_grid/style/rename ---
+
+
+def test_post_rename_success_renames_csv_row(style_grid_client, tmp_csv):
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    assert "error" not in body
+    from stylegrid import csv_io
+
+    names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
+    assert "Renamed Style B" in names
+    assert "Test Style B" not in names
+
+
+def test_post_rename_applies_field_updates(style_grid_client, tmp_csv):
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style A",
+            "new_name": "Style A Renamed",
+            "source": "styles.csv",
+            "prompt": "updated_prompt",
+            "negative_prompt": "updated_neg",
+            "description": "updated_desc",
+            "category": "NEWCAT",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    from stylegrid import csv_io
+
+    row = next(
+        s for s in csv_io.parse_styles_csv(str(tmp_csv)) if s["name"] == "Style A Renamed"
+    )
+    assert row["prompt"] == "updated_prompt"
+    assert row["negative_prompt"] == "updated_neg"
+    assert row["description"] == "updated_desc"
+    assert row["category_explicit"] == "NEWCAT"
+
+
+def test_post_rename_omitted_fields_preserved(style_grid_client, tmp_csv):
+    from stylegrid import csv_io
+
+    before = next(
+        s for s in csv_io.parse_styles_csv(str(tmp_csv)) if s["name"] == "Test Style A"
+    )
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style A",
+            "new_name": "Test Style A2",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    after = next(
+        s for s in csv_io.parse_styles_csv(str(tmp_csv)) if s["name"] == "Test Style A2"
+    )
+    assert after["prompt"] == before["prompt"]
+    assert after["negative_prompt"] == before["negative_prompt"]
+    assert after["description"] == before["description"]
+    assert after["category_explicit"] == before["category_explicit"]
+
+
+def test_post_rename_missing_old_name_error(style_grid_client, tmp_csv):
+    before = tmp_csv.read_bytes()
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={"new_name": "Whatever", "source": "styles.csv"},
+    )
+    assert r.status_code in (200, 422)
+    if r.status_code == 200:
+        assert "error" in r.json()
+    assert tmp_csv.read_bytes() == before
+
+
+def test_post_rename_missing_new_name_error(style_grid_client, tmp_csv):
+    before = tmp_csv.read_bytes()
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={"old_name": "Test Style A", "source": "styles.csv"},
+    )
+    assert r.status_code in (200, 422)
+    if r.status_code == 200:
+        assert "error" in r.json()
+    assert tmp_csv.read_bytes() == before
+
+
+def test_post_rename_not_found_400_leaves_csv(style_grid_client, tmp_csv):
+    before = tmp_csv.read_bytes()
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "No Such Style",
+            "new_name": "Nope",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()
+    assert body.get("ok") is False
+    assert "error" in body
+    assert tmp_csv.read_bytes() == before
+
+
+def test_post_rename_collision_400_leaves_csv(style_grid_client, tmp_csv):
+    before = tmp_csv.read_bytes()
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style A",
+            "new_name": "Test Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()
+    assert body.get("ok") is False
+    assert "error" in body
+    assert tmp_csv.read_bytes() == before
+
+
+def test_post_rename_ambiguous_400_leaves_csv(style_grid_client, tmp_csv):
+    tmp_csv.write_text(
+        "name,prompt,negative_prompt,description,category\n"
+        "Dup,old1,,,\n"
+        "Dup,old2,,,\n"
+        "Other,x,,,\n",
+        encoding="utf-8",
+    )
+    from stylegrid.cache import invalidate_styles_cache
+
+    invalidate_styles_cache()
+    before = tmp_csv.read_bytes()
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Dup",
+            "new_name": "DupRenamed",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()
+    assert body.get("ok") is False
+    assert "error" in body
+    assert tmp_csv.read_bytes() == before
+
+
+def test_post_rename_lora_400(style_grid_client, tmp_csv):
+    from stylegrid.lora_scan import LORA_SOURCE
+
+    before = tmp_csv.read_bytes()
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "AnyLoRA",
+            "new_name": "OtherLoRA",
+            "source": LORA_SOURCE,
+        },
+    )
+    assert r.status_code == 400
+    body = r.json()
+    assert body.get("ok") is False
+    assert "lora" in body.get("error", "").lower()
+    assert tmp_csv.read_bytes() == before
+
+
+def test_post_rename_moves_thumbnail(style_grid_client, tmp_csv, monkeypatch):
+    from pathlib import Path
+
+    from stylegrid import routes as sg_routes
+    from stylegrid import thumbnails as sg_thumbs
+
+    thumbs_dir = tmp_csv.parent / "thumbs"
+    thumbs_dir.mkdir()
+    monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+
+    source_path = str(tmp_csv)
+    old_path = Path(sg_thumbs.get_thumbnail_path("Test Style B", source_path))
+    old_path.write_bytes(b"fake-webp-bytes")
+    assert old_path.is_file()
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+
+    new_path = Path(sg_thumbs.get_thumbnail_path("Renamed Style B", source_path))
+    assert new_path.is_file()
+    assert new_path.read_bytes() == b"fake-webp-bytes"
+    assert not old_path.is_file()
+
+
+def test_post_rename_succeeds_without_thumbnail(style_grid_client, tmp_csv, monkeypatch):
+    from stylegrid import routes as sg_routes
+    from stylegrid import thumbnails as sg_thumbs
+
+    thumbs_dir = tmp_csv.parent / "thumbs"
+    thumbs_dir.mkdir()
+    monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed No Thumb",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    from stylegrid import csv_io
+
+    names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
+    assert "Renamed No Thumb" in names
+    assert "Test Style B" not in names
+
+
+def test_post_rename_ok_when_thumbnail_move_fails(style_grid_client, tmp_csv, monkeypatch):
+    from pathlib import Path
+
+    from stylegrid import routes as sg_routes
+    from stylegrid import thumbnails as sg_thumbs
+
+    thumbs_dir = tmp_csv.parent / "thumbs"
+    thumbs_dir.mkdir()
+    monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+
+    source_path = str(tmp_csv)
+    old_path = Path(sg_thumbs.get_thumbnail_path("Test Style B", source_path))
+    old_path.write_bytes(b"orphan-thumb")
+
+    def boom(*_a, **_k):
+        raise OSError("simulated thumbnail move failure")
+
+    monkeypatch.setattr(sg_routes.os, "replace", boom)
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Despite Thumb Fail",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    from stylegrid import csv_io
+
+    names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
+    assert "Renamed Despite Thumb Fail" in names
+    assert "Test Style B" not in names
+    # Move failed: old key file may remain; rename must still have succeeded.
+    assert old_path.is_file()

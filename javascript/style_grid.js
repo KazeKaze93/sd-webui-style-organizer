@@ -1128,8 +1128,13 @@
         }
     }
 
-    function postClearSelectionToIframes() {
-        ["sg-frame-txt2img", "sg-frame-img2img"].forEach(function (id) {
+    function postClearSelectionToIframes(tabName) {
+        // Optional tabName: post only to sg-frame-{tabName}. Omit to broadcast
+        // both frames (silent-mode-off is global). clearAll is per-tab and must pass tabName.
+        var ids = tabName
+            ? ["sg-frame-" + tabName]
+            : ["sg-frame-txt2img", "sg-frame-img2img"];
+        ids.forEach(function (id) {
             var fr = document.getElementById(id);
             if (fr && fr.contentWindow) {
                 fr.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
@@ -3398,6 +3403,7 @@
         updateConflicts(tabName);
         updateCombosPanel(tabName, null);
         syncWildcards(tabName);
+        postClearSelectionToIframes(tabName);
     }
 
     function toggleCategoryAll(tabName, catName) {

@@ -2119,6 +2119,26 @@
     // -----------------------------------------------------------------------
     // Refresh panel (rebuild from API data)
     // -----------------------------------------------------------------------
+    /**
+     * Host-state half of a panel build: Gradio/localStorage/network → state[tab],
+     * with no DOM construction. buildPanel reads what this wrote.
+     * loadThumbnailList stays fire-and-forget (does not block paint).
+     */
+    function syncPanelHostState(tabName) {
+        var categories = loadStyles(tabName);
+        state[tabName].categories = categories;
+        state[tabName].silentMode = getSilentMode(tabName);
+
+        state[tabName].selectedSource = getStoredSource(tabName);
+        var sources = getUniqueSources(tabName);
+        var currentSource = state[tabName].selectedSource;
+        if (sources.indexOf(currentSource) === -1) currentSource = "All";
+        state[tabName].selectedSource = currentSource;
+        syncSourceInput(tabName);
+
+        loadThumbnailList(tabName);
+    }
+
     function refreshPanel(tabName, opts) {
         opts = opts || {};
         var quietVanishedToast = !!opts.quietVanishedToast;
@@ -2140,6 +2160,7 @@
             }
             state[tabName].categories = data.categories || {};
             state[tabName].usage = data.usage || {};
+            syncPanelHostState(tabName);
             buildPanel(tabName);
             // Restore selection
             savedSelection.forEach(function (n) {
@@ -2345,9 +2366,8 @@
     // Build the Grid Panel
     // -----------------------------------------------------------------------
     function buildPanel(tabName) {
-        const categories = loadStyles(tabName);
-        state[tabName].categories = categories;
-        state[tabName].silentMode = getSilentMode(tabName);
+        // Host state (styles/silent/source/thumbs) comes from syncPanelHostState.
+        const categories = state[tabName].categories || {};
         const catOrder = getCategoryOrder(tabName);
 
         const catKeys = Object.keys(categories);
@@ -2394,13 +2414,9 @@
         function _buildSourceList() {
         const searchRow = el("div", { className: "sg-search-row" });
 
-        // Source dropdown
-        state[tabName].selectedSource = getStoredSource(tabName);
+        // Source dropdown (selectedSource + Gradio source textarea synced in syncPanelHostState)
         const sources = getUniqueSources(tabName);
-        let currentSource = state[tabName].selectedSource;
-        if (sources.indexOf(currentSource) === -1) currentSource = "All";
-        state[tabName].selectedSource = currentSource;
-        syncSourceInput(tabName);
+        let currentSource = state[tabName].selectedSource || "All";
 
         const srcWrap = el("div", { className: "sg-source-dropdown-wrap" });
         const srcBtn = el("button", { type: "button", className: "sg-source-select lg secondary gradio-button", id: "sg_source_" + tabName, title: "Filter by source", textContent: currentSource === "All" ? "All Sources" : currentSource });
@@ -2827,7 +2843,6 @@
         document.body.appendChild(overlay);
         state[tabName].panel = overlay;
         filterStyles(tabName);
-        loadThumbnailList(tabName);
         return overlay;
     }
 
@@ -2842,6 +2857,7 @@
         state[tabName].panel.remove();
         state[tabName].panel = null;
       }
+      syncPanelHostState(tabName);
       buildPanel(tabName);
       state[tabName].selectedOrder = savedOrder.filter(function (n) { return savedSelection.has(n); });
       savedSelection.forEach(function (n) {

@@ -1530,6 +1530,14 @@
                     if (typeof onDone === "function") onDone();
                 }).catch(function () {
                     showStatusMessage(tabName, "Move failed", true);
+                    var frMove = state[tabName] && state[tabName].sgFrame;
+                    if (frMove && frMove.contentWindow) {
+                        frMove.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: "Move failed",
+                            variant: "error"
+                        }, "*");
+                    }
                 });
             }
         }));

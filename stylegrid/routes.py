@@ -315,6 +315,51 @@ def _move_thumbnail_file(old_name, new_name, source):
     os.replace(old_path, new_path)
 
 
+def _remap_presets_after_rename(old_name, new_name, resolved_path=None, source=None):
+    """Rewrite preset members that pointed at old_name+source to new_name.
+
+    Presets store absolute source_file paths (see normalize_preset_entry /
+    style source_file). Match with normalize_source_path against resolved_path
+    when available so a basename request does not update a same-named style in
+    a different CSV. Saves only when at least one member changed.
+    """
+    if not old_name or not new_name or old_name == new_name:
+        return
+    target_norm = None
+    if resolved_path:
+        target_norm = normalize_source_path(resolved_path)
+    elif source:
+        src = str(source).strip()
+        replaced = src.replace("\\", "/")
+        if os.path.isabs(src) or "/" in replaced:
+            target_norm = normalize_source_path(src)
+    if not target_norm:
+        return
+
+    presets = load_presets()
+    changed = False
+    for preset in presets.values():
+        if not isinstance(preset, dict):
+            continue
+        styles = preset.get("styles")
+        if not isinstance(styles, list):
+            continue
+        for entry in styles:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("name") != old_name:
+                continue
+            mem_sf = entry.get("source_file") or ""
+            if not isinstance(mem_sf, str) or not mem_sf.strip():
+                continue
+            if normalize_source_path(mem_sf) != target_norm:
+                continue
+            entry["name"] = new_name
+            changed = True
+    if changed:
+        save_presets(presets)
+
+
 def _register_crud_routes(app):
     """Register style save/delete/rename and backup routes."""
     @app.post("/style_grid/style/save")
@@ -441,6 +486,13 @@ def _register_crud_routes(app):
         thumb_source = resolved_path or source or ""
         try:
             _move_thumbnail_file(old_name, new_name, thumb_source)
+        except Exception:
+            pass
+        # Best-effort: same contract — preset rewrite must not fail or roll back CSV.
+        try:
+            _remap_presets_after_rename(
+                old_name, new_name, resolved_path=resolved_path, source=source
+            )
         except Exception:
             pass
         return {"ok": True}

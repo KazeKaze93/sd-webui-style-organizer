@@ -1,0 +1,127 @@
+{
+  "note": "Pins stylegrid.wildcards.select_slice (generation-time) to ui/src/lib/wildcardSlice.ts resolveSliceNames (chip labels).",
+  "category": "body",
+  "names": [
+    "BODY_Male_Average",
+    "BODY_Male_BBC",
+    "BODY_Male_Muscular",
+    "BODY_Tanned",
+    "BODY_Shortstack",
+    "BODY_Petite_Small",
+    "BODY_Tall_Amazon",
+    "BODY_Ass_Huge",
+    "BODY_Hourglass_Perfect",
+    "BODY_Pregnant_Gravid",
+    "BODY_Muscular_Fit",
+    "BODY_BBW_Plus_Size"
+  ],
+  "cases": [
+    {
+      "spec": "",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_BBC",
+        "BODY_Male_Muscular",
+        "BODY_Tanned",
+        "BODY_Shortstack",
+        "BODY_Petite_Small",
+        "BODY_Tall_Amazon",
+        "BODY_Ass_Huge",
+        "BODY_Hourglass_Perfect",
+        "BODY_Pregnant_Gravid",
+        "BODY_Muscular_Fit",
+        "BODY_BBW_Plus_Size"
+      ]
+    },
+    {
+      "spec": "Shortstack,Tanned",
+      "expected": [
+        "BODY_Tanned",
+        "BODY_Shortstack"
+      ]
+    },
+    {
+      "spec": "-Shortstack,-Tanned",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_BBC",
+        "BODY_Male_Muscular",
+        "BODY_Petite_Small",
+        "BODY_Tall_Amazon",
+        "BODY_Ass_Huge",
+        "BODY_Hourglass_Perfect",
+        "BODY_Pregnant_Gravid",
+        "BODY_Muscular_Fit",
+        "BODY_BBW_Plus_Size"
+      ]
+    },
+    {
+      "spec": "Male_*",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_BBC",
+        "BODY_Male_Muscular"
+      ]
+    },
+    {
+      "spec": "-Male_*",
+      "expected": [
+        "BODY_Tanned",
+        "BODY_Shortstack",
+        "BODY_Petite_Small",
+        "BODY_Tall_Amazon",
+        "BODY_Ass_Huge",
+        "BODY_Hourglass_Perfect",
+        "BODY_Pregnant_Gravid",
+        "BODY_Muscular_Fit",
+        "BODY_BBW_Plus_Size"
+      ]
+    },
+    {
+      "spec": "Male_*,Tanned",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_BBC",
+        "BODY_Male_Muscular",
+        "BODY_Tanned"
+      ]
+    },
+    {
+      "spec": "Male_Average,Male_BBC",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_BBC"
+      ]
+    },
+    {
+      "spec": "Nonexistent_Thing",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_BBC",
+        "BODY_Male_Muscular",
+        "BODY_Tanned",
+        "BODY_Shortstack",
+        "BODY_Petite_Small",
+        "BODY_Tall_Amazon",
+        "BODY_Ass_Huge",
+        "BODY_Hourglass_Perfect",
+        "BODY_Pregnant_Gravid",
+        "BODY_Muscular_Fit",
+        "BODY_BBW_Plus_Size"
+      ]
+    },
+    {
+      "spec": "Male_*,-Male_BBC",
+      "expected": [
+        "BODY_Male_Average",
+        "BODY_Male_Muscular"
+      ]
+    },
+    {
+      "spec": "tanned",
+      "expected": [
+        "BODY_Tanned"
+      ]
+    }
+  ]
+}

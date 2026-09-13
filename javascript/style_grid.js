@@ -485,15 +485,6 @@
             .catch(function () {});
     }
 
-    /**
-     * Host status strip lived on the v1 .sg-footer. Panel is gone; generate/poll
-     * still call this until those paths gain SG_TOAST. Intentionally inert — not
-     * a silent document.body fallback.
-     */
-    function showStatusMessage(/* tabName, text, isError */) {
-        return;
-    }
-
     // ════════════════════════════════════════════════════
     // WILDCARDS
     // ════════════════════════════════════════════════════
@@ -891,7 +882,6 @@
 
    function startBatchThumbnails(tabName, catName, styles) {
        if (_batchState.running) {
-           showStatusMessage(tabName, "Batch generation already running", true);
            var frBusy = state[tabName] && state[tabName].sgFrame;
            if (frBusy && frBusy.contentWindow) {
                frBusy.contentWindow.postMessage({
@@ -907,7 +897,6 @@
            return !state[tabName].hasThumbnail.has(thumbIdentityKey(s.name, s.source_file));
        });
        if (queue.length === 0) {
-           showStatusMessage(tabName, "All styles already have previews");
            var frEmpty = state[tabName] && state[tabName].sgFrame;
            if (frEmpty && frEmpty.contentWindow) {
                frEmpty.contentWindow.postMessage({
@@ -1007,7 +996,6 @@
                var msg = "Done: " + done + "/" + total + " generated";
                if (failed > 0) msg += ", " + failed + " failed";
                if (skipped > 0) msg += ", " + skipped + " skipped";
-               showStatusMessage(tabName, msg);
                var frDone = state[tabName] && state[tabName].sgFrame;
                if (frDone && frDone.contentWindow) {
                    frDone.contentWindow.postMessage({
@@ -1047,7 +1035,6 @@
                    _batchState.running = false;
                    overlay.remove();
                    var cancelMsg = "Cancelled. " + done + "/" + total + " completed.";
-                   showStatusMessage(tabName2, cancelMsg);
                    var frCancel = state[tabName2] && state[tabName2].sgFrame;
                    if (frCancel && frCancel.contentWindow) {
                        frCancel.contentWindow.postMessage({
@@ -1130,7 +1117,6 @@
             .then(function (r) {
                 if (r.error || !r.job_id) {
                     var failStartMsg = "Generation failed: " + (r.error || "missing job_id");
-                    showStatusMessage(tabName, failStartMsg, true);
                     var frFailStart = state[tabName] && state[tabName].sgFrame;
                     if (frFailStart && frFailStart.contentWindow) {
                         frFailStart.contentWindow.postMessage({
@@ -1147,7 +1133,6 @@
                 pollGenerationStatus(tabName, styleName, 0, onDone, onProgress, resolvedSource, r.job_id);
             })
             .catch(function () {
-                showStatusMessage(tabName, "Generation failed", true);
                 var frFailCatch = state[tabName] && state[tabName].sgFrame;
                 if (frFailCatch && frFailCatch.contentWindow) {
                     frFailCatch.contentWindow.postMessage({
@@ -1164,7 +1149,6 @@
 
     function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile, jobId) {
         if (attempts > 60) {
-            showStatusMessage(tabName, "Generation timed out", true);
             var frTimeout = state[tabName] && state[tabName].sgFrame;
             if (frTimeout && frTimeout.contentWindow) {
                 frTimeout.contentWindow.postMessage({
@@ -1182,7 +1166,6 @@
             encodeURIComponent(jobId))
             .then(function (r) {
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
-                    showStatusMessage(tabName, "Generation endpoint not found", true);
                     var frNotFound = state[tabName] && state[tabName].sgFrame;
                     if (frNotFound && frNotFound.contentWindow) {
                         frNotFound.contentWindow.postMessage({
@@ -1209,7 +1192,6 @@
                     var failPollMsg = r.status === "cancelled"
                         ? "Generation cancelled"
                         : ("Generation failed: " + (r.message || "unknown"));
-                    showStatusMessage(tabName, failPollMsg, true);
                     var frFailPoll = state[tabName] && state[tabName].sgFrame;
                     if (frFailPoll && frFailPoll.contentWindow) {
                         frFailPoll.contentWindow.postMessage({
@@ -1230,7 +1212,6 @@
                     }, 2000);
                 } else {
                     var unknownMsg = "Unknown generation status: " + r.status;
-                    showStatusMessage(tabName, unknownMsg, true);
                     var frUnknown = state[tabName] && state[tabName].sgFrame;
                     if (frUnknown && frUnknown.contentWindow) {
                         frUnknown.contentWindow.postMessage({
@@ -1245,7 +1226,6 @@
                 }
             })
             .catch(function () {
-                showStatusMessage(tabName, "Generation status unavailable", true);
                 var frUnavailable = state[tabName] && state[tabName].sgFrame;
                 if (frUnavailable && frUnavailable.contentWindow) {
                     frUnavailable.contentWindow.postMessage({
@@ -1292,7 +1272,6 @@
                             }
                         } else {
                             var failMsg = "Upload failed: " + (r.error || "?");
-                            showStatusMessage(tabName, failMsg, true);
                             var frFail = state[tabName] && state[tabName].sgFrame;
                             if (frFail && frFail.contentWindow) {
                                 frFail.contentWindow.postMessage({
@@ -1304,7 +1283,6 @@
                         }
                     })
                     .catch(function () {
-                        showStatusMessage(tabName, "Upload failed", true);
                         var frCatch = state[tabName] && state[tabName].sgFrame;
                         if (frCatch && frCatch.contentWindow) {
                             frCatch.contentWindow.postMessage({
@@ -1395,7 +1373,6 @@
                     if (typeof notify === "function") notify();
                 }).catch(function (err) {
                     var msg = (err && err.message) ? err.message : "Save failed";
-                    showStatusMessage(tabName, msg, true);
                     var frSave = state[tabName] && state[tabName].sgFrame;
                     if (frSave && frSave.contentWindow) {
                         frSave.contentWindow.postMessage({
@@ -1469,7 +1446,6 @@
                         if (typeof onDeleted === "function") onDeleted();
                     })
                     .catch(function () {
-                        showStatusMessage(tabName, "Delete failed", true);
                         var frDel = state[tabName] && state[tabName].sgFrame;
                         if (frDel && frDel.contentWindow) {
                             frDel.contentWindow.postMessage({
@@ -1547,7 +1523,6 @@
                     if (typeof onDone === "function") onDone();
                 }).catch(function (err) {
                     var msg = (err && err.message) ? err.message : "Move failed";
-                    showStatusMessage(tabName, msg, true);
                     var frMove = state[tabName] && state[tabName].sgFrame;
                     if (frMove && frMove.contentWindow) {
                         frMove.contentWindow.postMessage({
@@ -1940,7 +1915,6 @@
             }
             syncSelectionChrome(tabName);
         }).catch(function () {
-            showStatusMessage(tabName, "Refresh failed", true);
             var frRef = state[tabName] && state[tabName].sgFrame;
             if (frRef && frRef.contentWindow) {
                 frRef.contentWindow.postMessage({
@@ -2879,7 +2853,6 @@
                             startBatchThumbnails(tab, catName, stylesInCat);
                         })
                         .catch(function () {
-                            showStatusMessage(tab, "Could not load styles for batch generation", true);
                             var frLoad = state[tab] && state[tab].sgFrame;
                             if (frLoad && frLoad.contentWindow) {
                                 frLoad.contentWindow.postMessage({

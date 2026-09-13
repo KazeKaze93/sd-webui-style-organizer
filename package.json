@@ -4,8 +4,8 @@
   "type": "module",
   "scripts": {
     "lint:js": "eslint javascript",
-    "lint:py": "ruff check scripts/",
-    "lint:py:fix": "ruff check scripts/ --fix --select=I001,E401",
+    "lint:py": "ruff check scripts/ stylegrid/ tests/",
+    "lint:py:fix": "ruff check scripts/ stylegrid/ tests/ --fix --select=I001,E401",
     "lint:ui": "npm --prefix ui run lint",
     "lint": "npm run lint:js && npm run lint:py && npm run lint:ui",
     "check:prompt-utils-drift": "node tools/check-prompt-utils-drift.mjs",

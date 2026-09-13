@@ -113,6 +113,39 @@ def increment_usage(style_names):
         save_usage(usage)
 
 
+def migrate_usage_on_rename(old_name, new_name):
+    """Move usage stats from old_name to new_name after a successful CSV rename.
+
+    Usage is keyed by style name only ({name: {count, last_used, first_used}}).
+    If new_name already has an entry (residue — rename onto an existing style
+    name is refused by rename_style_in_csv), merge counts and keep the earliest
+    first_used / latest last_used. No-op when old_name has no usage history.
+    """
+    if not old_name or not new_name or old_name == new_name:
+        return
+    with _usage_lock:
+        usage = load_usage()
+        if old_name not in usage:
+            return
+        old_entry = usage.pop(old_name)
+        if new_name in usage:
+            existing = usage[new_name]
+            first_candidates = [
+                t for t in (existing.get("first_used"), old_entry.get("first_used")) if t
+            ]
+            last_candidates = [
+                t for t in (existing.get("last_used"), old_entry.get("last_used")) if t
+            ]
+            usage[new_name] = {
+                "count": (existing.get("count", 0) or 0) + (old_entry.get("count", 0) or 0),
+                "first_used": min(first_candidates) if first_candidates else None,
+                "last_used": max(last_candidates) if last_candidates else None,
+            }
+        else:
+            usage[new_name] = old_entry
+        save_usage(usage)
+
+
 def _backup_rel_name(fp):
     """Collision-safe relative path for backup zip/folder members."""
     abs_fp = os.path.abspath(fp)

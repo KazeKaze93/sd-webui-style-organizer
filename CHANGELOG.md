@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Vitest UI suite:** `cd ui && npm test` (Vitest 5) covers `wildcardSlice` compact/resolve/chip-count (`wildcardSlice.test.ts`) and Python parity (`wildcardSlice.parity.test.ts`). `tsconfig.test.json` typechecks test files with Node types; `tsconfig.app.json` excludes `*.test.ts`.
+- **Shared slice-grammar fixture:** `tests/fixtures/slice_grammar.json` drives `tests/test_slice_grammar_parity.py` and the Vitest parity file so `select_slice` and `resolveSliceNames` cannot drift silently.
 - **Wildcard slices (PR #75):** `{sg:<category>:<spec>}` token form. Spec is a comma-separated list of style-name suffixes (category prefix omitted); entries support plain include, `-` exclude, and trailing `*` glob prefix match. `parse_sg_token` / `select_slice` in `stylegrid/wildcards.py` union includes first, then subtract excludes; an empty resulting pool falls back to the full category so a stale token never blocks generation. Plain `{sg:<category>}` behaviour is unchanged.
 - **Slice-selection UI (PR #75):** sidebar category context menu gains **Select styles for wildcard…**, putting the grid into checkbox selection mode with Select all / Clear all / Add as wildcard / Cancel. Search and source filter stay active; **Select all** applies to currently visible (filtered) cards only. `ui/src/lib/wildcardSlice.ts` compacts the selection into the shortest correct spec (whole category → no spec; include vs exclude by string length; `Root_*` globs only when every category name under that root is selected).
 - **Wildcard chips (PR #72, #74, #75):** active `{sg:…}` tokens render as removable chips keyed by **category + spec**, drag-reorderable; slice chips show the resolved pool size with member style names in the tooltip. Bridge messages `SG_WILDCARDS_ACTIVE`, `SG_REMOVE_WILDCARD`, and `SG_REORDER_WILDCARDS` carry `{ category, spec }` (`WildcardRef`); new outgoing `SG_WILDCARD_SLICE`.
@@ -27,6 +29,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fullscreen/windowed interactions with outside-click handling and host scroll lock control (`930f6b6`, `fc9d9dc`, `72c77f2`).
 
 ### Changed
+- **`shadcn` → `devDependencies`:** the UI only `@import "shadcn/tailwind.css"` at build time; the CLI (and its MCP/express/hono subtree) is not a runtime dependency. Production CSS/JS hashes unchanged.
+- **`.gitattributes`:** `ui/dist/**` and `ui/public/**` marked `-text` so `core.autocrlf` cannot smudge the committed Vite bundle or the static assets Vite copies into `dist`.
+- **npm audit triage:** non-force `npm audit fix` refreshed the Vite 8.3 / Rolldown 1.2 toolchain; committed `ui/dist` rebuilt to match. Residual finding is transitive **js-yaml** (high) via eslint.
 - **Thumbnails (PR #67):** on-disk files and HTTP routes require **name + source**; legacy name-only hash resolution on GET is removed. `GET /thumbnails/list` returns `{name, source_file}` entries. `GET` / upload / generate / delete all require `source` for CSV styles (**400** if missing). Host + V2 pass style `source_file` on preview messages; `SG_THUMB_DONE` matches cards by name+source.
 - **CSV save:** upsert updates **all** same-name rows in the target file (not first-match only). `source_file` paths are normalized to forward-slash abspaths for cross-platform host/JS matching.
 - **Presets / silent mode:** preset `styles` normalize to `{name, source_file}` on load/save (disk rewrite only on save). Silent Gradio payload carries the same dual format, ordered by `selectedOrder`; `{sg:…}` wildcards resolve inside silently injected style text. Turning silent **on** converts live applies to silent records; reorder rebuilds from additive/wrap records (including wrap templates) without duplicating prompts.
@@ -56,6 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Documentation:** README expanded (workflows, wildcards, search, fullscreen, img2img, testing; Quick Start / top-bar table / troubleshooting include the **disabled** CSV table editor); top-bar **Presets** / **Backup** rows note iframe sync and backup toasts; `docs/API.md` § `POST /backup` documents `ok` / `error` and skipped missing files; `docs/DEVELOPMENT.md` adds outside-click exclusions, `SG_BACKUP`, preset Load, and `SG_APPLY` host `selected` state; maintainer re-enable steps for CSV editor, `SG_CSV_EDITOR` toast, screenshots checklist (`docs/screenshots/README.md`); PNG assets under `docs/screenshots/` refreshed for the current UI.
 - **Documentation (paths + API):** References to backend modules now use the `stylegrid/` package layout (`stylegrid/routes.py`, `stylegrid/wildcards.py`). Iframe routing notes and thumbnail/`source_file` docs live in `docs/API.md` / `docs/DEVELOPMENT.md` / `docs/CSV_FORMAT.md` (superseded again by **Documentation (PR #67)** above). Root `README.md` and `ui/README.md` wildcards/API paths aligned.
 - **Documentation (V2 follow-up):** `README.md`, `ui/README.md`, `docs/API.md` § **GET `/ui`**, and `docs/DEVELOPMENT.md` updated for **`_get_ui_html()`** (per-request `?v=` on all relative assets), exported **`selectFilteredStyles`**, and **`useShallow`** in **StyleGrid** / **Sidebar**; dedupe changelog line now names **`selectFilteredStyles`** instead of the removed store method.
+- **Documentation (test/hygiene):** `tests/README.md`, `docs/DEVELOPMENT.md`, `ui/README.md`, `docs/CSV_FORMAT.md`, and `docs/API.md` updated for Vitest, slice parity, dual `splitTopLevelCommas` copies, `.gitattributes`, and `shadcn` as a build-time dependency.
 - **Repo hygiene:** `.gitignore` extended for Python virtualenvs, caches, and coverage output (`2a9d7b8`).
 - **V2 store (pre–PR #67):** restoring `activeSource` from persistence matches stored values against loaded sources via basename-aware `resolveSourceInList`. **PR #67:** `setStyles` always notifies the host via `SG_SOURCE_CHANGE` (including All Sources / empty) so Gradio clears stale paths; see **Changed** name+source / tab persistence above.
 
@@ -64,6 +70,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.
 
 ### Fixed
+- **CSV/route test retarget:** pytest fixtures and route tests patch **`get_all_styles_file_paths`** (the live discovery API after `0a0fcaa`), not the stale `get_styles_dirs` targets that left the suite red on master.
+- **`sg_prompt_utils.js` brace sync:** Forge-injected `javascript/sg_prompt_utils.js` `splitTopLevelCommas` matched the brace-aware body already used inside `style_grid.js`; `tests/test_js.html` covers slice-token cases.
 - **Brace-aware prompt splitting (PR #75):** `splitTopLevelCommas` tracks brace depth alongside parentheses, so `{sg:…}` tokens containing commas stay single segments. Fixes slice chip removal and slice reorder, and stops `parseStylePromptTags` / `scalePromptWeights` from shredding such tokens into bogus tags.
 - **Reorder prompt loss (PR #73):** reorder no longer rebuilds prompts from the one-shot `userPromptBase` snapshot. `rebuildPromptFromOrder` derives the base from the live textareas by unwinding applied styles in reverse `appliedNestOrder`, so hand-typed text and `{sg:…}` tokens added after the first style apply survive reorder; nest order is re-recorded after each rebuild so repeated reorders stay correct.
 - **Wrap templates (PR #70):** wrap-template application replaces **every** `{prompt}` occurrence (`split`/`join`), not just the first — in `rebuildPromptFromOrder` and `applyStyleImmediate`.
@@ -84,7 +92,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **V2 ↔ host (source + batch previews):** category batch thumbnail jobs use the iframe-posted `source` and a fresh `/style_grid/styles` list filtered by category and source; `window` `message` handlers for txt2img/img2img only handle events from their own iframe (`e.source === frame.contentWindow`); redundant `SG_SOURCE_CHANGE` updates with the same path are skipped after the tab state exists. Thumbnail GET/generate/upload/delete identity is name+source (see **Changed** PR #67).
 
 ### Security
-- None.
+- **npm audit:** build-only findings triaged; remaining high is transitive **js-yaml** via eslint (not a runtime `dependencies` import from `ui/src`).
 
 ## [5.0.0] - 2026-03-17
 

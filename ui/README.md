@@ -8,9 +8,27 @@ React + TypeScript + Vite frontend loaded by Forge inside an iframe.
 cd ui
 npm install
 npm run build
+npm test          # vitest run
+npm run test:watch
 ```
 
 `npm run build` outputs `ui/dist/`. The Forge host loads the UI with **`GET /style_grid/ui?t=<timestamp>`** (FastAPI in `stylegrid/routes.py`). **`_get_ui_html()`** in `stylegrid/routes.py` reads `ui/dist/index.html` and rewrites **each** relative `src` / `href` (`./…`) to Gradio **`/file=extensions/sd-webui-style-organizer/ui/dist/…`** with a **new** `?v=<unix time>` on every response so JS, CSS, favicon, and other linked assets stay in sync after rebuilds. The host script sets the iframe `src` in `javascript/style_grid.js`.
+
+Committed `ui/dist/` and `ui/public/` are `-text` in the repo `.gitattributes` so Windows `autocrlf` cannot smudge the bundle or the static assets Vite copies into `dist`.
+
+## Tests
+
+| File | Scope |
+|------|--------|
+| `src/lib/wildcardSlice.test.ts` | Unit tests for compact / resolve / chip counts. |
+| `src/lib/wildcardSlice.parity.test.ts` | Asserts `resolveSliceNames` against `tests/fixtures/slice_grammar.json` (same cases as Python). |
+
+```bash
+npx tsc --noEmit -p tsconfig.app.json
+npx tsc --noEmit -p tsconfig.test.json
+```
+
+`tsconfig.app.json` excludes `*.test.ts` (browser types only). `tsconfig.test.json` adds Node types for the parity file’s `node:fs` / `node:path` / `node:url` imports.
 
 ## Key Files
 

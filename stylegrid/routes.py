@@ -39,6 +39,7 @@ from stylegrid.data_files import (
     increment_usage,
     load_presets,
     load_usage,
+    migrate_usage_on_rename,
     save_presets,
 )
 from stylegrid.thumbnails import (
@@ -493,6 +494,11 @@ def _register_crud_routes(app):
             _remap_presets_after_rename(
                 old_name, new_name, resolved_path=resolved_path, source=source
             )
+        except Exception:
+            pass
+        # Best-effort: same contract — usage key rewrite must not fail or roll back CSV.
+        try:
+            migrate_usage_on_rename(old_name, new_name)
         except Exception:
             pass
         return {"ok": True}

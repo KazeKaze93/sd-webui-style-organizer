@@ -1429,12 +1429,28 @@
                                 }, "*");
                             }
                         } else {
-                            showStatusMessage(tabName,
-                                "Upload failed: " + (r.error || "?"), true);
+                            var failMsg = "Upload failed: " + (r.error || "?");
+                            showStatusMessage(tabName, failMsg, true);
+                            var frFail = state[tabName] && state[tabName].sgFrame;
+                            if (frFail && frFail.contentWindow) {
+                                frFail.contentWindow.postMessage({
+                                    type: "SG_TOAST",
+                                    message: failMsg,
+                                    variant: "error"
+                                }, "*");
+                            }
                         }
                     })
                     .catch(function () {
                         showStatusMessage(tabName, "Upload failed", true);
+                        var frCatch = state[tabName] && state[tabName].sgFrame;
+                        if (frCatch && frCatch.contentWindow) {
+                            frCatch.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: "Upload failed",
+                                variant: "error"
+                            }, "*");
+                        }
                     });
             };
             reader.readAsDataURL(file);

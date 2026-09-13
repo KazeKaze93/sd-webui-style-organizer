@@ -8,10 +8,11 @@
     "lint:py:fix": "ruff check scripts/ --fix --select=I001,E401",
     "lint:ui": "npm --prefix ui run lint",
     "lint": "npm run lint:js && npm run lint:py && npm run lint:ui",
+    "check:prompt-utils-drift": "node tools/check-prompt-utils-drift.mjs",
     "test:js": "start tests/test_js.html",
     "test:py": "pytest tests/ -v",
     "test": "npm run test:py",
-    "check": "npm run lint && npm run test:py"
+    "check": "npm run lint && npm run check:prompt-utils-drift && npm run test:py"
   },
   "devDependencies": {
     "eslint": "^9.39.4",

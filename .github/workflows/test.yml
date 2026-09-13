@@ -52,3 +52,6 @@ jobs:
       - name: Run root eslint
         working-directory: .
         run: npm run lint:js
+      - name: Check prompt utils drift
+        working-directory: .
+        run: npm run check:prompt-utils-drift

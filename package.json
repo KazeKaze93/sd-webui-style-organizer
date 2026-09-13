@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint:js": "eslint javascript/style_grid.js",
+    "lint:js": "eslint javascript",
     "lint:py": "ruff check scripts/",
     "lint:py:fix": "ruff check scripts/ --fix --select=I001,E401",
     "lint:ui": "npm --prefix ui run lint",

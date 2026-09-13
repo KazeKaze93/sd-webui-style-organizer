@@ -46,3 +46,9 @@ jobs:
         run: npx tsc --noEmit -p tsconfig.test.json
       - name: Run eslint
         run: npm run lint
+      - name: Install root dependencies
+        working-directory: .
+        run: npm ci
+      - name: Run root eslint
+        working-directory: .
+        run: npm run lint:js

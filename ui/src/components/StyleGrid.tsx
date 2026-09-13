@@ -51,11 +51,20 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
 
   const sliceCategory = sliceMode?.category ?? null
 
+  /** Search/source-filtered styles without the sidebar category filter — slice mode may target another category. */
+  const sliceModeFiltered = useMemo(
+    () => selectFilteredStyles(styles, search, null, activeSource, favorites, recentNames, presets),
+    [styles, search, activeSource, favorites, recentNames, presets]
+  )
+
   /** Currently visible (search/filter-applied) cards for the slice category. */
   const visibleSliceStyles = useMemo(() => {
     if (!sliceCategory) return [] as Style[]
-    return filtered.filter((s) => (s.category || 'OTHER') === sliceCategory)
-  }, [filtered, sliceCategory])
+    const want = sliceCategory.toLowerCase()
+    return sliceModeFiltered.filter(
+      (s) => (s.category || 'OTHER').toLowerCase() === want,
+    )
+  }, [sliceModeFiltered, sliceCategory])
 
   /** Unfiltered category total for the compactor (source-scoped, not search-scoped). */
   const allNamesInCategory = useMemo(() => {

@@ -3643,22 +3643,37 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     }
 
     function clearAll(tabName) {
-        state[tabName].applied.forEach(function (_, n) { unapplyStyle(tabName, n); });
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl    = qs("#" + tabName + "_neg_prompt textarea");
+        var p = promptEl ? (promptEl.value || "") : "";
+        var n = negEl ? (negEl.value || "") : "";
+
+        // Subtract what we added: unwind applied styles from live text (same strategy as rebuildPromptFromOrder).
+        var nest = state[tabName].appliedNestOrder || [];
+        for (var i = nest.length - 1; i >= 0; i--) {
+            var unwindName = nest[i];
+            var unwindRec = state[tabName].applied.get(unwindName);
+            if (!unwindRec) continue;
+            p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
+            n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
+        }
+
+        var wcRe = /^\{sg:([^}]+)\}$/i;
+        var stripWildcardTokens = function (s) {
+            return splitTopLevelCommas(s || "").map(function (t) { return t.trim(); }).filter(function (t) {
+                return t && !wcRe.test(t);
+            }).join(", ");
+        };
+        p = stripWildcardTokens(p);
+        n = stripWildcardTokens(n);
+
+        if (promptEl) setPromptValue(promptEl, p);
+        if (negEl)    setPromptValue(negEl, n);
+
         state[tabName].selected.clear();
         state[tabName].selectedOrder = [];
         state[tabName].applied.clear();
-
-        var basePrompt = state[tabName].userPromptBase || "";
-        var baseNeg = state[tabName].userPromptBaseNeg || "";
-        state[tabName].userPromptBase = "";
-        state[tabName].userPromptBaseNeg = "";
-
-        (function () {
-            var promptEl = qs("#" + tabName + "_prompt textarea");
-            var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-            if (promptEl) setPromptValue(promptEl, basePrompt);
-            if (negEl)    setPromptValue(negEl, baseNeg);
-        })();
+        state[tabName].appliedNestOrder = [];
 
         if (state[tabName].panel) {
             qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
@@ -3667,6 +3682,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         updateSelectedUI(tabName);
         updateConflicts(tabName);
         updateCombosPanel(tabName, null);
+        syncWildcards(tabName);
     }
 
     function toggleCategoryAll(tabName, catName) {

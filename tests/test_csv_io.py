@@ -4,8 +4,6 @@ Tests for stylegrid.csv_io parse/save/delete behavior.
 Duplicate names (save): save_style_to_csv updates every matching row by name in the
 target CSV (row count unchanged; see test_save_updates_all_duplicate_rows).
 """
-from pathlib import Path
-
 import pytest
 
 from stylegrid import csv_io

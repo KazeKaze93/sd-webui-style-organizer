@@ -7,7 +7,13 @@ import threading
 import time
 import zipfile
 
-from stylegrid.config import BACKUP_DIR, EXT_DIR, PRESETS_FILE, USAGE_FILE, get_all_styles_file_paths
+from stylegrid.config import (
+    BACKUP_DIR,
+    EXT_DIR,
+    PRESETS_FILE,
+    USAGE_FILE,
+    get_all_styles_file_paths,
+)
 from stylegrid.csv_io import load_all_styles
 
 

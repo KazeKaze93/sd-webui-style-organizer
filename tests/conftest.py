@@ -13,7 +13,8 @@ sys.modules.setdefault("modules", _mod)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-import pytest
+# Must follow sys.path / modules stub setup above so stylegrid imports resolve in tests.
+import pytest  # noqa: E402
 
 
 @pytest.fixture

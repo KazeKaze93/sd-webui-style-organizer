@@ -3,10 +3,11 @@
 import csv
 import os
 
+from modules import shared
+
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import DATA_DIR, EXT_DIR, get_all_styles_file_paths, is_samples_source
 from stylegrid.lora_scan import LORA_SOURCE, get_cached_lora_styles
-from modules import shared
 
 # Canonical CSV column order used when writing style rows back to disk.
 FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]

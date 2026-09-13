@@ -25,7 +25,13 @@ from stylegrid.cache import (
     invalidate_styles_cache,
     styles_cache_hashes,
 )
-from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR, get_all_styles_file_paths, is_samples_source
+from stylegrid.config import (
+    DATA_DIR,
+    EXT_DIR,
+    THUMBNAILS_DIR,
+    get_all_styles_file_paths,
+    is_samples_source,
+)
 from stylegrid.csv_io import (
     categorize_styles,
     delete_style_from_csv,
@@ -42,12 +48,6 @@ from stylegrid.data_files import (
     migrate_usage_on_rename,
     save_presets,
 )
-from stylegrid.thumbnails import (
-    _thumbnail_hash_input,
-    get_thumbnail_path,
-    list_thumbnails,
-    thumbnail_generation_manager,
-)
 from stylegrid.lora_scan import (
     LORA_SOURCE,
     get_cached_lora_styles,
@@ -57,6 +57,12 @@ from stylegrid.lora_scan import (
     lora_scan_status,
 )
 from stylegrid.lora_titles import title_fetch_manager
+from stylegrid.thumbnails import (
+    _thumbnail_hash_input,
+    get_thumbnail_path,
+    list_thumbnails,
+    thumbnail_generation_manager,
+)
 
 
 def detect_conflicts(style_names):

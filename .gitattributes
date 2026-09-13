@@ -1,0 +1,3 @@
+# Committed Vite build output: never apply EOL conversion.
+# core.autocrlf would otherwise smudge CRLF into index.js.
+ui/dist/** -text

@@ -62,7 +62,7 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
                   key={token}
                   onClick={() => {
                     onBeforeToggle?.()
-                    resolved.style && toggleStyle(resolved.style)
+                    if (resolved.style) toggleStyle(resolved.style)
                   }}
                   className={`px-2 py-0.5 rounded text-xs border transition-colors
                     ${isSelected

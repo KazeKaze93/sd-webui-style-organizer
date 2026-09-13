@@ -45,8 +45,6 @@
     // STORAGE (localStorage + server-backed preferences)
     // ════════════════════════════════════════════════════
 
-    var _thumbPopup = null;      // single shared popup element
-    var _thumbHoverTimer = null; // pending hover timer
     var _thumbVersions = (function () {
         try { return JSON.parse(localStorage.getItem("sg_thumb_versions") || "{}"); }
         catch (_) { return {}; }
@@ -55,7 +53,6 @@
         try { localStorage.setItem("sg_thumb_versions", JSON.stringify(_thumbVersions)); }
         catch (_) { }
     }
-    var _thumbProgressTimer = null;
 
     const SOURCE_STORAGE_KEY = "sg_source";
     function getStoredSource(t) {
@@ -73,20 +70,6 @@
             localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d));
         } catch (_) { }
     }
-    function loadCategoryOrder() {
-        try {
-            return JSON.parse(localStorage.getItem("sg_cat_order") || "null");
-        } catch (_) {
-            return null;
-        }
-    }
-    function saveCategoryOrder(order) {
-        try {
-            localStorage.setItem("sg_cat_order", JSON.stringify(order));
-        } catch (_) { }
-        // Also persist to server for cross-browser persistence
-        apiPost("/style_grid/category_order/save", { order: order }).catch(function () { });
-    }
     function getSilentMode(t) {
         try {
             const d = JSON.parse(localStorage.getItem("sg_silent") || "{}");
@@ -103,8 +86,7 @@
         } catch (_) { }
     }
 
-    // Favorites
-    const FAV_CAT = "FAVORITES";
+    // Favorites (legacy sg_favorites — still remapped on rename)
     function getFavorites(t) {
         try {
             const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
@@ -120,12 +102,6 @@
             localStorage.setItem("sg_favorites", JSON.stringify(d));
         } catch (_) { }
     }
-    function toggleFavorite(t, n) {
-        const f = getFavorites(t);
-        if (f.has(n)) f.delete(n);
-        else f.add(n);
-        setFavorites(t, f);
-    }
 
     // Recent history
     function getRecentHistory(t) {
@@ -134,12 +110,6 @@
         } catch (_) {
             return [];
         }
-    }
-    function addToRecentHistory(t, names) {
-        let h = getRecentHistory(t);
-        names.forEach(function (n) { h = h.filter(function (x) { return x !== n; }); h.unshift(n); });
-        if (h.length > 10) h = h.slice(0, 10);
-        localStorage.setItem("sg_recent_" + t, JSON.stringify(h));
     }
 
     /** Remap a style's local identity after a CSV rename (selection, applied, fav, recent). */
@@ -197,21 +167,6 @@
     // -----------------------------------------------------------------------
     // Utility
     // -----------------------------------------------------------------------
-    function hashString(s) {
-        if (!s) s = "";
-        let h = 0;
-        for (let i = 0; i < s.length; i++) {
-            h = ((h << 5) - h) + s.charCodeAt(i);
-            h = h & h;
-        }
-        return Math.abs(h);
-    }
-    function getCategoryColor(c) {
-        const h = hashString(c) % 360;
-        const s = 55 + (hashString(c + "s") % 25);
-        const l = 48 + (hashString(c + "l") % 12);
-        return "hsl(" + h + "," + s + "%," + l + "%)";
-    }
     function qs(sel, root) {
         if (root) return root.querySelector(sel);
         var ga = (typeof gradioApp === "function") ? gradioApp() : null;
@@ -232,17 +187,6 @@
             else if (c) e.appendChild(c);
         });
         return e;
-    }
-
-    function normalizeSearchText(s) { return (s || "").replace(/\s+/g, " ").trim().toLowerCase(); }
-    function buildSearchText(style) { return normalizeSearchText([style.name, style.display_name].filter(Boolean).join(" ")); }
-    function acMatches(candidate, query) {
-        const normalized = normalizeSearchText(candidate);
-        const q = normalizeSearchText(query);
-        if (!q) return true;
-        return q.split(/\s+/).filter(Boolean).every(function (token) {
-            return normalized.includes(token);
-        });
     }
     function getUniqueSources(t) {
         const cats = state[t].categories || {};
@@ -271,7 +215,7 @@
     }
     /** Map selected styles → {name, source_file}[] for presets / silent Gradio.
      * Prefer selectedOrder (apply order); skip order entries not in selected;
-     * append any selected names missing from order (same reconcile as updateSelectedUI). */
+     * append any selected names missing from order (same reconcile as syncSelectionChrome). */
     function selectedAsNameSourceEntries(tabName) {
         var selected = state[tabName].selected;
         var order = (state[tabName].selectedOrder || []).filter(function (n) {
@@ -291,117 +235,10 @@
                 : { name: n, source_file: "" };
         });
     }
-    function getLoadedStylesWithCategory(tabName) {
-        var out = [];
-        var cats = state[tabName].categories || {};
-        for (var catName in cats) {
-            (cats[catName] || []).forEach(function (s) {
-                out.push({
-                    name: s.name,
-                    display_name: s.display_name,
-                    category: catName
-                });
-            });
-        }
-        return out;
-    }
 
     // ════════════════════════════════════════════════════
     // CONFLICTS / COMBOS (description parsing & chips)
     // ════════════════════════════════════════════════════
-    function parseDescription(desc) {
-        if (!desc) return { text: "", combos: [], conflicts: [] };
-
-        var result = { text: "", combos: [], conflicts: [] };
-
-        // Extract Combos: section — after "Combos:" until end or first period
-        var combosMatch = desc.match(/Combos:\s*([^.]+)/i);
-        if (combosMatch) {
-            var block = combosMatch[1].trim();
-            var rawTokens = block.split(/\s*;\s*|\s+or\s+/i).map(function (s) { return s.trim(); });
-            result.combos = rawTokens.map(function (token) {
-                token = token.replace(/\.\s*$/, "").trim();
-                var parts = token.split(/\s+/);
-                var out = [];
-                for (var i = 0; i < parts.length; i++) {
-                    if (/^[a-z]/.test(parts[i]) || parts[i].toLowerCase() === "for") break;
-                    out.push(parts[i]);
-                }
-                return out.join(" ").trim();
-            }).filter(Boolean);
-        }
-
-        // Extract Conflicts: section
-        var conflictsMatch = desc.match(/Conflicts:\s*([^.]+)/i);
-        if (conflictsMatch) {
-            result.conflicts = conflictsMatch[1]
-                .split(";")
-                .map(function (s) { return s.trim(); })
-                .filter(Boolean);
-        }
-
-        // Plain text = everything before first "Combos:" or "Conflicts:"
-        result.text = desc
-            .replace(/Combos:[^.]+\.?/i, "")
-            .replace(/Conflicts:[^.]+\.?/i, "")
-            .replace(/\s+/g, " ")
-            .trim();
-
-        return result;
-    }
-    function findStyleByToken(token, loadedStyles) {
-        var list = loadedStyles || [];
-        var found = list.find(function (s) { return s.name === token; });
-        if (found) return found;
-
-        var parts = token.split("_");
-        if (parts.length >= 2) {
-            var swapped = [parts[1], parts[0]].concat(parts.slice(2)).join("_");
-            found = list.find(function (s) { return s.name === swapped; });
-            if (found) return found;
-        }
-
-        var lower = token.toLowerCase();
-        found = list.find(function (s) { return (s.name || "").toLowerCase() === lower; });
-        if (found) return found;
-
-        if (parts.length >= 2) {
-            var swappedLower = [parts[1], parts[0]].concat(parts.slice(2)).join("_").toLowerCase();
-            found = list.find(function (s) { return (s.name || "").toLowerCase() === swappedLower; });
-            if (found) return found;
-        }
-
-        return null;
-    }
-    function resolveComboItem(tabName, comboStr, loadedStyles) {
-        var token = (comboStr || "").trim();
-        if (!token) return { type: "plain", label: comboStr || "" };
-
-        var list = loadedStyles || [];
-
-        // Type 1: WILDCARD — ends with _*
-        if (token.endsWith("_*")) {
-            var prefixWithUnderscore = token.slice(0, -2).trim() + "_";
-            var chipLabel = prefixWithUnderscore.replace(/_$/, "") || token;
-            return {
-                type: "wildcard",
-                label: chipLabel,
-                searchPrefix: prefixWithUnderscore
-            };
-        }
-
-        // Type 2: EXACT STYLE NAME (with swap fallback for SUBJECT_CATEGORY vs CATEGORY_SUBJECT)
-        var styleMatch = findStyleByToken(token, list);
-        if (styleMatch) {
-            return {
-                type: "style",
-                label: token,
-                styleName: styleMatch.name
-            };
-        }
-
-        return { type: "plain", label: comboStr };
-    }
 
     // ════════════════════════════════════════════════════
     // PROMPT ENGINE
@@ -585,28 +422,6 @@
             state[tabName].presets = data.presets || {};
             return data.categories || {};
         } catch (_) { return {}; }
-    }
-    function getCategoryOrder(tabName) {
-        const el = qs("#style_grid_cat_order_" + tabName + " textarea");
-        if (!el || !el.value) return [];
-        try { return JSON.parse(el.value); } catch (_) { return []; }
-    }
-
-    function getCollapsedCategories() {
-        try {
-            return JSON.parse(localStorage.getItem("sg_collapsed") || "[]");
-        } catch (_) { return []; }
-    }
-    function saveCollapsedCategories(tabName) {
-        var panel = state[tabName].panel;
-        if (!panel) return;
-        var collapsed = [];
-        qsa(".sg-category.sg-collapsed", panel).forEach(function (sec) {
-            var cat = sec.getAttribute("data-category");
-            if (cat) collapsed.push(cat);
-        });
-        try { localStorage.setItem("sg_collapsed", JSON.stringify(collapsed)); }
-        catch (_) { }
     }
 
     // ════════════════════════════════════════════════════
@@ -1494,108 +1309,6 @@
     // ════════════════════════════════════════════════════
     // UI: EDITOR / CONTEXT MENU
     // ════════════════════════════════════════════════════
-    function showContextMenu(e, tabName, styleName, style) {
-        e.preventDefault();
-        // Remove existing
-        const old = qs(".sg-context-menu");
-        if (old) old.remove();
-
-        const menu = el("div", { className: "sg-context-menu" });
-        menu.style.left = e.clientX + "px";
-        menu.style.top = e.clientY + "px";
-
-        const items = [
-            { label: "✏️ Edit style", action: function () { openStyleEditor(tabName, style); } },
-            { label: "📋 Duplicate", action: function () { duplicateStyle(tabName, style); } },
-            { label: "🗑️ Delete", action: function () { deleteStyle(tabName, styleName, style.source); } },
-            { label: "📂 Move to category...", action: function () { moveToCategory(tabName, style); } },
-            { label: "📎 Copy prompt", action: function () { navigator.clipboard.writeText(style.prompt || ""); } },
-        ];
-
-        items.push({
-            label: "🎨 Generate preview (SD)",
-            action: function () { generateThumbnail(tabName, styleName, undefined, undefined, style.source_file); }
-        });
-
-        items.push({
-            label: "🖼️ Upload preview image",
-            action: function () { uploadThumbnail(tabName, styleName, style.source_file); }
-        });
-
-        var sourceFile = style.source_file || "";
-        if (sourceFile &&
-            state[tabName].hasThumbnail.has(thumbIdentityKey(styleName, sourceFile))) {
-            items.push({
-                label: "🗑️ Remove preview image",
-                action: function () {
-                    fetch(
-                        "/style_grid/thumbnail?name=" + encodeURIComponent(styleName) +
-                        "&source=" + encodeURIComponent(sourceFile),
-                        { method: "DELETE" }
-                    ).then(function (r) {
-                        return r.text().then(function (text) {
-                            var body = {};
-                            if (text) {
-                                try { body = JSON.parse(text); } catch (_e) { /* ignore */ }
-                            }
-                            if (!r.ok || (body && body.ok === false)) {
-                                showStatusMessage(
-                                    tabName,
-                                    "Remove failed: " + ((body && body.error) || ("HTTP " + r.status)),
-                                    true
-                                );
-                                return;
-                            }
-                            state[tabName].hasThumbnail.delete(thumbIdentityKey(styleName, sourceFile));
-                            delete _thumbVersions[styleName];
-                            if (typeof _saveThumbVersions === "function") _saveThumbVersions();
-                            try { localStorage.removeItem("sg_thumb_v_" + styleName); } catch (_e) { /* ignore */ }
-                            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]',
-                                state[tabName].panel)
-                                .forEach(function (c) {
-                                    var sf = c._styleRef && c._styleRef.source_file
-                                        ? c._styleRef.source_file : "";
-                                    if (sf === sourceFile) {
-                                        c.classList.remove("sg-has-thumb");
-                                    }
-                                });
-                            showStatusMessage(tabName, "Preview removed");
-                        });
-                    }).catch(function () {
-                        showStatusMessage(tabName, "Remove failed", true);
-                    });
-                }
-            });
-        }
-
-        items.forEach(function (item) {
-            const btn = el("div", { className: "sg-ctx-item", textContent: item.label, onClick: function () { menu.remove(); item.action(); } });
-            menu.appendChild(btn);
-        });
-
-        document.body.appendChild(menu);
-        // Clamp position to viewport
-        const rect = menu.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-
-        let x = parseFloat(menu.style.left) || e.clientX;
-        let y = parseFloat(menu.style.top) || e.clientY;
-
-        if (x + rect.width > vw) x = vw - rect.width - 8;
-        if (y + rect.height > vh) y = vh - rect.height - 8;
-        if (x < 8) x = 8;
-        if (y < 8) y = 8;
-
-        menu.style.left = x + "px";
-        menu.style.top = y + "px";
-
-        // Auto-close
-        setTimeout(function () {
-            const close = function () { menu.remove(); document.removeEventListener("click", close); };
-            document.addEventListener("click", close);
-        }, 0);
-    }
 
     // -----------------------------------------------------------------------
     // Style editor modal
@@ -2063,8 +1776,8 @@
     // Refresh panel (rebuild from API data)
     // -----------------------------------------------------------------------
     /**
-     * Host-state half of a panel build: Gradio/localStorage/network → state[tab],
-     * with no DOM construction. buildPanel reads what this wrote.
+     * Host-state half of a panel refresh: Gradio/localStorage/network → state[tab],
+     * with no DOM construction.
      * loadThumbnailList stays fire-and-forget (does not block paint).
      */
     function syncPanelHostState(tabName) {
@@ -2705,7 +2418,6 @@
                     e.preventDefault();
                     return;
                 }
-                if (state[t].panel && state[t].panel.classList.contains("sg-visible")) { togglePanel(t, false); e.preventDefault(); }
             });
         }
     });

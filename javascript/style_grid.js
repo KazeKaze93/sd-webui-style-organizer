@@ -2533,6 +2533,10 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 state[tabName]._restoreSimN = n;
             }
 
+            // Snapshot before clear: vanished styles (delete/move/CSV gone) need these deltas to strip live text.
+            var appliedSnapshot = new Map(state[tabName].applied);
+            var preClearNestOrder = (state[tabName].appliedNestOrder || []).slice();
+
             state[tabName].applied.clear();
             restoreOrder.forEach(function (n) {
                 applyStyleImmediate(tabName, n, { silent: true });
@@ -2541,6 +2545,46 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             state[tabName].appliedNestOrder = restoreOrder.filter(function (name) {
                 return state[tabName].applied.has(name);
             });
+
+            // Selected names that failed replay are gone from the catalog — strip their live contribution
+            // (outside-in via pre-clear nest) and drop ghost selection tags.
+            var vanishedNames = [];
+            savedSelection.forEach(function (name) {
+                if (!state[tabName].applied.has(name)) vanishedNames.push(name);
+            });
+            if (vanishedNames.length) {
+                var vanishedSet = Object.create(null);
+                vanishedNames.forEach(function (name) { vanishedSet[name] = true; });
+                var didStripLive = false;
+                if (!state[tabName].silentMode) {
+                    var livePromptEl = qs("#" + tabName + "_prompt textarea");
+                    var liveNegEl = qs("#" + tabName + "_neg_prompt textarea");
+                    if (livePromptEl && liveNegEl) {
+                        var liveP = livePromptEl.value || "";
+                        var liveN = liveNegEl.value || "";
+                        var beforeP = liveP;
+                        var beforeN = liveN;
+                        for (var vi = preClearNestOrder.length - 1; vi >= 0; vi--) {
+                            var goneName = preClearNestOrder[vi];
+                            if (!vanishedSet[goneName]) continue;
+                            var goneRec = appliedSnapshot.get(goneName);
+                            if (!goneRec || goneRec.silent) continue;
+                            liveP = stripWrapOrTagsFromText(liveP, goneRec.wrapTemplate, goneRec.prompt);
+                            liveN = stripWrapOrTagsFromText(liveN, goneRec.negWrapTemplate, goneRec.negative);
+                        }
+                        if (liveP !== beforeP || liveN !== beforeN) {
+                            setPromptValue(livePromptEl, liveP);
+                            setPromptValue(liveNegEl, liveN);
+                            didStripLive = true;
+                        }
+                    }
+                }
+                vanishedNames.forEach(function (name) {
+                    state[tabName].selected.delete(name);
+                });
+                if (didStripLive) syncWildcards(tabName);
+            }
+
             if (!state[tabName].silentMode) {
                 delete state[tabName]._restoreSimP;
                 delete state[tabName]._restoreSimN;

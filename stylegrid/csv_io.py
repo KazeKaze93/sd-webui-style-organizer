@@ -251,3 +251,108 @@ def delete_style_from_csv(name, source_file=None):
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True
+
+
+def rename_style_in_csv(old_name, new_name, source_file=None, **fields):
+    """
+    Rename a style row in place in the target CSV, optionally updating fields.
+
+    Locates the file via the same basename / _resolve_target_csv_path path as
+    save_style_to_csv and delete_style_from_csv. Preserves row order. Raises
+    ValueError when the row is missing, LoRA-sourced, colliding, or when
+    old_name matches more than one row in the file.
+    """
+    old_name = (old_name or "").strip()
+    new_name = (new_name or "").strip()
+    if not old_name:
+        raise ValueError("old_name is required")
+    if not new_name:
+        raise ValueError("new_name is required")
+
+    if source_file == LORA_SOURCE:
+        raise ValueError("LoRA-sourced styles are read-only and cannot be renamed.")
+
+    if not source_file:
+        for s in load_all_styles():
+            if s["name"] == old_name:
+                source_file = s.get("source", "styles.csv")
+                break
+    if not source_file:
+        for s in get_cached_lora_styles():
+            if s.get("name") == old_name:
+                raise ValueError("LoRA-sourced styles are read-only and cannot be renamed.")
+        raise ValueError(f"Style not found: {old_name}")
+
+    source_file = os.path.basename(source_file)
+    if not source_file.lower().endswith(".csv"):
+        source_file = source_file + ".csv"
+
+    target_path = _resolve_target_csv_path(source_file)
+    if not target_path or not os.path.isfile(target_path):
+        raise ValueError(f"Style not found: {old_name}")
+
+    rows = []
+    header = None
+    with open(target_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if header is None and row and row[0].strip().lower() == "name":
+                header = row
+                continue
+            rows.append(row)
+    if not header:
+        header = list(FIELDNAMES)
+
+    match_indices = [
+        i for i, row in enumerate(rows)
+        if row and row[0].strip() == old_name
+    ]
+    if not match_indices:
+        raise ValueError(f"Style not found: {old_name}")
+    if len(match_indices) > 1:
+        raise ValueError(
+            f"Ambiguous rename: {len(match_indices)} rows named {old_name!r} "
+            f"in {os.path.basename(target_path)}; refuse to rename duplicates"
+        )
+
+    idx = match_indices[0]
+    if old_name != new_name:
+        for i, row in enumerate(rows):
+            if i == idx:
+                continue
+            if row and row[0].strip() == new_name:
+                raise ValueError(
+                    f"Name collision: {new_name!r} already exists in "
+                    f"{os.path.basename(target_path)}"
+                )
+
+    existing = rows[idx]
+
+    def cell(i, default=""):
+        return existing[i].strip() if i < len(existing) and existing[i] is not None else default
+
+    prompt = fields["prompt"] if "prompt" in fields else cell(1)
+    negative_prompt = fields["negative_prompt"] if "negative_prompt" in fields else cell(2)
+    description = fields["description"] if "description" in fields else cell(3)
+    if "category" in fields:
+        cat_cell = str(fields["category"]).strip() if fields["category"] is not None else ""
+        cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
+    else:
+        cat_cell = cell(4)
+
+    rows[idx] = [
+        new_name,
+        prompt,
+        negative_prompt,
+        _sanitize_csv_cell(description) if description else "",
+        cat_cell,
+    ]
+
+    with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(header)
+        for row in rows:
+            writer.writerow(row)
+    invalidate_styles_cache()
+    shared.prompt_styles.reload()
+    return True

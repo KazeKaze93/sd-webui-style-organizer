@@ -10,11 +10,14 @@ export function StyleInfoPanel() {
 
   const lastSelected = selectedStyles[selectedStyles.length - 1]
 
-  // Clear pin only when selection changes from a non-chip action
-  // We detect this by checking if pinnedStyle is no longer selected
+  // Clear pin only when selection changes from a non-chip action.
+  // isChipClick is a same-tick guard set in onBeforeToggle before toggleStyle;
+  // it must be consulted while resolving this render or a combo click would
+  // briefly drop the pin. Not a subscription — disable react-hooks/refs for that read.
   const resolvedStyle = (() => {
     if (pinnedStyle) {
       const stillSelected = selectedStyles.some(s => s.name === pinnedStyle.name)
+      // eslint-disable-next-line react-hooks/refs -- same-tick chip-click guard; see comment above
       if (stillSelected || isChipClick.current) return pinnedStyle
       // Pin target was deselected — clear pin
       setPinnedStyle(null)

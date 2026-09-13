@@ -123,7 +123,7 @@ export default function App() {
       }
     }, 1500)
     return () => clearInterval(interval)
-  }, [loraFetchStatus?.status])
+  }, [loraFetchStatus?.status, showToast])
 
   useEffect(() => {
     useStylesStore.getState().loadUsage()

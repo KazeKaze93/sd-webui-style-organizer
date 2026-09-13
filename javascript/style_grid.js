@@ -1755,7 +1755,7 @@
                     .then(assertNoApiError)
                     .then(function () {
                         fetch("/style_grid/thumbnail?name=" + encodeURIComponent(styleName) + "&source=" + encodeURIComponent(source || ""), { method: "DELETE" }).catch(function () { /* best-effort, style delete already succeeded */ });
-                        refreshPanel(tabName);
+                        refreshPanel(tabName, { quietVanishedToast: true });
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
                         if (typeof onDeleted === "function") onDeleted();
@@ -1832,7 +1832,7 @@
                     }).then(assertNoApiError);
                 }).then(function () {
                     overlay.remove();
-                    refreshPanel(tabName);
+                    refreshPanel(tabName, { quietVanishedToast: true });
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
                     if (typeof onDone === "function") onDone();
@@ -2081,7 +2081,9 @@
     // -----------------------------------------------------------------------
     // Refresh panel (rebuild from API data)
     // -----------------------------------------------------------------------
-    function refreshPanel(tabName) {
+    function refreshPanel(tabName, opts) {
+        opts = opts || {};
+        var quietVanishedToast = !!opts.quietVanishedToast;
         apiGet("/style_grid/styles").then(function (data) {
             if (data && Object.prototype.hasOwnProperty.call(data, "presets")) {
                 state[tabName].presets = data.presets || {};
@@ -2131,6 +2133,10 @@
                 state[tabName]._restoreSimN = n;
             }
 
+            // Snapshot before clear: vanished styles (delete/move/CSV gone) need these deltas to strip live text.
+            var appliedSnapshot = new Map(state[tabName].applied);
+            var preClearNestOrder = (state[tabName].appliedNestOrder || []).slice();
+
             state[tabName].applied.clear();
             restoreOrder.forEach(function (n) {
                 applyStyleImmediate(tabName, n, { silent: true });
@@ -2139,6 +2145,70 @@
             state[tabName].appliedNestOrder = restoreOrder.filter(function (name) {
                 return state[tabName].applied.has(name);
             });
+
+            // Selected names that failed replay are gone from the catalog — strip their live contribution
+            // (outside-in via pre-clear nest) and drop ghost selection tags.
+            var vanishedNames = [];
+            savedSelection.forEach(function (name) {
+                if (!state[tabName].applied.has(name)) vanishedNames.push(name);
+            });
+            if (vanishedNames.length) {
+                var vanishedSet = Object.create(null);
+                vanishedNames.forEach(function (name) { vanishedSet[name] = true; });
+                var didStripLive = false;
+                if (!state[tabName].silentMode) {
+                    var livePromptEl = qs("#" + tabName + "_prompt textarea");
+                    var liveNegEl = qs("#" + tabName + "_neg_prompt textarea");
+                    if (livePromptEl && liveNegEl) {
+                        var liveP = livePromptEl.value || "";
+                        var liveN = liveNegEl.value || "";
+                        var beforeP = liveP;
+                        var beforeN = liveN;
+                        for (var vi = preClearNestOrder.length - 1; vi >= 0; vi--) {
+                            var goneName = preClearNestOrder[vi];
+                            if (!vanishedSet[goneName]) continue;
+                            var goneRec = appliedSnapshot.get(goneName);
+                            if (!goneRec || goneRec.silent) continue;
+                            liveP = stripWrapOrTagsFromText(liveP, goneRec.wrapTemplate, goneRec.prompt);
+                            liveN = stripWrapOrTagsFromText(liveN, goneRec.negWrapTemplate, goneRec.negative);
+                        }
+                        if (liveP !== beforeP || liveN !== beforeN) {
+                            setPromptValue(livePromptEl, liveP);
+                            setPromptValue(liveNegEl, liveN);
+                            didStripLive = true;
+                        }
+                    }
+                }
+                vanishedNames.forEach(function (name) {
+                    state[tabName].selected.delete(name);
+                });
+                if (didStripLive) {
+                    syncWildcards(tabName);
+                    // Unexpected vanish (disk poll / import / manual refresh) — not user delete/move.
+                    if (!quietVanishedToast) {
+                        var strippedForToast = [];
+                        for (var ti = preClearNestOrder.length - 1; ti >= 0; ti--) {
+                            var toastName = preClearNestOrder[ti];
+                            if (!vanishedSet[toastName]) continue;
+                            var toastRec = appliedSnapshot.get(toastName);
+                            if (!toastRec || toastRec.silent) continue;
+                            strippedForToast.push(toastName);
+                        }
+                        var toastMsg = strippedForToast.length === 1
+                            ? 'Style "' + strippedForToast[0] + '" is no longer in the library; its text was removed from the prompt.'
+                            : strippedForToast.length + " styles are no longer in the library; their text was removed from the prompt.";
+                        var frGone = state[tabName] && state[tabName].sgFrame;
+                        if (frGone && frGone.contentWindow) {
+                            frGone.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: toastMsg,
+                                variant: "info"
+                            }, "*");
+                        }
+                    }
+                }
+            }
+
             if (!state[tabName].silentMode) {
                 delete state[tabName]._restoreSimP;
                 delete state[tabName]._restoreSimN;

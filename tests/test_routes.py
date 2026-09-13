@@ -590,3 +590,161 @@ def test_post_rename_ok_when_preset_save_fails(
     names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
     assert "Renamed Despite Preset Fail" in names
     assert "Test Style B" not in names
+
+
+# --- POST /style_grid/style/rename — usage migration ---
+
+
+def _seed_usage_file(monkeypatch, tmp_path, usage_obj):
+    """Point data_files.USAGE_FILE at a temp JSON file with the given content."""
+    import json
+
+    from stylegrid import data_files as sg_data
+
+    path = tmp_path / "usage.json"
+    path.write_text(json.dumps(usage_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(sg_data, "USAGE_FILE", str(path))
+    return path
+
+
+def test_post_rename_moves_usage_count(style_grid_client, tmp_csv, tmp_path, monkeypatch):
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    _seed_usage_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Test Style B": {
+                "count": 7,
+                "first_used": "2026-01-01T00:00:00",
+                "last_used": "2026-02-01T00:00:00",
+            }
+        },
+    )
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+
+    usage = sg_data.load_usage()
+    assert usage["Renamed Style B"]["count"] == 7
+    assert "Test Style B" not in usage
+
+
+def test_post_rename_without_usage_history(style_grid_client, tmp_csv, tmp_path, monkeypatch):
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    _seed_usage_file(monkeypatch, tmp_path, {"Other Style": {"count": 3}})
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed No Usage",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
+    assert "Renamed No Usage" in names
+    assert "Test Style B" not in names
+
+    usage = sg_data.load_usage()
+    assert "Renamed No Usage" not in usage
+    assert "Test Style B" not in usage
+    assert usage["Other Style"]["count"] == 3
+
+
+def test_post_rename_merges_residue_usage_under_new_name(
+    style_grid_client, tmp_csv, tmp_path, monkeypatch
+):
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    _seed_usage_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Test Style B": {
+                "count": 4,
+                "first_used": "2026-01-01T00:00:00",
+                "last_used": "2026-03-01T00:00:00",
+            },
+            "Renamed Style B": {
+                "count": 2,
+                "first_used": "2025-12-01T00:00:00",
+                "last_used": "2026-02-01T00:00:00",
+            },
+        },
+    )
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+
+    usage = sg_data.load_usage()
+    assert "Test Style B" not in usage
+    assert usage["Renamed Style B"]["count"] == 6
+    assert usage["Renamed Style B"]["first_used"] == "2025-12-01T00:00:00"
+    assert usage["Renamed Style B"]["last_used"] == "2026-03-01T00:00:00"
+
+
+def test_post_rename_ok_when_usage_save_fails(
+    style_grid_client, tmp_csv, tmp_path, monkeypatch
+):
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    _seed_usage_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Test Style B": {
+                "count": 5,
+                "first_used": "2026-01-01T00:00:00",
+                "last_used": "2026-02-01T00:00:00",
+            }
+        },
+    )
+
+    def boom(*_a, **_k):
+        raise OSError("simulated usage save failure")
+
+    monkeypatch.setattr(sg_data, "save_usage", boom)
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Despite Usage Fail",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
+    assert "Renamed Despite Usage Fail" in names
+    assert "Test Style B" not in names

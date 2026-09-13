@@ -279,11 +279,6 @@ export default function App() {
               onClick={() => sendToHost({ type: 'SG_IMPORT_EXPORT' })}
             />
             <ToolBtn
-              icon="📋"
-              label={'CSV table editor is temporarily unavailable.'}
-              disabled
-            />
-            <ToolBtn
               icon="🧹"
               label="Clear all selected styles"
               title="Clear all selected styles"

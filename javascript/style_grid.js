@@ -142,6 +142,58 @@
         localStorage.setItem("sg_recent_" + t, JSON.stringify(h));
     }
 
+    /** Remap a style's local identity after a CSV rename (selection, applied, fav, recent). */
+    function remapStyleNameReferences(tabName, oldName, newName) {
+        if (!oldName || !newName || oldName === newName) return;
+        var st = state[tabName];
+        if (!st) return;
+
+        if (st.selected && st.selected.has(oldName)) {
+            st.selected.delete(oldName);
+            st.selected.add(newName);
+        }
+        if (st.selectedOrder && st.selectedOrder.length) {
+            st.selectedOrder = st.selectedOrder.map(function (n) {
+                return n === oldName ? newName : n;
+            });
+        }
+        if (st.applied && st.applied.has(oldName)) {
+            var rec = st.applied.get(oldName);
+            st.applied.delete(oldName);
+            st.applied.set(newName, rec);
+        }
+        if (st.appliedNestOrder && st.appliedNestOrder.length) {
+            st.appliedNestOrder = st.appliedNestOrder.map(function (n) {
+                return n === oldName ? newName : n;
+            });
+        }
+
+        var fav = getFavorites(tabName);
+        if (fav.has(oldName)) {
+            fav.delete(oldName);
+            fav.add(newName);
+            setFavorites(tabName, fav);
+        }
+
+        var recent = getRecentHistory(tabName);
+        var recentChanged = false;
+        var remappedRecent = [];
+        var seenRecent = {};
+        recent.forEach(function (n) {
+            var next = (n === oldName) ? newName : n;
+            if (n === oldName) recentChanged = true;
+            if (seenRecent[next]) return;
+            seenRecent[next] = true;
+            remappedRecent.push(next);
+        });
+        if (recentChanged) {
+            localStorage.setItem(
+                "sg_recent_" + tabName,
+                JSON.stringify(remappedRecent.slice(0, 10))
+            );
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Utility
     // -----------------------------------------------------------------------
@@ -1607,24 +1659,40 @@
             onClick: function () {
                 const name = nameInput.value.trim();
                 if (!name) { nameInput.style.borderColor = "#f87171"; return; }
-                apiPost("/style_grid/style/save", {
-                    name: name,
-                    prompt: promptInput.value,
-                    negative_prompt: negInput.value,
-                    description: descInput.value,
-                    source: existingStyle ? existingStyle.source : (sourceFile || null),
-                }).then(assertNoApiError).then(function () {
+                var isRename = !!(existingStyle && name !== existingStyle.name);
+                var endpoint = isRename ? "/style_grid/style/rename" : "/style_grid/style/save";
+                var payload = isRename
+                    ? {
+                        old_name: existingStyle.name,
+                        new_name: name,
+                        source: existingStyle.source,
+                        prompt: promptInput.value,
+                        negative_prompt: negInput.value,
+                        description: descInput.value,
+                    }
+                    : {
+                        name: name,
+                        prompt: promptInput.value,
+                        negative_prompt: negInput.value,
+                        description: descInput.value,
+                        source: existingStyle ? existingStyle.source : (sourceFile || null),
+                    };
+                apiPost(endpoint, payload).then(assertNoApiError).then(function () {
+                    if (isRename) {
+                        remapStyleNameReferences(tabName, existingStyle.name, name);
+                    }
                     overlay.remove();
                     refreshPanel(tabName);
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
-                }).catch(function () {
-                    showStatusMessage(tabName, "Save failed", true);
+                }).catch(function (err) {
+                    var msg = (err && err.message) ? err.message : "Save failed";
+                    showStatusMessage(tabName, msg, true);
                     var frSave = state[tabName] && state[tabName].sgFrame;
                     if (frSave && frSave.contentWindow) {
                         frSave.contentWindow.postMessage({
                             type: "SG_TOAST",
-                            message: "Save failed",
+                            message: msg,
                             variant: "error"
                         }, "*");
                     }

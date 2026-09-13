@@ -37,7 +37,6 @@ export type FrameMessage =
   | { type: 'SG_BACKUP' }
   | { type: 'SG_IMPORT_EXPORT' }
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }
-  | { type: 'SG_CSV_EDITOR' }
   | { type: 'SG_CLEAR_ALL' }
   | { type: 'SG_SOURCE_CHANGE'; source: string | null }
   | { type: 'SG_TOGGLE_SILENT'; tab: Tab; value: boolean }

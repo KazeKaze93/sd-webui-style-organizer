@@ -20,7 +20,6 @@
             selectedOrder: [],
             applied: new Map(),
             categories: {},
-            panel: null,
             selectedSource: "All",
             /** Normalized path (forward slashes) when known — matches V2 `source_file`; same basename can exist in multiple dirs */
             selectedSourceFile: null,
@@ -172,7 +171,6 @@
         var ga = (typeof gradioApp === "function") ? gradioApp() : null;
         return (ga || document).querySelector(sel);
     }
-    function qsa(sel, root) { return (root || document).querySelectorAll(sel); }
     function el(tag, attrs, children) {
         const e = document.createElement(tag);
         if (attrs) Object.entries(attrs).forEach(function (kv) {
@@ -483,48 +481,22 @@
                 state[tabName].hasThumbnail = new Set(entries.map(function (e) {
                     return thumbIdentityKey(e.name, e.source_file);
                 }));
-                var panel = state[tabName].panel;
-                if (!panel) return;
-                qsa(".sg-card", panel).forEach(function (card) {
-                    var name = card.getAttribute("data-style-name");
-                    var styleRef = card._styleRef;
-                    var sourceFile = styleRef && styleRef.source_file ? styleRef.source_file : "";
-                    if (!sourceFile) {
-                        // TODO: no source_file on card at paint — cannot resolve thumb identity
-                        card.classList.remove("sg-has-thumb");
-                        return;
-                    }
-                    card.classList.toggle(
-                        "sg-has-thumb",
-                        state[tabName].hasThumbnail.has(thumbIdentityKey(name, sourceFile))
-                    );
-                });
             })
             .catch(function () {});
     }
 
-    function showStatusMessage(tabName, text, isError = false) {
-        const panel = state[tabName].panel;
-        if (!panel) return;
-        const existing = qs(".sg-status-msg", panel);
-        if (existing) existing.remove();
-        const msg = el("div", {
-            className: "sg-status-msg" + (isError ? " sg-status-error" : ""),
-            textContent: text,
-        });
-        const footer = qs(".sg-footer", panel);
-        if (footer) footer.prepend(msg);
-        setTimeout(function () {
-            msg.remove();
-        }, 3000);
+    /**
+     * Host status strip lived on the v1 .sg-footer. Panel is gone; generate/poll
+     * still call this until those paths gain SG_TOAST. Intentionally inert — not
+     * a silent document.body fallback.
+     */
+    function showStatusMessage(/* tabName, text, isError */) {
+        return;
     }
 
     // ════════════════════════════════════════════════════
-    // CONFLICT DETECTION
+    // WILDCARDS
     // ════════════════════════════════════════════════════
-    // Conflict detection (client-side quick check)
-
-    // -----------------------------------------------------------------------
     // Wildcard {sg:category} / {sg:category:spec} tracking (sync chips ↔ prompt textareas)
     // -----------------------------------------------------------------------
     function parseSgInner(inner) {
@@ -769,10 +741,6 @@
             setPromptValue(negEl, neg);
         }
 
-        // Mark cards
-        qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
-            c.classList.add("sg-applied");
-        });
         syncWildcards(tabName);
     }
 
@@ -861,7 +829,6 @@
             state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
             state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) { return n !== styleName; });
             setSilentGradio(tabName);
-            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
             syncWildcards(tabName);
             return;
         }
@@ -870,7 +837,6 @@
 
         state[tabName].applied.delete(styleName);
         state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) { return n !== styleName; });
-        qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) { c.classList.remove("sg-applied"); });
         syncWildcards(tabName);
     }
 
@@ -1104,14 +1070,6 @@
                        _thumbVersions[styleName] = Date.now();
                        localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                        _saveThumbVersions();
-                       qsa('.sg-card[data-style-name="' +
-                           CSS.escape(styleName) + '"]', state[tabName2].panel)
-                           .forEach(function (c) {
-                               var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
-                               if (sf && sf === styleSourceFile) {
-                                   c.classList.add("sg-has-thumb");
-                               }
-                           });
                        updateProgress(index + 1, styleName, "✓");
                        setTimeout(function () { processNext(index + 1); }, 300);
                    } else if (r.status === "error" || r.status === "cancelled") {
@@ -1192,15 +1150,6 @@
                     _thumbVersions[styleName] = Date.now();
                     localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                     _saveThumbVersions();
-                    qsa('.sg-card[data-style-name="' +
-                        CSS.escape(styleName) + '"]',
-                        state[tabName].panel)
-                        .forEach(function (c) {
-                            var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
-                            if (sf && sf === sourceFile) {
-                                c.classList.add("sg-has-thumb");
-                            }
-                        });
                     showStatusMessage(tabName, "✓ Preview ready!");
                     if (typeof onProgress === "function") {
                         onProgress("done", 100);
@@ -1254,15 +1203,6 @@
                     .then(function (r) {
                         if (r.ok) {
                             state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, resolvedSource));
-                            qsa('.sg-card[data-style-name="' +
-                                CSS.escape(styleName) + '"]',
-                                state[tabName].panel)
-                                .forEach(function (c) {
-                                    var sf = c._styleRef && c._styleRef.source_file ? c._styleRef.source_file : "";
-                                    if (sf && sf === resolvedSource) {
-                                        c.classList.add("sg-has-thumb");
-                                    }
-                                });
                             _thumbVersions[styleName] = Date.now();
                             localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
                             _saveThumbVersions();
@@ -1583,10 +1523,6 @@
             } else {
                 applyStyleImmediate(tabName, styleName);
             }
-            qsa('.sg-card[data-style-name="' + CSS.escape(styleName) + '"]', state[tabName].panel).forEach(function (c) {
-                c.classList.add("sg-selected");
-                c.classList.add("sg-applied");
-            });
             if (sgFrame && sgFrame.contentWindow) {
                 if (styleObj) {
                     sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
@@ -1815,10 +1751,6 @@
             // Restore selection
             savedSelection.forEach(function (n) {
                 state[tabName].selected.add(n);
-                qsa('.sg-card[data-style-name="' + CSS.escape(n) + '"]', state[tabName].panel).forEach(function (c) {
-                    c.classList.add("sg-selected");
-                    c.classList.add("sg-applied");
-                });
             });
             // Selection insertion order (appliedOrder was never written — dead branch removed).
             var restoreOrder = [];
@@ -2031,9 +1963,6 @@
         state[tabName].applied.clear();
         state[tabName].appliedNestOrder = [];
 
-        if (state[tabName].panel) {
-            qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
-        }
         setSilentGradio(tabName);
         syncSelectionChrome(tabName);
         syncWildcards(tabName);
@@ -2298,7 +2227,6 @@
     }
 
     function togglePanel(tabName, show) {
-        var panel = state[tabName].panel;
         if (!state[tabName].sgFrame) ensureSGFramesOnce();
         var fr = state[tabName].sgFrame;
         var wr = state[tabName].sgFrameWrapper;
@@ -2312,12 +2240,10 @@
         var target = wr || fr;
         if (typeof show === "undefined") show = target.style.display !== "block";
         if (!show) {
-            if (panel) panel.classList.remove("sg-visible");
             target.style.display = "none";
             setHostPageScrollLock(anySGFrameVisible());
             return;
         }
-        if (panel && panel.classList.contains("sg-visible")) panel.classList.remove("sg-visible");
         target.style.display = "block";
         setHostPageScrollLock(true);
         syncWildcards(tabName);

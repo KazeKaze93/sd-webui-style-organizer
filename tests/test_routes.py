@@ -432,3 +432,161 @@ def test_post_rename_ok_when_thumbnail_move_fails(style_grid_client, tmp_csv, mo
     assert "Test Style B" not in names
     # Move failed: old key file may remain; rename must still have succeeded.
     assert old_path.is_file()
+
+
+# --- POST /style_grid/style/rename — preset remap ---
+
+
+def _seed_presets_file(monkeypatch, tmp_path, presets_obj):
+    """Point data_files.PRESETS_FILE at a temp JSON file with the given content."""
+    import json
+
+    from stylegrid import data_files as sg_data
+
+    path = tmp_path / "presets.json"
+    path.write_text(json.dumps(presets_obj, indent=2, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(sg_data, "PRESETS_FILE", str(path))
+    return path
+
+
+def test_post_rename_rewrites_preset_member_with_basename_source(
+    style_grid_client, tmp_csv, tmp_path, monkeypatch
+):
+    """Frontend sends basename (existingStyle.source); CSV must resolve so presets remap."""
+    import json
+
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    abs_sf = csv_io.normalize_source_path(str(tmp_csv))
+    other_sf = csv_io.normalize_source_path(str(tmp_path / "other_dir" / "styles.csv"))
+
+    presets = {
+        "Alpha": {
+            "styles": [
+                {"name": "Test Style B", "source_file": abs_sf},
+                {"name": "Test Style A", "source_file": abs_sf},
+            ]
+        },
+        "Beta": {
+            "styles": [
+                {"name": "Style With Spaces", "source_file": abs_sf},
+            ]
+        },
+        "Gamma": {
+            "styles": [
+                {"name": "Test Style B", "source_file": other_sf},
+            ]
+        },
+    }
+    presets_path = _seed_presets_file(monkeypatch, tmp_path, presets)
+    before_keys = list(json.loads(presets_path.read_text(encoding="utf-8")).keys())
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200, (
+        "rename with basename source must succeed; "
+        f"got {r.status_code} {r.text}"
+    )
+    assert r.json().get("ok") is True
+
+    loaded = sg_data.load_presets()
+    assert list(loaded.keys()) == before_keys == ["Alpha", "Beta", "Gamma"]
+
+    alpha = loaded["Alpha"]["styles"]
+    assert alpha[0]["name"] == "Renamed Style B", (
+        "CRITICAL: basename source + discoverable CSV must remap the matching "
+        f"preset member; got {alpha[0]!r}. Route received source='styles.csv'; "
+        f"member source_file={abs_sf!r}."
+    )
+    assert alpha[0]["source_file"] == abs_sf
+    assert alpha[1] == {"name": "Test Style A", "source_file": abs_sf}
+
+    assert loaded["Beta"]["styles"] == [
+        {"name": "Style With Spaces", "source_file": abs_sf},
+    ]
+    assert loaded["Gamma"]["styles"] == [
+        {"name": "Test Style B", "source_file": other_sf},
+    ]
+
+
+def test_post_rename_no_preset_refs_does_not_rewrite_file(
+    style_grid_client, tmp_csv, tmp_path, monkeypatch
+):
+    from stylegrid import csv_io
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    abs_sf = csv_io.normalize_source_path(str(tmp_csv))
+    presets_path = _seed_presets_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "OnlyOther": {
+                "styles": [
+                    {"name": "Test Style A", "source_file": abs_sf},
+                ]
+            }
+        },
+    )
+    before = presets_path.read_bytes()
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Style B",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    assert presets_path.read_bytes() == before
+
+
+def test_post_rename_ok_when_preset_save_fails(
+    style_grid_client, tmp_csv, tmp_path, monkeypatch
+):
+    from stylegrid import csv_io
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    abs_sf = csv_io.normalize_source_path(str(tmp_csv))
+    _seed_presets_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Hit": {
+                "styles": [
+                    {"name": "Test Style B", "source_file": abs_sf},
+                ]
+            }
+        },
+    )
+
+    def boom(*_a, **_k):
+        raise OSError("simulated preset save failure")
+
+    monkeypatch.setattr(sg_routes, "save_presets", boom)
+
+    r = style_grid_client.post(
+        "/style_grid/style/rename",
+        json={
+            "old_name": "Test Style B",
+            "new_name": "Renamed Despite Preset Fail",
+            "source": "styles.csv",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
+    assert "Renamed Despite Preset Fail" in names
+    assert "Test Style B" not in names

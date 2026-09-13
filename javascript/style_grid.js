@@ -554,10 +554,30 @@
     function removeWildcardCategory(tabName, category, spec) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
-        var token = buildSgToken(category, spec || "").toLowerCase();
+        // Exact token from buildSgToken — slice vs whole-category stay distinct
+        // ({sg:cat} is not a substring of {sg:cat:spec} because of the closing brace).
+        var token = buildSgToken(category, spec || "");
+        var tokenLower = token.toLowerCase();
         var strip = function (s) {
-            return splitTopLevelCommas(s || "").map(function (t) { return t.trim(); }).filter(function (t) {
-                return t && t.toLowerCase() !== token;
+            s = s || "";
+            var lower = s.toLowerCase();
+            var out = "";
+            var i = 0;
+            while (i < s.length) {
+                var idx = lower.indexOf(tokenLower, i);
+                if (idx === -1) {
+                    out += s.slice(i);
+                    break;
+                }
+                out += s.slice(i, idx);
+                i = idx + token.length;
+            }
+            // Drop emptied segments; keep neighbouring text in the same segment
+            // (e.g. "{sg:bdsm}<lora:...>" → "<lora:...>"). Collapse doubled commas.
+            return splitTopLevelCommas(out).map(function (t) {
+                return t.trim();
+            }).filter(function (t) {
+                return t.length > 0;
             }).join(", ");
         };
         if (promptEl) setPromptValue(promptEl, strip(promptEl.value || ""));

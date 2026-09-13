@@ -1148,6 +1148,14 @@
    function startBatchThumbnails(tabName, catName, styles) {
        if (_batchState.running) {
            showStatusMessage(tabName, "Batch generation already running", true);
+           var frBusy = state[tabName] && state[tabName].sgFrame;
+           if (frBusy && frBusy.contentWindow) {
+               frBusy.contentWindow.postMessage({
+                   type: "SG_TOAST",
+                   message: "Batch generation already running",
+                   variant: "error"
+               }, "*");
+           }
            return;
        }
 
@@ -1156,6 +1164,14 @@
        });
        if (queue.length === 0) {
            showStatusMessage(tabName, "All styles already have previews");
+           var frEmpty = state[tabName] && state[tabName].sgFrame;
+           if (frEmpty && frEmpty.contentWindow) {
+               frEmpty.contentWindow.postMessage({
+                   type: "SG_TOAST",
+                   message: "All styles already have previews",
+                   variant: "info"
+               }, "*");
+           }
            return;
        }
 
@@ -1248,6 +1264,14 @@
                if (failed > 0) msg += ", " + failed + " failed";
                if (skipped > 0) msg += ", " + skipped + " skipped";
                showStatusMessage(tabName, msg);
+               var frDone = state[tabName] && state[tabName].sgFrame;
+               if (frDone && frDone.contentWindow) {
+                   frDone.contentWindow.postMessage({
+                       type: "SG_TOAST",
+                       message: msg,
+                       variant: "info"
+                   }, "*");
+               }
                loadThumbnailList(tabName);
                return;
            }
@@ -1278,7 +1302,16 @@
                cancelCurrentJobThen(function () {
                    _batchState.running = false;
                    overlay.remove();
-                   showStatusMessage(tabName2, "Cancelled. " + done + "/" + total + " completed.");
+                   var cancelMsg = "Cancelled. " + done + "/" + total + " completed.";
+                   showStatusMessage(tabName2, cancelMsg);
+                   var frCancel = state[tabName2] && state[tabName2].sgFrame;
+                   if (frCancel && frCancel.contentWindow) {
+                       frCancel.contentWindow.postMessage({
+                           type: "SG_TOAST",
+                           message: cancelMsg,
+                           variant: "info"
+                       }, "*");
+                   }
                    loadThumbnailList(tabName2);
                });
                return;
@@ -4581,6 +4614,14 @@
                         })
                         .catch(function () {
                             showStatusMessage(tab, "Could not load styles for batch generation", true);
+                            var frLoad = state[tab] && state[tab].sgFrame;
+                            if (frLoad && frLoad.contentWindow) {
+                                frLoad.contentWindow.postMessage({
+                                    type: "SG_TOAST",
+                                    message: "Could not load styles for batch generation",
+                                    variant: "error"
+                                }, "*");
+                            }
                         });
                 }
             }

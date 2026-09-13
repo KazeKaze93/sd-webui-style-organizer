@@ -1937,7 +1937,7 @@
                 }
             }
         });
-        updateSelectedUI(tabName);
+        syncSelectionChrome(tabName);
     }
 
     function showPresetsMenu(tabName) {
@@ -2266,7 +2266,7 @@
                 delete state[tabName]._restoreSimP;
                 delete state[tabName]._restoreSimN;
             }
-            updateSelectedUI(tabName);
+            syncSelectionChrome(tabName);
         }).catch(function () {
             showStatusMessage(tabName, "Refresh failed", true);
             var frRef = state[tabName] && state[tabName].sgFrame;
@@ -2295,7 +2295,7 @@
             if (state[tabName].selectedOrder.indexOf(rand.name) === -1) state[tabName].selectedOrder.push(rand.name);
             applyStyleImmediate(tabName, rand.name);
             qsa('.sg-card[data-style-name="' + CSS.escape(rand.name) + '"]', state[tabName].panel).forEach(function (c) { c.classList.add("sg-selected"); c.classList.add("sg-applied"); });
-            updateSelectedUI(tabName);
+            syncSelectionChrome(tabName);
         }
     }
 
@@ -3440,7 +3440,7 @@
             qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });
         }
         setSilentGradio(tabName);
-        updateSelectedUI(tabName);
+        syncSelectionChrome(tabName);
         updateConflicts(tabName);
         updateCombosPanel(tabName, null);
         syncWildcards(tabName);
@@ -3622,11 +3622,11 @@
         syncWildcards(tabName);
     }
 
-    function updateSelectedUI(tabName) {
-        const count = state[tabName].selected.size;
-        const countEl = qs("#sg_count_" + tabName);
-        if (countEl) countEl.textContent = count + " selected";
-
+    /**
+     * Live selection chrome: keep selectedOrder aligned with selected, update trigger badge.
+     * updateSelectedUI calls this then paints v1 #sg_count_ / #sg_tags_ (stage 3 deletes that half).
+     */
+    function syncSelectionChrome(tabName) {
         let order = state[tabName].selectedOrder || [];
         order = order.filter(function (n) { return state[tabName].selected.has(n); });
         state[tabName].selected.forEach(function (n) {
@@ -3634,6 +3634,22 @@
         });
         state[tabName].selectedOrder = order;
 
+        const count = state[tabName].selected.size;
+        const badge = qs("#sg_btn_badge_" + tabName);
+        if (badge) {
+            badge.textContent = count > 0 ? count : "";
+            badge.style.display = count > 0 ? "flex" : "none";
+        }
+    }
+
+    function updateSelectedUI(tabName) {
+        syncSelectionChrome(tabName);
+
+        const count = state[tabName].selected.size;
+        const countEl = qs("#sg_count_" + tabName);
+        if (countEl) countEl.textContent = count + " selected";
+
+        const order = state[tabName].selectedOrder || [];
         const tagsEl = qs("#sg_tags_" + tabName);
         if (tagsEl) {
             tagsEl.innerHTML = "";
@@ -3714,9 +3730,6 @@
                 tagsEl.appendChild(tag);
             });
         }
-
-        const badge = qs("#sg_btn_badge_" + tabName);
-        if (badge) { badge.textContent = count > 0 ? count : ""; badge.style.display = count > 0 ? "flex" : "none"; }
     }
 
     function updateConflicts(tabName) {

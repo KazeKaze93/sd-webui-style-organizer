@@ -18,9 +18,13 @@ jobs:
           cache: pip
       - name: Install test dependencies
         # pytest is not a repo dependency; fastapi/starlette/httpx are required by tests/test_routes.py.
-        run: pip install pytest fastapi starlette httpx
+        # ruff matches local `npm run lint:py` (ruff check scripts/).
+        run: pip install pytest fastapi starlette httpx ruff
       - name: Run pytest
         run: python -m pytest tests/ -v
+      - name: Run ruff
+        # After pytest so lint failures cannot mask test failures. Same as `npm run lint:py`.
+        run: ruff check scripts/
 
   node:
     runs-on: ubuntu-latest

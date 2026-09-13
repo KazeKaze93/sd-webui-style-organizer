@@ -418,7 +418,7 @@
 
     /** Strip one style's wrap template or tag delta from text (mirrors stripLiveApplyFromTextareas). */
     function stripWrapOrTagsFromText(text, wrapTemplate, tagDelta) {
-        if (text == null) return "";
+        if (text === null || text === undefined) return "";
         if (wrapTemplate) {
             const parts = wrapTemplate.split("{prompt}");
             const prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
@@ -780,7 +780,7 @@
 
     function buildSgToken(category, spec) {
         var cat = String(category || "").toLowerCase();
-        var sp = spec == null ? "" : String(spec);
+        var sp = (spec === null || spec === undefined) ? "" : String(spec);
         return "{sg:" + cat + (sp ? ":" + sp : "") + "}";
     }
 
@@ -868,7 +868,7 @@
                 var item = order[j];
                 if (!item || typeof item !== "object") continue;
                 var cat = String(item.category || "").trim();
-                var sp = item.spec == null ? "" : String(item.spec);
+                var sp = (item.spec === null || item.spec === undefined) ? "" : String(item.spec);
                 if (cat && present[orderKey(cat, sp)]) {
                     reorderedWc.push(buildSgToken(cat, sp));
                 }
@@ -951,7 +951,7 @@
                 prompt = style.prompt.split("{prompt}").join(prompt);
                 addedPrompt = null;
             } else {
-                if (prompt == null) prompt = "";
+                if (prompt === null || prompt === undefined) prompt = "";
                 const existingNorm = {};
                 (prompt.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNorm[t.toLowerCase()] = true; });
                 const toAdd = [];
@@ -970,7 +970,7 @@
                 neg = style.negative_prompt.split("{prompt}").join(neg);
                 addedNeg = null;
             } else {
-                if (neg == null) neg = "";
+                if (neg === null || neg === undefined) neg = "";
                 const existingNegNorm = {};
                 (neg.split(",").map(function (t) { return t.trim(); }).filter(Boolean)).forEach(function (t) { existingNegNorm[t.toLowerCase()] = true; });
                 const toAddNeg = [];

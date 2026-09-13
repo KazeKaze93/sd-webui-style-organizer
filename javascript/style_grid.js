@@ -3643,15 +3643,20 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     }
 
     function clearAll(tabName) {
-        state[tabName].applied.forEach(function (_, n) { unapplyStyle(tabName, n); });
-        state[tabName].selected.clear();
-        state[tabName].selectedOrder = [];
-        state[tabName].applied.clear();
+        var promptEl = qs("#" + tabName + "_prompt textarea");
+        var negEl    = qs("#" + tabName + "_neg_prompt textarea");
+        var p = promptEl ? (promptEl.value || "") : "";
+        var n = negEl ? (negEl.value || "") : "";
 
-        var basePrompt = state[tabName].userPromptBase || "";
-        var baseNeg = state[tabName].userPromptBaseNeg || "";
-        state[tabName].userPromptBase = "";
-        state[tabName].userPromptBaseNeg = "";
+        // Subtract what we added: unwind applied styles from live text (same strategy as rebuildPromptFromOrder).
+        var nest = state[tabName].appliedNestOrder || [];
+        for (var i = nest.length - 1; i >= 0; i--) {
+            var unwindName = nest[i];
+            var unwindRec = state[tabName].applied.get(unwindName);
+            if (!unwindRec) continue;
+            p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
+            n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
+        }
 
         var wcRe = /^\{sg:([^}]+)\}$/i;
         var stripWildcardTokens = function (s) {
@@ -3659,13 +3664,16 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 return t && !wcRe.test(t);
             }).join(", ");
         };
+        p = stripWildcardTokens(p);
+        n = stripWildcardTokens(n);
 
-        (function () {
-            var promptEl = qs("#" + tabName + "_prompt textarea");
-            var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-            if (promptEl) setPromptValue(promptEl, stripWildcardTokens(basePrompt));
-            if (negEl)    setPromptValue(negEl, stripWildcardTokens(baseNeg));
-        })();
+        if (promptEl) setPromptValue(promptEl, p);
+        if (negEl)    setPromptValue(negEl, n);
+
+        state[tabName].selected.clear();
+        state[tabName].selectedOrder = [];
+        state[tabName].applied.clear();
+        state[tabName].appliedNestOrder = [];
 
         if (state[tabName].panel) {
             qsa(".sg-card.sg-selected, .sg-card.sg-applied", state[tabName].panel).forEach(function (c) { c.classList.remove("sg-selected"); c.classList.remove("sg-applied"); });

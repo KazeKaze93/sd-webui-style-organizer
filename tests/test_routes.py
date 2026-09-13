@@ -1,9 +1,10 @@
 """
 HTTP tests for stylegrid.routes (FastAPI).
 
-Patches get_styles_dirs so CSV reads/writes use tmp_csv's directory. Because
-stylegrid modules bind get_styles_dirs at import time, config.get_styles_dirs
-alone is not enough — csv_io, cache, and thumbnails are patched the same way.
+Patches get_all_styles_file_paths so CSV reads/writes use tmp_csv. Because
+stylegrid modules bind that name at import time, config.get_all_styles_file_paths
+alone is not enough — csv_io and cache are patched the same way. Thumbnails still
+use get_styles_dirs (directory list), so that binding is patched separately.
 
 GET /style_grid/styles returns {"categories": {...}, "usage": {...}}; style
 dicts live under each category key (not a top-level JSON array).
@@ -33,15 +34,19 @@ def style_grid_client(tmp_csv, monkeypatch):
     def fake_get_styles_dirs():
         return [tmp_dir]
 
+    def fake_get_all_styles_file_paths():
+        return [str(tmp_csv)]
+
     from stylegrid import cache as sg_cache
     from stylegrid import config as sg_config
     from stylegrid import csv_io as sg_csv_io
     from stylegrid import thumbnails as sg_thumbs
 
     monkeypatch.setattr(sg_config, "get_styles_dirs", fake_get_styles_dirs)
-    monkeypatch.setattr(sg_csv_io, "get_styles_dirs", fake_get_styles_dirs)
-    monkeypatch.setattr(sg_cache, "get_styles_dirs", fake_get_styles_dirs)
     monkeypatch.setattr(sg_thumbs, "get_styles_dirs", fake_get_styles_dirs)
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
+    monkeypatch.setattr(sg_csv_io, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
+    monkeypatch.setattr(sg_cache, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
 
     from stylegrid.cache import invalidate_styles_cache
 

@@ -1,0 +1,7 @@
+# Committed Vite build output: never apply EOL conversion.
+# core.autocrlf would otherwise smudge CRLF into index.js.
+ui/dist/** -text
+
+# Copied verbatim into ui/dist by Vite (default publicDir). Same hazard:
+# a CRLF-smudged icons.svg re-dirties the -text dist copy on every build.
+ui/public/** -text

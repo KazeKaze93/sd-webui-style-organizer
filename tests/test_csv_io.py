@@ -62,7 +62,11 @@ def test_load_all_keeps_same_basename_in_different_dirs(tmp_path, monkeypatch):
         "SharedName,from_root,,,\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(csv_io, "get_styles_dirs", lambda: [str(d1), str(d2)])
+    monkeypatch.setattr(
+        csv_io,
+        "get_all_styles_file_paths",
+        lambda: [str(d1 / "styles.csv"), str(d2 / "styles.csv")],
+    )
     styles = csv_io.load_all_styles()
     prompts = {s["prompt"] for s in styles if s["name"] == "SharedName"}
     assert prompts == {"from_ext", "from_root"}

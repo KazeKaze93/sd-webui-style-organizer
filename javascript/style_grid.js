@@ -2157,7 +2157,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     .then(assertNoApiError)
                     .then(function () {
                         fetch("/style_grid/thumbnail?name=" + encodeURIComponent(styleName) + "&source=" + encodeURIComponent(source || ""), { method: "DELETE" }).catch(function () { /* best-effort, style delete already succeeded */ });
-                        refreshPanel(tabName);
+                        refreshPanel(tabName, { quietVanishedToast: true });
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
                         if (typeof onDeleted === "function") onDeleted();
@@ -2234,7 +2234,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     }).then(assertNoApiError);
                 }).then(function () {
                     overlay.remove();
-                    refreshPanel(tabName);
+                    refreshPanel(tabName, { quietVanishedToast: true });
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
                     if (typeof onDone === "function") onDone();
@@ -2483,7 +2483,9 @@ CSV table editor — full implementation kept for restoration; currently inactiv
     // -----------------------------------------------------------------------
     // Refresh panel (rebuild from API data)
     // -----------------------------------------------------------------------
-    function refreshPanel(tabName) {
+    function refreshPanel(tabName, opts) {
+        opts = opts || {};
+        var quietVanishedToast = !!opts.quietVanishedToast;
         apiGet("/style_grid/styles").then(function (data) {
             if (data && Object.prototype.hasOwnProperty.call(data, "presets")) {
                 state[tabName].presets = data.presets || {};
@@ -2582,7 +2584,31 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                 vanishedNames.forEach(function (name) {
                     state[tabName].selected.delete(name);
                 });
-                if (didStripLive) syncWildcards(tabName);
+                if (didStripLive) {
+                    syncWildcards(tabName);
+                    // Unexpected vanish (disk poll / import / manual refresh) — not user delete/move.
+                    if (!quietVanishedToast) {
+                        var strippedForToast = [];
+                        for (var ti = preClearNestOrder.length - 1; ti >= 0; ti--) {
+                            var toastName = preClearNestOrder[ti];
+                            if (!vanishedSet[toastName]) continue;
+                            var toastRec = appliedSnapshot.get(toastName);
+                            if (!toastRec || toastRec.silent) continue;
+                            strippedForToast.push(toastName);
+                        }
+                        var toastMsg = strippedForToast.length === 1
+                            ? 'Style "' + strippedForToast[0] + '" is no longer in the library; its text was removed from the prompt.'
+                            : strippedForToast.length + " styles are no longer in the library; their text was removed from the prompt.";
+                        var frGone = state[tabName] && state[tabName].sgFrame;
+                        if (frGone && frGone.contentWindow) {
+                            frGone.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: toastMsg,
+                                variant: "info"
+                            }, "*");
+                        }
+                    }
+                }
             }
 
             if (!state[tabName].silentMode) {

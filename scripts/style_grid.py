@@ -5,14 +5,13 @@ Replaces the clunky dropdown with a visual grid organized by categories.
 Implementation lives in the `stylegrid` package; this file is the Forge script entry point.
 """
 
-import os
-
-
 import json
+import os
 
 import gradio as gr  # type: ignore[reportMissingImports]
 from modules import script_callbacks, scripts  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
+
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR
 from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
@@ -73,8 +72,10 @@ class StyleGridScript(scripts.Script):
         else:
             category_order = sorted(categories.keys())
         with gr.Group(elem_id=f"style_grid_wrapper_{tab_prefix}", visible=False):
-            styles_data = gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
-            selected_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")
+            # JS-only bridge: Gradio must construct this for elem_id; Python never reads it.
+            gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
+            # JS-only bridge: Gradio must construct this for elem_id; Python never reads it.
+            gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")
             silent_styles = gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_silent_{tab_prefix}")
             source_filter = gr.Textbox(value="", visible=False, elem_id=f"style_grid_source_{tab_prefix}")
             gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")

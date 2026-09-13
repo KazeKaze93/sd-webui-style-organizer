@@ -22,19 +22,27 @@ flowchart LR
 
 ```text
 .
-├─ javascript/style_grid.js           # Host integration + iframe bridge
+├─ javascript/
+│  ├─ style_grid.js                   # Host integration + iframe bridge (+ local prompt helpers)
+│  └─ sg_prompt_utils.js              # Forge-injected copy of shared prompt helpers (must stay in sync)
 ├─ scripts/style_grid.py              # Forge script entrypoint (imports stylegrid.*)
 ├─ stylegrid/                         # Backend package
 │  ├─ routes.py                       # FastAPI registration
 │  ├─ cache.py / csv_io.py / …
+│  ├─ wildcards.py                    # parse_sg_token / select_slice / resolve_sg_wildcards
 │  ├─ lora_scan.py                    # Disk LoRA → synthetic styles
 │  └─ lora_titles.py                  # Opt-in CivitAI title fetch + cache
 ├─ config/lora_roots.json.example     # Optional LoRA root overrides (user copies to lora_roots.json)
 ├─ ui/                                # React app (builds to ui/dist)
 │  ├─ src/bridge.ts                   # Typed SG_* message contract (Style.display_name?)
 │  ├─ src/store/stylesStore.ts        # selectFilteredStyles, matchesSearch, LORA_VIEW
+│  ├─ src/lib/wildcardSlice.ts        # Compact / resolveSliceNames (chip labels; mirrors Python)
+│  ├─ src/lib/*.test.ts               # Vitest unit + parity tests
+│  ├─ tsconfig.app.json               # Browser app types (excludes *.test.ts)
+│  ├─ tsconfig.test.json              # Node + vite/client types for Vitest files
 │  └─ src/components/                 # UI building blocks
-├─ tests/                              # pytest (csv_io, routes, wildcards); test_js.html
+├─ tests/                              # pytest + fixtures/slice_grammar.json + test_js.html
+├─ .gitattributes                     # ui/dist/** and ui/public/** are -text (no autocrlf)
 ├─ docs/API.md
 ├─ docs/CSV_FORMAT.md
 └─ docs/DEVELOPMENT.md
@@ -53,9 +61,14 @@ flowchart LR
 cd ui
 npm install
 npm run build
+npm test
 ```
 
 The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegrid/routes.py`). **`_get_ui_html()`** reads `ui/dist/index.html` and rewrites **all** relative `src` / `href` (`./…`) to Gradio **`/file=extensions/sd-webui-style-organizer/ui/dist/...`** with a **new** `?v=` timestamp on **each** HTTP response (not only the main bundle URLs). The host sets `frame.src` to **`/style_grid/ui?t=<Date.now()>`** so the document URL changes when the panel is created. After UI code changes, run **`npm run build`** in `ui/` so `ui/dist/` exists and matches `vite.config.ts`.
+
+**Committed `ui/dist/` + `ui/public/`:** both are marked `-text` in `.gitattributes` so `core.autocrlf` cannot smudge CRLF into the Vite bundle or into static assets Vite copies verbatim (`icons.svg`, `favicon.svg`). After changing the attribute on an existing checkout, rematerialize with `git checkout HEAD -- ui/dist ui/public` if working copies still disagree with HEAD.
+
+**`shadcn`:** listed under `ui` **devDependencies**. The app only `@import "shadcn/tailwind.css"` at build time; the package is the CLI (and its MCP/express subtree), not a runtime dependency.
 
 **V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`, **`matchesSearch`**, **`matchesNameSearch`**). Favorites / Recent / presets / **🧬 LoRA** (`LORA_VIEW`) are special branches; normal category views **exclude** `source_file === LORA_SOURCE`. **`StyleGrid`** and **`Sidebar`** use Zustand **`useShallow`**. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`**.
 
@@ -102,7 +115,7 @@ sequenceDiagram
 - **Rebuild membership is an intersection.** `rebuildPromptFromOrder` iterates `state[tab].selectedOrder` filtered by `applied.has(name)`, and `SG_REORDER_STYLES` replaces `selectedOrder` wholesale with the chip order from the React iframe. Any name present in `applied` but absent from that chip list is dropped from the rebuilt prompt while remaining applied host-side. Under normal operation the two stay in sync; if a style is visibly applied but missing from the prompt after a reorder, check this intersection first.
 - **Provenance:** both behaviours predate the wildcard work — they reproduce on `994084e`, before the wildcard chips/slices branches. Do not re-bisect those commits looking for the cause.
 
-**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`.
+**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`. **Two copies ship:** the body inside `javascript/style_grid.js` (used by Style Grid) and `javascript/sg_prompt_utils.js` (Forge auto-injects every `javascript/*.js`). Keep them byte-identical; `tests/test_js.html` loads the utils copy and asserts slice-token cases.
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
@@ -144,11 +157,12 @@ Client-side localStorage keys are also used for UI state (`favorites` / `recent`
 
 | Layer | How |
 |-------|-----|
-| **Python** | `python -m pytest tests/ -q` — CSV I/O, HTTP routes, `{sg:…}` wildcards (`tests/README.md`). |
-| **JS prompt helpers** | Open `tests/test_js.html` in a browser (no server). |
-| **UI** | Included in root `npm run lint` via `lint:ui` (`npm --prefix ui run lint`). No Jest/Vitest suite yet. |
+| **Python** | `python -m pytest tests/ -q` — CSV I/O, HTTP routes, `{sg:…}` / `select_slice`, slice-grammar parity (`tests/README.md`). Root `npm test` runs this suite. |
+| **JS prompt helpers** | Open `tests/test_js.html` in a browser (no server). Covers brace-aware `splitTopLevelCommas` on the `sg_prompt_utils.js` copy. |
+| **UI unit / parity** | `cd ui && npm test` (Vitest 5). `wildcardSlice.test.ts` + `wildcardSlice.parity.test.ts` (shared `tests/fixtures/slice_grammar.json`). Typecheck: `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.test.json`. |
+| **UI lint** | Included in root `npm run lint` via `lint:ui` (`npm --prefix ui run lint`). |
 
-Gaps worth knowing: React/iframe logic and `javascript/style_grid.js` are not covered by CI automation; regressions are caught by manual QA or future e2e tests.
+Gaps worth knowing: host `javascript/style_grid.js` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 
 ## Practical Notes
 

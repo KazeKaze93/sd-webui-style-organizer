@@ -1823,21 +1823,31 @@
                 const oldName = style.name;
                 const rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
                 const newName = newCat.toUpperCase() + "_" + rest;
-                apiPost("/style_grid/style/delete", { name: oldName, source: style.source }).then(assertNoApiError).then(function () {
-                    return apiPost("/style_grid/style/save", {
-                        name: newName,
-                        prompt: style.prompt,
-                        negative_prompt: style.negative_prompt,
-                        source: style.source
-                    }).then(assertNoApiError);
-                }).then(function () {
+                apiPost("/style_grid/style/rename", {
+                    old_name: oldName,
+                    new_name: newName,
+                    source: style.source,
+                    // Align category column with the new prefix. Display prefers
+                    // category_explicit over the name prefix when the column is set.
+                    category: newCat.toUpperCase(),
+                }).then(assertNoApiError).then(function () {
+                    remapStyleNameReferences(tabName, oldName, newName);
                     overlay.remove();
-                    refreshPanel(tabName, { quietVanishedToast: true });
+                    refreshPanel(tabName);
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                     if (typeof notify === "function") notify();
                     if (typeof onDone === "function") onDone();
-                }).catch(function () {
-                    showStatusMessage(tabName, "Move failed", true);
+                }).catch(function (err) {
+                    var msg = (err && err.message) ? err.message : "Move failed";
+                    showStatusMessage(tabName, msg, true);
+                    var frMove = state[tabName] && state[tabName].sgFrame;
+                    if (frMove && frMove.contentWindow) {
+                        frMove.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: msg,
+                            variant: "error"
+                        }, "*");
+                    }
                 });
             }
         }));

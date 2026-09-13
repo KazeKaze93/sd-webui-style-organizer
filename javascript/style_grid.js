@@ -2151,17 +2151,11 @@
                 const full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
                 setPromptValue(dataEl, JSON.stringify(full));
             }
-            // Save state before rebuild
+            // Save selection before host-state sync + apply-restore (no legacy panel rebuild).
             const savedSelection = new Set(state[tabName].selected);
-            const wasVisible = state[tabName].panel && state[tabName].panel.classList.contains("sg-visible");
-            if (state[tabName].panel) {
-                state[tabName].panel.remove();
-                state[tabName].panel = null;
-            }
             state[tabName].categories = data.categories || {};
             state[tabName].usage = data.usage || {};
             syncPanelHostState(tabName);
-            buildPanel(tabName);
             // Restore selection
             savedSelection.forEach(function (n) {
                 state[tabName].selected.add(n);
@@ -2273,10 +2267,6 @@
                 delete state[tabName]._restoreSimN;
             }
             updateSelectedUI(tabName);
-            // Restore visibility — keep panel open if it was open
-            if (wasVisible) {
-                state[tabName].panel.classList.add("sg-visible");
-            }
         }).catch(function () {
             showStatusMessage(tabName, "Refresh failed", true);
             var frRef = state[tabName] && state[tabName].sgFrame;
@@ -2328,7 +2318,9 @@
             apiGet("/style_grid/check_update").then(function (r) {
                 if (r && r.changed) {
                     ["txt2img", "img2img"].forEach(function (t) {
-                        if (state[t].panel) refreshPanel(t);
+                        // Gate on v2 host handshake, not legacy .sg-overlay — otherwise apply-restore
+                        // never runs on CSV changes while SG_STYLES_UPDATE still refreshes the iframe list.
+                        if (state[t].sgV2HostInitSent) refreshPanel(t);
                         apiGet("/style_grid/styles").then(function (data) {
                             var styles = [];
                             if (Array.isArray(data)) {

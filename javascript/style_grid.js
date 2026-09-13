@@ -3653,11 +3653,18 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         state[tabName].userPromptBase = "";
         state[tabName].userPromptBaseNeg = "";
 
+        var wcRe = /^\{sg:([^}]+)\}$/i;
+        var stripWildcardTokens = function (s) {
+            return splitTopLevelCommas(s || "").map(function (t) { return t.trim(); }).filter(function (t) {
+                return t && !wcRe.test(t);
+            }).join(", ");
+        };
+
         (function () {
             var promptEl = qs("#" + tabName + "_prompt textarea");
             var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-            if (promptEl) setPromptValue(promptEl, basePrompt);
-            if (negEl)    setPromptValue(negEl, baseNeg);
+            if (promptEl) setPromptValue(promptEl, stripWildcardTokens(basePrompt));
+            if (negEl)    setPromptValue(negEl, stripWildcardTokens(baseNeg));
         })();
 
         if (state[tabName].panel) {
@@ -3667,6 +3674,7 @@ CSV table editor — full implementation kept for restoration; currently inactiv
         updateSelectedUI(tabName);
         updateConflicts(tabName);
         updateCombosPanel(tabName, null);
+        syncWildcards(tabName);
     }
 
     function toggleCategoryAll(tabName, catName) {

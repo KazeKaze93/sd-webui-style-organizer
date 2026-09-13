@@ -31,6 +31,7 @@ from stylegrid.csv_io import (
     delete_style_from_csv,
     load_all_styles,
     normalize_source_path,
+    rename_style_in_csv,
     save_style_to_csv,
 )
 from stylegrid.data_files import (
@@ -296,8 +297,26 @@ def _remove_thumbnail_file(name, source):
         os.remove(path)
 
 
+def _move_thumbnail_file(old_name, new_name, source):
+    """Best-effort move of thumbnail from old name+source key to new name+source.
+
+    Uses get_thumbnail_path for both keys (no duplicated hashing). No-op when
+    names match, source is missing, or the old file is absent. Failures are
+    swallowed by the caller — rename CSV success must not roll back.
+    """
+    if not old_name or not new_name or not source:
+        return
+    if old_name == new_name:
+        return
+    old_path = get_thumbnail_path(old_name, source)
+    new_path = get_thumbnail_path(new_name, source)
+    if old_path == new_path or not os.path.isfile(old_path):
+        return
+    os.replace(old_path, new_path)
+
+
 def _register_crud_routes(app):
-    """Register style save/delete and backup routes."""
+    """Register style save/delete/rename and backup routes."""
     @app.post("/style_grid/style/save")
     async def api_save_style(data: dict):
         name = data.get("name", "").strip()
@@ -374,6 +393,56 @@ def _register_crud_routes(app):
                 status_code=404,
             )
         _remove_thumbnail_file(name, source or "")
+        return {"ok": True}
+
+    @app.post("/style_grid/style/rename")
+    async def api_rename_style(data: dict):
+        old_name = data.get("old_name", "").strip()
+        new_name = data.get("new_name", "").strip()
+        if not old_name:
+            return {"error": "old_name required"}
+        if not new_name:
+            return {"error": "new_name required"}
+
+        # FIX A: reject writes into read-only samples/
+        source = data.get("source")
+        if not source:
+            for s in load_all_styles():
+                if s["name"] == old_name:
+                    source = s.get("source", "styles.csv")
+                    break
+        resolved_path = None
+        if source:
+            source_base = os.path.basename(source)
+            if not source_base.lower().endswith(".csv"):
+                source_base = source_base + ".csv"
+            for fp in get_all_styles_file_paths():
+                if os.path.basename(fp) == source_base:
+                    resolved_path = fp
+                    break
+        if resolved_path and is_samples_source(resolved_path):
+            return JSONResponse(
+                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                status_code=403,
+            )
+
+        fields = {}
+        for key in ("prompt", "negative_prompt", "description", "category"):
+            if key in data:
+                fields[key] = data[key]
+
+        # FIX B: surface LoRA/validation ValueError as 400
+        try:
+            rename_style_in_csv(old_name, new_name, data.get("source"), **fields)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+        # Best-effort: CSV rename already committed; thumbnail miss must not fail the request.
+        thumb_source = resolved_path or source or ""
+        try:
+            _move_thumbnail_file(old_name, new_name, thumb_source)
+        except Exception:
+            pass
         return {"ok": True}
 
     @app.post("/style_grid/backup")

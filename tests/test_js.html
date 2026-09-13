@@ -17,6 +17,8 @@
   <pre class="note"><strong>Source note:</strong> <code>splitTopLevelCommas</code>, <code>stripParenLayers</code>,
 <code>parseSegmentToTagged</code>, <code>parseStylePromptTags</code>, <code>scalePromptWeights</code> load from
 <code>../javascript/sg_prompt_utils.js</code> (canonical file; <code>style_grid.js</code> duplicates them — keep in sync).
+Forge auto-injects every <code>javascript/*.js</code>, so <em>both</em> copies ship to the browser. They drifted once
+already (<code>splitTopLevelCommas</code> brace-awareness, fixed in <code>a468053</code>); a change to one is not optional in the other.
 <code>removeSubstringFromPrompt</code> below is copied from <code>javascript/style_grid.js</code> (PROMPT ENGINE).</pre>
   <div id="results"></div>
 
@@ -100,6 +102,30 @@
 
   test("removeSubstringFromPrompt removes middle segment", function () {
     assert(removeSubstringFromPrompt("foo, bar, baz", "bar"), "foo, baz");
+  });
+
+  test("splitTopLevelCommas keeps slice token as one segment", function () {
+    assert(splitTopLevelCommas("a, {sg:body:A,B}, b"), ["a", "{sg:body:A,B}", "b"]);
+  });
+
+  test("splitTopLevelCommas plain sg token is one segment", function () {
+    assert(splitTopLevelCommas("{sg:body}"), ["{sg:body}"]);
+  });
+
+  test("splitTopLevelCommas two slice tokens", function () {
+    assert(splitTopLevelCommas("{sg:a:X,Y}, {sg:b:Z,W}"), ["{sg:a:X,Y}", "{sg:b:Z,W}"]);
+  });
+
+  test("splitTopLevelCommas respects parens and braces together", function () {
+    assert(splitTopLevelCommas("a, (b:1.1), {sg:c:D,E}, f"), ["a", "(b:1.1)", "{sg:c:D,E}", "f"]);
+  });
+
+  test("splitTopLevelCommas nested parens still work", function () {
+    assert(splitTopLevelCommas("((a:1.2), b), c"), ["((a:1.2), b)", "c"]);
+  });
+
+  test("splitTopLevelCommas unbalanced brace does not throw", function () {
+    assert(splitTopLevelCommas("a, {sg:x:Y"), ["a", "{sg:x:Y"]);
   });
 })();
   </script>

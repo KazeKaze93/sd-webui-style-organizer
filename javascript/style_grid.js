@@ -1111,7 +1111,16 @@
         apiPost("/style_grid/thumbnail/generate", { name: styleName, source: resolvedSource })
             .then(function (r) {
                 if (r.error || !r.job_id) {
-                    showStatusMessage(tabName, "Generation failed: " + (r.error || "missing job_id"), true);
+                    var failStartMsg = "Generation failed: " + (r.error || "missing job_id");
+                    showStatusMessage(tabName, failStartMsg, true);
+                    var frFailStart = state[tabName] && state[tabName].sgFrame;
+                    if (frFailStart && frFailStart.contentWindow) {
+                        frFailStart.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: failStartMsg,
+                            variant: "error"
+                        }, "*");
+                    }
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
@@ -1121,6 +1130,14 @@
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation failed", true);
+                var frFailCatch = state[tabName] && state[tabName].sgFrame;
+                if (frFailCatch && frFailCatch.contentWindow) {
+                    frFailCatch.contentWindow.postMessage({
+                        type: "SG_TOAST",
+                        message: "Generation failed",
+                        variant: "error"
+                    }, "*");
+                }
                 if (typeof onProgress === "function") {
                     onProgress("error");
                 }
@@ -1130,6 +1147,14 @@
     function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile, jobId) {
         if (attempts > 60) {
             showStatusMessage(tabName, "Generation timed out", true);
+            var frTimeout = state[tabName] && state[tabName].sgFrame;
+            if (frTimeout && frTimeout.contentWindow) {
+                frTimeout.contentWindow.postMessage({
+                    type: "SG_TOAST",
+                    message: "Generation timed out",
+                    variant: "error"
+                }, "*");
+            }
             if (typeof onProgress === "function") {
                 onProgress("error");
             }
@@ -1140,6 +1165,14 @@
             .then(function (r) {
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     showStatusMessage(tabName, "Generation endpoint not found", true);
+                    var frNotFound = state[tabName] && state[tabName].sgFrame;
+                    if (frNotFound && frNotFound.contentWindow) {
+                        frNotFound.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: "Generation endpoint not found",
+                            variant: "error"
+                        }, "*");
+                    }
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
@@ -1156,10 +1189,18 @@
                     }
                     if (typeof onDone === "function") onDone(_thumbVersions[styleName]);
                 } else if (r.status === "error" || r.status === "cancelled") {
-                    showStatusMessage(tabName,
-                        r.status === "cancelled"
-                            ? "Generation cancelled"
-                            : ("Generation failed: " + (r.message || "unknown")), true);
+                    var failPollMsg = r.status === "cancelled"
+                        ? "Generation cancelled"
+                        : ("Generation failed: " + (r.message || "unknown"));
+                    showStatusMessage(tabName, failPollMsg, true);
+                    var frFailPoll = state[tabName] && state[tabName].sgFrame;
+                    if (frFailPoll && frFailPoll.contentWindow) {
+                        frFailPoll.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: failPollMsg,
+                            variant: "error"
+                        }, "*");
+                    }
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
@@ -1171,7 +1212,16 @@
                         pollGenerationStatus(tabName, styleName, attempts + 1, onDone, onProgress, sourceFile, jobId);
                     }, 2000);
                 } else {
-                    showStatusMessage(tabName, "Unknown generation status: " + r.status, true);
+                    var unknownMsg = "Unknown generation status: " + r.status;
+                    showStatusMessage(tabName, unknownMsg, true);
+                    var frUnknown = state[tabName] && state[tabName].sgFrame;
+                    if (frUnknown && frUnknown.contentWindow) {
+                        frUnknown.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: unknownMsg,
+                            variant: "error"
+                        }, "*");
+                    }
                     if (typeof onProgress === "function") {
                         onProgress("error");
                     }
@@ -1179,6 +1229,14 @@
             })
             .catch(function () {
                 showStatusMessage(tabName, "Generation status unavailable", true);
+                var frUnavailable = state[tabName] && state[tabName].sgFrame;
+                if (frUnavailable && frUnavailable.contentWindow) {
+                    frUnavailable.contentWindow.postMessage({
+                        type: "SG_TOAST",
+                        message: "Generation status unavailable",
+                        variant: "error"
+                    }, "*");
+                }
                 if (typeof onProgress === "function") {
                     onProgress("error");
                 }

@@ -9,13 +9,16 @@
         if (!s || !String(s).trim()) return [];
         var str = String(s);
         var parts = [];
-        var depth = 0;
+        var parenDepth = 0;
+        var braceDepth = 0;
         var cur = "";
         for (var i = 0; i < str.length; i++) {
             var c = str[i];
-            if (c === "(") depth++;
-            else if (c === ")") depth = Math.max(0, depth - 1);
-            if (c === "," && depth === 0) {
+            if (c === "(") parenDepth++;
+            else if (c === ")") parenDepth = Math.max(0, parenDepth - 1);
+            else if (c === "{") braceDepth++;
+            else if (c === "}") braceDepth = Math.max(0, braceDepth - 1);
+            if (c === "," && parenDepth === 0 && braceDepth === 0) {
                 if (cur.trim()) parts.push(cur.trim());
                 cur = "";
             } else {

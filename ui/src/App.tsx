@@ -283,13 +283,7 @@ export default function App() {
               label="Clear all selected styles"
               title="Clear all selected styles"
               onClick={() => {
-                // Host clearAll unwinds appliedNestOrder, strips {sg:*} wildcards,
-                // and resets host selection — uniquely needed. It does NOT post
-                // SG_CLEAR_SELECTION (that only runs on silent-mode-off), so reset
-                // iframe chips locally. Do not call store.clearAll(): that fans out
-                // SG_UNAPPLY per style and double-rewrites the prompt before clearAll.
                 sendToHost({ type: 'SG_CLEAR_ALL' })
-                useStylesStore.setState({ selectedStyles: [], conflicts: [] })
               }}
             />
             <ToolBtn

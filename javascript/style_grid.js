@@ -1620,6 +1620,14 @@
                     if (typeof notify === "function") notify();
                 }).catch(function () {
                     showStatusMessage(tabName, "Save failed", true);
+                    var frSave = state[tabName] && state[tabName].sgFrame;
+                    if (frSave && frSave.contentWindow) {
+                        frSave.contentWindow.postMessage({
+                            type: "SG_TOAST",
+                            message: "Save failed",
+                            variant: "error"
+                        }, "*");
+                    }
                 });
             }
         }));
@@ -2156,6 +2164,14 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     })
                     .catch(function () {
                         showStatusMessage(tabName, "Delete failed", true);
+                        var frDel = state[tabName] && state[tabName].sgFrame;
+                        if (frDel && frDel.contentWindow) {
+                            frDel.contentWindow.postMessage({
+                                type: "SG_TOAST",
+                                message: "Delete failed",
+                                variant: "error"
+                            }, "*");
+                        }
                     });
             }
         }));
@@ -2536,6 +2552,14 @@ CSV table editor — full implementation kept for restoration; currently inactiv
             }
         }).catch(function () {
             showStatusMessage(tabName, "Refresh failed", true);
+            var frRef = state[tabName] && state[tabName].sgFrame;
+            if (frRef && frRef.contentWindow) {
+                frRef.contentWindow.postMessage({
+                    type: "SG_TOAST",
+                    message: "Refresh failed",
+                    variant: "error"
+                }, "*");
+            }
         });
     }
 

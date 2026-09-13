@@ -128,7 +128,9 @@ class ThumbnailGenerationManager:
             if status == "running":
                 job["cancel_requested"] = True
                 try:
-                    from modules.shared import state as forge_state  # type: ignore[reportMissingImports]
+                    from modules.shared import (
+                        state as forge_state,  # type: ignore[reportMissingImports]
+                    )
                     forge_state.interrupt()
                 except Exception:
                     pass
@@ -164,7 +166,9 @@ class ThumbnailGenerationManager:
                         break
                 busy = False
                 try:
-                    from modules.shared import state as forge_state  # type: ignore[reportMissingImports]
+                    from modules.shared import (
+                        state as forge_state,  # type: ignore[reportMissingImports]
+                    )
                     busy = bool(getattr(forge_state, "job", None))
                 except Exception:
                     busy = False

@@ -2479,20 +2479,35 @@ CSV table editor — full implementation kept for restoration; currently inactiv
                     c.classList.add("sg-applied");
                 });
             });
-            var restoreOrder;
-            if (state[tabName].appliedOrder && state[tabName].appliedOrder.length) {
-                restoreOrder = state[tabName].appliedOrder.filter(function (n) { return savedSelection.has(n); });
-            } else {
-                restoreOrder = [];
-                savedSelection.forEach(function (n) { restoreOrder.push(n); });
-            }
-            state[tabName].applied.clear();
+            // Selection insertion order (appliedOrder was never written — dead branch removed).
+            var restoreOrder = [];
+            savedSelection.forEach(function (n) { restoreOrder.push(n); });
+
+            // Live-derived base: unwind current nesting before clearing applied records.
             if (!state[tabName].silentMode) {
-                state[tabName]._restoreSimP = state[tabName].userPromptBase;
-                state[tabName]._restoreSimN = state[tabName].userPromptBaseNeg;
+                var promptEl = qs("#" + tabName + "_prompt textarea");
+                var negEl = qs("#" + tabName + "_neg_prompt textarea");
+                var p = promptEl ? (promptEl.value || "") : "";
+                var n = negEl ? (negEl.value || "") : "";
+                var nest = state[tabName].appliedNestOrder || [];
+                for (var i = nest.length - 1; i >= 0; i--) {
+                    var unwindName = nest[i];
+                    var unwindRec = state[tabName].applied.get(unwindName);
+                    if (!unwindRec) continue;
+                    p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
+                    n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
+                }
+                state[tabName]._restoreSimP = p;
+                state[tabName]._restoreSimN = n;
             }
+
+            state[tabName].applied.clear();
             restoreOrder.forEach(function (n) {
                 applyStyleImmediate(tabName, n, { silent: true });
+            });
+            // Silent replay does not push nest; align nest to what actually restored (drops missing CSV styles).
+            state[tabName].appliedNestOrder = restoreOrder.filter(function (name) {
+                return state[tabName].applied.has(name);
             });
             if (!state[tabName].silentMode) {
                 delete state[tabName]._restoreSimP;

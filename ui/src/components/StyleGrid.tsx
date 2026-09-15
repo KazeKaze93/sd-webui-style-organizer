@@ -317,7 +317,10 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               </span>
               <div className="flex-1" />
               <button
-                onClick={() => selectAllInCategory(cat)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  selectAllInCategory(cat)
+                }}
                 className="text-xs text-sg-muted hover:text-sg-accent 
                            transition-colors px-2 py-0.5 rounded
                            hover:bg-sg-accent/10"

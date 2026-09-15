@@ -263,8 +263,11 @@ def _register_preset_routes(app):
         presets = load_presets()
         name = data.get("name", "").strip()
         styles = data.get("styles", [])
+        overwrite = bool(data.get("overwrite"))
         if not name:
             return {"error": "Name required"}
+        if name in presets and not overwrite:
+            return {"error": "exists", "name": name}
         presets[name] = {"styles": styles, "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
         save_presets(presets)
         return {"ok": True, "presets": presets}

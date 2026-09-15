@@ -108,7 +108,7 @@ class StyleGridScript(scripts.Script):
         for i in range(len(p.all_prompts)):
             p.all_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))
         for i in range(len(p.all_negative_prompts)):
-            p.all_negative_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat))
+            p.all_negative_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat, field="negative_prompt"))
 
         if len(args) < 1:
             return
@@ -152,7 +152,7 @@ class StyleGridScript(scripts.Script):
                 continue
             style_names.append(s["name"])
             prompt_text = resolve_sg_wildcards(s["prompt"], styles_by_cat) if s["prompt"] else ""
-            neg_text = resolve_sg_wildcards(s["negative_prompt"], styles_by_cat) if s["negative_prompt"] else ""
+            neg_text = resolve_sg_wildcards(s["negative_prompt"], styles_by_cat, field="negative_prompt") if s["negative_prompt"] else ""
             if prompt_text:
                 if "{prompt}" in prompt_text:
                     for i in range(len(p.all_prompts)):

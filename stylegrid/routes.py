@@ -207,38 +207,47 @@ def _register_style_routes(app):
                 for s in get_cached_styles()
                 if s.get("source_file") != LORA_SOURCE and s.get("name")
             }
-            imported_names = set()
+            valid_styles = []
+            invalid_count = 0
             for s in data["styles"]:
                 if not isinstance(s, dict):
+                    invalid_count += 1
                     continue
                 name = s.get("name", "")
-                if isinstance(name, str) and name.strip():
-                    imported_names.add(name.strip())
-            collisions = existing_names & imported_names
-            if collisions:
-                return JSONResponse(
-                    {
-                        "ok": False,
-                        "error": "Import contains style names that already exist in the library.",
-                        "collisions": sorted(collisions),
-                    },
-                    status_code=400,
-                )
-            ext_styles = os.path.join(EXT_DIR, "styles")
-            os.makedirs(ext_styles, exist_ok=True)
-            target = os.path.join(ext_styles, f"imported_{time.strftime('%Y%m%d_%H%M%S')}.csv")
-            with open(target, "w", encoding="utf-8", newline="") as f:
-                w = csv.writer(f)
-                w.writerow(["name", "prompt", "negative_prompt", "description", "category"])
-                for s in data["styles"]:
-                    w.writerow([
-                        s.get("name", ""),
-                        s.get("prompt", ""),
-                        s.get("negative_prompt", ""),
-                        s.get("description", ""),
-                        s.get("category", "") or s.get("category_explicit", ""),
-                    ])
-            invalidate_styles_cache()
+                if not isinstance(name, str) or not name.strip():
+                    invalid_count += 1
+                    continue
+                valid_styles.append(s)
+
+            collisions = sorted({
+                s["name"].strip() for s in valid_styles
+                if s["name"].strip() in existing_names
+            })
+            importable = [s for s in valid_styles if s["name"].strip() not in existing_names]
+
+            if importable:
+                ext_styles = os.path.join(EXT_DIR, "styles")
+                os.makedirs(ext_styles, exist_ok=True)
+                target = os.path.join(ext_styles, f"imported_{time.strftime('%Y%m%d_%H%M%S')}.csv")
+                with open(target, "w", encoding="utf-8", newline="") as f:
+                    w = csv.writer(f)
+                    w.writerow(["name", "prompt", "negative_prompt", "description", "category"])
+                    for s in importable:
+                        w.writerow([
+                            s.get("name", ""),
+                            s.get("prompt", ""),
+                            s.get("negative_prompt", ""),
+                            s.get("description", ""),
+                            s.get("category", "") or s.get("category_explicit", ""),
+                        ])
+                invalidate_styles_cache()
+
+            return {
+                "ok": True,
+                "imported": len(importable),
+                "collisions": collisions,
+                "invalid": invalid_count,
+            }
         return {"ok": True}
 
     @app.post("/style_grid/category_order/save")

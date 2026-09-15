@@ -190,7 +190,12 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         else:
             cat_cell = str(category).strip()
             cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
-        return [name, prompt, negative_prompt, _sanitize_csv_cell(description), cat_cell]
+        base = [name, prompt, negative_prompt, _sanitize_csv_cell(description), cat_cell]
+        extra = list(existing_row[5:]) if existing_row and len(existing_row) > 5 else []
+        # Pad extras to the file's actual header width so every row stays rectangular.
+        while len(base) + len(extra) < len(header):
+            extra.append("")
+        return base + extra
 
     found = False
     for i, row in enumerate(rows):
@@ -241,14 +246,10 @@ def delete_style_from_csv(name, source_file=None):
             if row and row[0].strip() != name:
                 rows.append(row)
     with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=FIELDNAMES, extrasaction="ignore")
-        writer.writeheader()
+        writer = csv.writer(f)
+        writer.writerow(header or FIELDNAMES)
         for row in rows:
-            row_dict = {
-                fn: (row[i].strip() if i < len(row) and row[i] is not None else "")
-                for i, fn in enumerate(FIELDNAMES)
-            }
-            writer.writerow(row_dict)
+            writer.writerow(row)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True

@@ -13,21 +13,14 @@ function parseComboTokens(description: string): string[] {
   return match[1].split(';').map(t => t.trim()).filter(Boolean)
 }
 
-function parseConflictTokens(description: string): string[] {
-  const match = description.match(/Conflicts?:\s*([^.]+)/i)
-  if (!match) return []
-  return match[1].split(';').map(t => t.trim()).filter(Boolean)
-}
-
 export function ComboChips({ style, onBeforeToggle }: Props) {
   const { styles, setCategory, toggleStyle, selectedStyles } = useStylesStore()
 
   if (!style.description) return null
 
   const comboTokens = parseComboTokens(style.description)
-  const conflictTokens = parseConflictTokens(style.description)
 
-  if (comboTokens.length === 0 && conflictTokens.length === 0) return null
+  if (comboTokens.length === 0) return null
 
   const resolveToken = (token: string) => {
     // Resolution priority: exact style name -> category token -> unknown token.
@@ -100,21 +93,6 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
               </span>
             )
           })}
-        </>
-      )}
-
-      {conflictTokens.length > 0 && (
-        <>
-          <span className="text-xs text-red-400/70 self-center ml-1">
-            Avoid:
-          </span>
-          {conflictTokens.map(token => (
-            <span key={token}
-              className="px-2 py-0.5 rounded text-xs border
-                bg-red-500/10 border-red-500/30 text-red-400">
-              ✗ {token}
-            </span>
-          ))}
         </>
       )}
     </div>

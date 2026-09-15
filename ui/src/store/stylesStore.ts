@@ -177,13 +177,6 @@ export function matchesSearch(style: Style, rawQuery: string): boolean {
   return query.split(/\s+/).filter(Boolean).every(token => haystack.includes(token))
 }
 
-export function matchesNameSearch(style: Style, rawQuery: string): boolean {
-  const query = rawQuery.trim().toLowerCase()
-  if (!query) return true
-  const haystack = nameSearchText(style)
-  return query.split(/\s+/).filter(Boolean).every(token => haystack.includes(token))
-}
-
 /** Map persisted or UI source string to an entry in `sources` (exact match, else basename). */
 function resolveSourceInList(sources: string[], preferred: string | null): string | null {
   if (!preferred || sources.length === 0) return null

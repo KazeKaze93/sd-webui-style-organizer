@@ -58,6 +58,7 @@ export interface Style {
   category:          string
   source_file:       string
   has_thumbnail:     boolean
+  read_only?:        boolean
   /** Backend-supplied override for the card label (e.g. the real CivitAI
    * title for a LoRA, fetched via /style_grid/lora/fetch_titles). Falls
    * back to the name-derived display when absent. */

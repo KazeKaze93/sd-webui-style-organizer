@@ -90,6 +90,7 @@ def parse_styles_csv(filepath):
                         "source": base,
                         "_source": base,
                         "source_file": normalize_source_path(filepath),
+                        "read_only": is_samples_source(filepath),
                     })
     except Exception:
         return styles

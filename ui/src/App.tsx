@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import {
+  Dices, Package, Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
+  Eye, EyeOff,
+} from 'lucide-react'
 import { onHostMessage, sendToHost } from './bridge'
 import { LORA_VIEW, useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
@@ -18,13 +22,13 @@ import {
 import { cn } from './lib/utils'
 
 const ToolBtn = ({
-  icon,
+  icon: Icon,
   label,
   title,
   onClick,
   disabled,
 }: {
-  icon: string
+  icon: React.ComponentType<{ size?: number }>
   label: string
   title?: string
   onClick?: () => void
@@ -36,14 +40,15 @@ const ToolBtn = ({
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       title={title}
+      aria-label={label}
       className={cn(
-        'w-8 h-8 flex items-center justify-center rounded transition-colors text-sm border',
+        'w-8 h-8 flex items-center justify-center rounded transition-colors border',
         disabled
           ? 'opacity-45 cursor-not-allowed text-sg-muted border-transparent [filter:grayscale(0.35)]'
           : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface border-transparent hover:border-sg-border',
       )}
     >
-      {icon}
+      <Icon size={16} />
     </button>
   )
   return (
@@ -255,36 +260,37 @@ export default function App() {
               type="button"
               onClick={() => toggleSilent()}
               title={silentMode ? 'Silent mode ON' : 'Silent mode OFF'}
+              aria-label={silentMode ? 'Silent mode ON' : 'Silent mode OFF'}
               className={`w-8 h-8 flex items-center justify-center rounded
               transition-colors text-sm border border-transparent shrink-0
             ${silentMode 
               ? 'bg-sg-accent/20 text-sg-accent' 
               : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface hover:border-sg-border'}`}
             >
-              👁
+              {silentMode ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
             <ToolBtn
-              icon="🎲"
+              icon={Dices}
               label="Random style"
               onClick={() => sendToHost({ type: 'SG_RANDOM' })}
             />
             <ToolBtn
-              icon="📦"
+              icon={Package}
               label="Presets"
               onClick={() => sendToHost({ type: 'SG_PRESETS' })}
             />
             <ToolBtn
-              icon="💾"
+              icon={Save}
               label="Backup CSV"
               onClick={() => sendToHost({ type: 'SG_BACKUP' })}
             />
             <ToolBtn
-              icon="📥"
+              icon={Import}
               label="Import/Export"
               onClick={() => sendToHost({ type: 'SG_IMPORT_EXPORT' })}
             />
             <ToolBtn
-              icon="🧹"
+              icon={Eraser}
               label="Clear all selected styles"
               title="Clear all selected styles"
               onClick={() => {
@@ -292,19 +298,19 @@ export default function App() {
               }}
             />
             <ToolBtn
-              icon="▪"
+              icon={Rows3}
               label="Compact mode"
               onClick={() => toggleCompact()}
             />
             <ToolBtn
-              icon="↕"
+              icon={ChevronsUpDown}
               label="Collapse all"
               onClick={() =>
                 collapsedCategories.size > 0 ? expandAll() : collapseAll()
               }
             />
             <ToolBtn
-              icon="➕"
+              icon={Plus}
               label="New style"
               onClick={() => {
                 const { activeSource, showToast } = useStylesStore.getState()
@@ -317,7 +323,7 @@ export default function App() {
             />
             {activeCategory === LORA_VIEW && (
               <ToolBtn
-                icon="🌐"
+                icon={Globe}
                 label={
                   loraFetchStatus?.status === 'running'
                     ? `Fetching titles from CivitAI… ${loraFetchStatus.done}/${loraFetchStatus.total}`

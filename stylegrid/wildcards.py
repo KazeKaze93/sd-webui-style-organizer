@@ -85,8 +85,11 @@ def select_slice(candidates, category, spec):
     return result
 
 
-def resolve_sg_wildcards(prompt, styles_by_category):
-    """Replace `{sg:CATEGORY}` tokens with a random style prompt from that category map.
+def resolve_sg_wildcards(prompt, styles_by_category, field="prompt"):
+    """Replace `{sg:CATEGORY}` tokens with a random style field from that category map.
+
+    ``field`` selects which side of the picked style is used (e.g. ``"prompt"``
+    or ``"negative_prompt"``).
 
     Optional slice: ``{sg:CATEGORY:spec}`` where ``spec`` is a comma-separated
     include/exclude/glob list (see ``select_slice``). Empty slices fall back to
@@ -101,6 +104,11 @@ def resolve_sg_wildcards(prompt, styles_by_category):
         if not pool:
             pool = candidates
         style = random.choice(pool)
-        return style.get("prompt", "") or m.group(0)
+        value = style.get(field, "")
+        if value:
+            return value
+        # Empty negative field is a successful resolve to nothing — do not leave the
+        # raw token sitting in the negative prompt. Positive behaviour is unchanged.
+        return m.group(0) if field == "prompt" else ""
 
     return re.sub(r"\{sg:([^}]+)\}", replacer, prompt)

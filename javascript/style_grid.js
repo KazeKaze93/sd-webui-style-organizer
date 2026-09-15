@@ -2461,6 +2461,17 @@
         document.body.appendChild(wrapper);
         wrapper.appendChild(frame);
         state[tab].sgFrameWrapper = wrapper;
+        document.addEventListener("mousedown", function (e) {
+            if (wrapper.style.display !== "block") return;
+            var target = e.target;
+            if (!target) return;
+            if (target.closest && target.closest(".sg-trigger-btn")) return;
+            if (target.closest && target.closest(".sg-editor-overlay, .sg-source-picker")) return;
+            if (!wrapper.contains(target)) {
+                wrapper.style.display = "none";
+                setHostPageScrollLock(anySGFrameVisible());
+            }
+        }, true);
         document.addEventListener("keydown", function (e) {
             if (e.key === "Escape" && wrapper.style.display !== "none") {
                 e.stopPropagation();

@@ -72,8 +72,9 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     if (!sliceCategory) return [] as string[]
     return styles
       .filter((s) => {
-        if (sliceCategory === 'LoRA') return s.source_file === LORA_SOURCE
-        if ((s.category || 'OTHER') !== sliceCategory) return false
+        if (sliceCategory === 'LoRA') {
+          if (s.source_file !== LORA_SOURCE) return false
+        } else if ((s.category || 'OTHER') !== sliceCategory) return false
         if (activeSource && s.source_file !== activeSource) return false
         return true
       })

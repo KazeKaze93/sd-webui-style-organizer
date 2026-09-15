@@ -27,12 +27,14 @@ const ToolBtn = ({
   title,
   onClick,
   disabled,
+  colorClassName,
 }: {
   icon: React.ComponentType<{ size?: number }>
   label: string
   title?: string
   onClick?: () => void
   disabled?: boolean
+  colorClassName?: string
 }) => {
   const button = (
     <button
@@ -45,7 +47,10 @@ const ToolBtn = ({
         'w-8 h-8 flex items-center justify-center rounded transition-colors border',
         disabled
           ? 'opacity-45 cursor-not-allowed text-sg-muted border-transparent [filter:grayscale(0.35)]'
-          : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface border-transparent hover:border-sg-border',
+          : cn(
+              colorClassName ?? 'text-sg-muted',
+              'hover:text-sg-text hover:bg-sg-surface border-transparent hover:border-sg-border',
+            ),
       )}
     >
       <Icon size={16} />
@@ -272,46 +277,58 @@ export default function App() {
             <ToolBtn
               icon={Dices}
               label="Random style"
+              colorClassName="text-amber-400/80"
               onClick={() => sendToHost({ type: 'SG_RANDOM' })}
             />
             <ToolBtn
               icon={Package}
               label="Presets"
+              colorClassName="text-amber-400/80"
               onClick={() => sendToHost({ type: 'SG_PRESETS' })}
             />
+            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Save}
               label="Backup CSV"
+              colorClassName="text-blue-400/80"
               onClick={() => sendToHost({ type: 'SG_BACKUP' })}
             />
             <ToolBtn
               icon={Import}
               label="Import/Export"
+              colorClassName="text-blue-400/80"
               onClick={() => sendToHost({ type: 'SG_IMPORT_EXPORT' })}
             />
+            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Eraser}
               label="Clear all selected styles"
               title="Clear all selected styles"
+              colorClassName="text-red-400/80"
               onClick={() => {
                 sendToHost({ type: 'SG_CLEAR_ALL' })
               }}
             />
+            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Rows3}
               label="Compact mode"
+              colorClassName="text-violet-300/80"
               onClick={() => toggleCompact()}
             />
             <ToolBtn
               icon={ChevronsUpDown}
               label="Collapse all"
+              colorClassName="text-violet-300/80"
               onClick={() =>
                 collapsedCategories.size > 0 ? expandAll() : collapseAll()
               }
             />
+            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Plus}
               label="New style"
+              colorClassName="text-emerald-400/80"
               onClick={() => {
                 const { activeSource, showToast } = useStylesStore.getState()
                 if (!activeSource) {
@@ -329,6 +346,7 @@ export default function App() {
                     ? `Fetching titles from CivitAI… ${loraFetchStatus.done}/${loraFetchStatus.total}`
                     : 'Fetch LoRA titles from CivitAI\n(reads modelId already in each LoRA\'s local .json; nothing sent to CivitAI beyond the request itself)'
                 }
+                colorClassName="text-amber-400/80"
                 disabled={loraFetchStatus?.status === 'running'}
                 onClick={fetchLoraTitles}
               />

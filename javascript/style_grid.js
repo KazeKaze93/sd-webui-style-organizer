@@ -1305,6 +1305,17 @@
     // -----------------------------------------------------------------------
     // Style editor modal
     // -----------------------------------------------------------------------
+    function splitDescriptionAndCombos(raw) {
+        var m = /^([\s\S]*?)\s*Combos?:\s*([^.]+)\.?\s*$/i.exec(raw || "");
+        if (!m) return { text: raw || "", combos: "" };
+        return { text: m[1].trim(), combos: m[2].trim() };
+    }
+    function joinDescriptionAndCombos(text, combos) {
+        var t = (text || "").trim();
+        var c = (combos || "").trim();
+        if (!c) return t;
+        return t ? (t + (t.endsWith(".") ? " " : ". ") + "Combos: " + c + ".") : ("Combos: " + c + ".");
+    }
     function openStyleEditor(tabName, existingStyle, sourceFile) {
         const isNew = !existingStyle;
         const overlay = el("div", { className: "sg-editor-overlay" });
@@ -1326,18 +1337,25 @@
         modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Negative Prompt" }));
         modal.appendChild(negInput);
 
+        var parsed = splitDescriptionAndCombos(existingStyle ? existingStyle.description : "");
         var descInput = el("textarea", {
             className: "sg-editor-textarea",
-            placeholder: "Description. Use 'Combos: STYLE_X; CATEGORY_*' for recommendations.",
+            placeholder: "What this style does.",
             rows: "3"
         });
-        descInput.value = existingStyle ? (existingStyle.description || "") : "";
+        descInput.value = parsed.text;
 
-        modal.appendChild(el("label", {
-            className: "sg-editor-label",
-            textContent: "Description & Combos"
-        }));
+        var combosInput = el("input", {
+            className: "sg-editor-input",
+            type: "text",
+            placeholder: "Combos: e.g. STYLE_X; CATEGORY_*"
+        });
+        combosInput.value = parsed.combos;
+
+        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Description" }));
         modal.appendChild(descInput);
+        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Combos (optional)" }));
+        modal.appendChild(combosInput);
 
         const btnRow = el("div", { className: "sg-editor-btns" });
         btnRow.appendChild(el("button", {
@@ -1354,13 +1372,13 @@
                         source: existingStyle.source,
                         prompt: promptInput.value,
                         negative_prompt: negInput.value,
-                        description: descInput.value,
+                        description: joinDescriptionAndCombos(descInput.value, combosInput.value),
                     }
                     : {
                         name: name,
                         prompt: promptInput.value,
                         negative_prompt: negInput.value,
-                        description: descInput.value,
+                        description: joinDescriptionAndCombos(descInput.value, combosInput.value),
                         source: existingStyle ? existingStyle.source : (sourceFile || null),
                     };
                 apiPost(endpoint, payload).then(assertNoApiError).then(function () {

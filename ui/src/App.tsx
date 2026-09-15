@@ -179,9 +179,14 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        sendToHost({ type: 'SG_CLOSE_REQUEST' })
+      if (e.key !== 'Escape') return
+      const { search, setSearch } = useStylesStore.getState()
+      if (search) {
+        e.stopPropagation()
+        setSearch('')
+        return
       }
+      sendToHost({ type: 'SG_CLOSE_REQUEST' })
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)

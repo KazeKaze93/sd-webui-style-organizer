@@ -38,10 +38,9 @@ export function SearchBar() {
   }
 
   const handleSelect = (style: typeof styles[0]) => {
-    setInputValue('')
-    setSearch('')
     setOpen(false)
-    // Apply immediately if not already selected
+    // Apply immediately if not already selected. Query text is left as-is —
+    // picking a suggestion should not also wipe the search context.
     const isSelected = selectedStyles.some(s => s.name === style.name)
     if (!isSelected) toggleStyle(style)
   }

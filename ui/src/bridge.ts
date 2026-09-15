@@ -31,7 +31,6 @@ export type FrameMessage =
   | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
-  | { type: 'SG_RANDOM' }
   | { type: 'SG_PRESETS' }
   | { type: 'SG_LOAD_PRESET'; name: string }
   | { type: 'SG_BACKUP' }

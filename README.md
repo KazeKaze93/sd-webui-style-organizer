@@ -214,7 +214,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 | Control | What it does |
 |---|---|
-| 👁 | **Silent mode** — styles are applied **at generate time** (hidden JSON on the Forge host), not in the prompt text fields. Turning silent **off** clears that host list, so **the next generation no longer uses silent injection**. The V2 grid may still **look** as if styles are selected (highlight/chips/count) until you click them or use Clear — that is **visual only** and does not change what silent mode already cleared for generation. Toggling a style off while silent still updates the host list. |
+| 👁 | **Silent mode** — styles are applied **at generate time** (hidden JSON on the Forge host), not in the prompt text fields. Turning silent **off** clears that host list **and** the V2 grid selection in both the txt2img and img2img tabs, so **the next generation no longer uses silent injection** and the UI no longer shows those styles as selected. Toggling a style off while silent still updates the host list. |
 | 🎲 | **Random style** — picks a random style (respects the active source filter). |
 | 📦 | **Presets** — save/load/delete style sets from the host modal. **Load** runs the same **`loadPreset`** path as choosing a preset in the sidebar **Presets** view (iframe posts **`SG_LOAD_PRESET`**). Both clear/apply on the host and sync the V2 selected bar (`SG_CLEAR_SELECTION` / `SG_STYLE_APPLIED` per style). |
 | 💾 | **Backup** — creates CSV backup snapshot(s) under `data/backups/`, keeping directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |

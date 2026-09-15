@@ -82,6 +82,7 @@ export default function App() {
     tab,
     selectedStyles,
     styles,
+    activeSource,
     conflicts,
     silentMode,
     toggleSilent,
@@ -93,6 +94,9 @@ export default function App() {
     activeCategory,
     showToast,
   } = useStylesStore()
+
+  const activeSourceIsReadOnly = !!activeSource &&
+    styles.some(s => s.source_file === activeSource && s.read_only)
 
   const fetchLoraTitles = async () => {
     try {
@@ -327,15 +331,17 @@ export default function App() {
             <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Plus}
-              label="New style"
+              label={
+                !activeSource
+                  ? 'Select a specific CSV source before creating a style'
+                  : activeSourceIsReadOnly
+                    ? 'This source is read-only (bundled samples). Pick or import another CSV to add styles.'
+                    : 'New style'
+              }
               colorClassName="text-emerald-400/80"
+              disabled={!activeSource || activeSourceIsReadOnly}
               onClick={() => {
-                const { activeSource, showToast } = useStylesStore.getState()
-                if (!activeSource) {
-                  showToast('⚠️ Select a specific CSV source before creating a style', 'info')
-                } else {
-                  sendToHost({ type: 'SG_NEW_STYLE', sourceFile: activeSource })
-                }
+                sendToHost({ type: 'SG_NEW_STYLE', sourceFile: activeSource! })
               }}
             />
             {activeCategory === LORA_VIEW && (

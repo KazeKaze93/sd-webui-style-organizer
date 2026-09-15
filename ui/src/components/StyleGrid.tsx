@@ -5,6 +5,7 @@ import { sendToHost, type Style } from '../bridge'
 import { buildSliceSpec } from '../lib/wildcardSlice'
 import {
   getCategoryColor,
+  LORA_SOURCE,
   LORA_VIEW,
   selectFilteredStyles,
   styleRowKey,
@@ -71,6 +72,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     if (!sliceCategory) return [] as string[]
     return styles
       .filter((s) => {
+        if (sliceCategory === 'LoRA') return s.source_file === LORA_SOURCE
         if ((s.category || 'OTHER') !== sliceCategory) return false
         if (activeSource && s.source_file !== activeSource) return false
         return true

@@ -21,13 +21,11 @@ export function PresetRow({ name, preset }: Props) {
   const showToast = useStylesStore((s) => s.showToast)
 
   const [expanded, setExpanded] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [renameValue, setRenameValue] = useState(name)
   const [renameExists, setRenameExists] = useState(false)
   const [busy, setBusy] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
 
   const members = resolvePresetMembers(preset.styles ?? [], styles)
@@ -36,17 +34,6 @@ export function PresetRow({ name, preset }: Props) {
   const missing = total - found
   const wcCount = (preset.wildcards ?? []).length
   const isActive = activePresetName === name
-
-  useEffect(() => {
-    if (!menuOpen) return
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
-    }
-    window.addEventListener('mousedown', onDown)
-    return () => window.removeEventListener('mousedown', onDown)
-  }, [menuOpen])
 
   useEffect(() => {
     if (!renameOpen) return
@@ -148,55 +135,28 @@ export function PresetRow({ name, preset }: Props) {
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={() => loadPreset(name, 'replace')}
+            onClick={() => loadPreset(name)}
             className="px-2 py-1 text-xs rounded border border-sg-border text-sg-text hover:bg-sg-accent/20 transition-colors"
-            title="Clear selection and apply this set"
+            title="Apply this set to the current selection"
           >
-            Replace
+            Apply
           </button>
           <button
             type="button"
-            onClick={() => loadPreset(name, 'add')}
+            onClick={() => setRenameOpen(true)}
             className="px-2 py-1 text-xs rounded border border-sg-border text-sg-text hover:bg-sg-accent/20 transition-colors"
-            title="Merge this set into the current selection"
+            title="Rename this set"
           >
-            Add
+            Rename
           </button>
-          <div className="relative" ref={menuRef}>
-            <button
-              type="button"
-              onClick={() => setMenuOpen((v) => !v)}
-              className="w-7 h-7 flex items-center justify-center rounded border border-sg-border text-sg-muted hover:text-sg-text hover:bg-sg-accent/20 transition-colors"
-              title="More"
-              aria-label="More actions"
-            >
-              ⋯
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full mt-1 z-20 min-w-[8rem] rounded-lg border border-sg-border bg-sg-surface shadow-xl py-1">
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    setRenameOpen(true)
-                  }}
-                >
-                  Rename
-                </button>
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20"
-                  onClick={() => {
-                    setMenuOpen(false)
-                    setDeleteOpen(true)
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="px-2 py-1 text-xs rounded border border-red-500/40 text-red-400 hover:bg-red-500/20 transition-colors"
+            title="Delete this set"
+          >
+            Delete
+          </button>
         </div>
       </div>
 

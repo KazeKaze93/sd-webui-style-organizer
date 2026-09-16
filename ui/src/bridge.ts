@@ -32,6 +32,8 @@ export type FrameMessage =
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_PRESETS' }
+  // Phase B: React orchestrates replace/add via SG_CLEAR_ALL + SG_APPLY + wildcard
+  // messages (host owns prompt). Kept for Phase C host-modal cleanup — do not extend.
   | { type: 'SG_LOAD_PRESET'; name: string }
   | { type: 'SG_BACKUP' }
   | { type: 'SG_IMPORT_EXPORT' }

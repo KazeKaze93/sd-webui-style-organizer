@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  Dices, Package, Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
+  Package, Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
   Eye, EyeOff,
 } from 'lucide-react'
 import { onHostMessage, sendToHost } from './bridge'
@@ -278,12 +278,6 @@ export default function App() {
             >
               {silentMode ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
-            <ToolBtn
-              icon={Dices}
-              label="Random style"
-              colorClassName="text-amber-400/80"
-              onClick={() => sendToHost({ type: 'SG_RANDOM' })}
-            />
             <ToolBtn
               icon={Package}
               label="Presets"

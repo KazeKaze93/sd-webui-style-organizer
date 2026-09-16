@@ -2645,19 +2645,6 @@
                 setHostPageScrollLock(anySGFrameVisible());
             }
 
-            if (msg.type === "SG_RANDOM") {
-                var allStyles = Object.values((state[tab] && state[tab].categories) || {}).flat();
-                if (allStyles.length > 0) {
-                    var randomStyle = allStyles[Math.floor(Math.random() * allStyles.length)];
-                    window._sgApplyStyle(tab, randomStyle.name);
-                    if (frame.contentWindow) {
-                        frame.contentWindow.postMessage({
-                            type: "SG_STYLE_APPLIED",
-                            style: randomStyle
-                        }, "*");
-                    }
-                }
-            }
             if (msg.type === "SG_BACKUP") {
                 fetch("/style_grid/backup", { method: "POST" })
                     .then(function (r) {

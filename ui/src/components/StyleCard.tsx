@@ -10,16 +10,14 @@ import { ThumbnailPreview } from './ThumbnailPreview'
 interface Props {
   style: Style
   windowed?: boolean
-  /** When set, card acts as a saved preset: click loads preset; no selection/thumbnail menu behavior. */
-  presetName?: string
 }
 
 const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
-export const StyleCard = memo(function StyleCard({ style, windowed = false, presetName }: Props) {
+export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
   const isSelected = useStylesStore(
-    s => !presetName && s.selectedStyles.some(sel => sel.name === style.name)
+    s => s.selectedStyles.some(sel => sel.name === style.name)
   )
   const fav = useStylesStore(s => s.favorites.has(styleRowKey(style)))
   const usageCount = useStylesStore(s => s.usageCounts[style.name] || 0)
@@ -77,10 +75,10 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false, pres
 
   return (
     <>
-      <ThumbnailPreview style={style} presetName={presetName}>
+      <ThumbnailPreview style={style}>
         <motion.div
           data-sg-card="true"
-          title={presetName ? undefined : style.name}
+          title={style.name}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -88,20 +86,11 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false, pres
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onContextMenu={(e) => {
-            if (presetName) {
-              e.preventDefault()
-              e.stopPropagation()
-              return
-            }
             e.preventDefault()
             e.stopPropagation()
             setMenuPos({ x: e.clientX, y: e.clientY })
           }}
           onClick={(e) => {
-            if (presetName) {
-              sendToHost({ type: 'SG_LOAD_PRESET', name: presetName })
-              return
-            }
             if (hasMultipleSources && !activeSource && !isSelected) {
               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
               const left = Math.min(rect.right + 8, window.innerWidth - 280)
@@ -128,11 +117,11 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false, pres
           </div>
 
           {/* Selected indicator */}
-          {!presetName && isSelected && (
+          {isSelected && (
             <div className="absolute bottom-2 right-2 w-2 h-2
                             rounded-full bg-sg-accent" />
           )}
-          {!presetName && usageCount > 0 && (
+          {usageCount > 0 && (
             <span className="absolute bottom-1.5 left-2 text-[10px] 
                      text-sg-muted/60 font-mono">
               {usageCount > 99 ? '99+' : usageCount}

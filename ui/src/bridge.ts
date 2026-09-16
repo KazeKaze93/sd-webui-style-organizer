@@ -11,7 +11,6 @@ export type HostMessage =
   | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
-  | { type: 'SG_PRESETS_UPDATED' }
 
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
@@ -31,7 +30,6 @@ export type FrameMessage =
   | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
-  | { type: 'SG_PRESETS' }
   // Phase B: React orchestrates replace/add via SG_CLEAR_ALL + SG_APPLY + wildcard
   // messages (host owns prompt). Kept for Phase C host-modal cleanup — do not extend.
   | { type: 'SG_LOAD_PRESET'; name: string }

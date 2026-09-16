@@ -1609,95 +1609,6 @@
         syncSelectionChrome(tabName);
     }
 
-    function showPresetsMenu(tabName) {
-        const old = qs(".sg-presets-overlay");
-        if (old) old.remove();
-
-        apiGet("/style_grid/presets").then(function (presets) {
-            state[tabName].presets = presets || {};
-        }).catch(function () {}).then(function () {
-        const overlay = el("div", { className: "sg-editor-overlay sg-presets-overlay" });
-        const modal = el("div", { className: "sg-editor-modal" });
-        modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📦 Style Presets" }));
-
-        // Save current as preset
-        const saveRow = el("div", { className: "sg-presets-save-row" });
-        const nameIn = el("input", { className: "sg-editor-input", type: "text", placeholder: "Preset name..." });
-        const saveBtn = el("button", {
-            className: "sg-btn sg-btn-primary", textContent: "💾 Save current",
-            onClick: function () {
-                const name = nameIn.value.trim();
-                if (!name) return;
-                apiPost("/style_grid/presets/save", { name: name, styles: selectedAsNameSourceEntries(tabName) }).then(function (r) {
-                    state[tabName].presets = r.presets || {};
-                    renderPresetsList();
-                    nameIn.value = "";
-                    var sgFrameSave = document.getElementById("sg-frame-" + tabName);
-                    if (sgFrameSave && sgFrameSave.contentWindow) {
-                        sgFrameSave.contentWindow.postMessage({ type: "SG_PRESETS_UPDATED" }, "*");
-                    }
-                }).catch(function () {});
-            }
-        });
-        saveRow.appendChild(nameIn);
-        saveRow.appendChild(saveBtn);
-        modal.appendChild(saveRow);
-
-        const list = el("div", { className: "sg-presets-list" });
-        modal.appendChild(list);
-
-        function renderPresetsList() {
-            list.innerHTML = "";
-            const presets = state[tabName].presets || {};
-            Object.keys(presets).forEach(function (name) {
-                const p = presets[name];
-                const row = el("div", { className: "sg-preset-row" });
-                row.appendChild(el("span", { className: "sg-preset-name", textContent: name + " (" + (p.styles || []).length + " styles)" }));
-                row.appendChild(el("button", {
-                    className: "sg-btn sg-btn-secondary", textContent: "Load",
-                    onClick: function () {
-                        loadPreset(tabName, p.name ?? name);
-                        overlay.remove();
-                    }
-                }));
-                row.appendChild(el("button", {
-                    className: "sg-btn sg-btn-secondary", textContent: "🗑️",
-                    onClick: function () {
-                        apiPost("/style_grid/presets/delete", { name: name }).then(function (r) {
-                            state[tabName].presets = r.presets || {};
-                            renderPresetsList();
-                            var sgFrameDel = document.getElementById("sg-frame-" + tabName);
-                            if (sgFrameDel && sgFrameDel.contentWindow) {
-                                sgFrameDel.contentWindow.postMessage({ type: "SG_PRESETS_UPDATED" }, "*");
-                            }
-                        }).catch(function () {});
-                    }
-                }));
-                list.appendChild(row);
-            });
-            if (Object.keys(presets).length === 0) {
-                list.appendChild(el("div", { className: "sg-preset-empty", textContent: "No presets saved yet" }));
-            }
-        }
-        renderPresetsList();
-
-        const closeBtn = el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } });
-        modal.appendChild(closeBtn);
-        overlay.appendChild(modal);
-        var presetsOverlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) {
-            presetsOverlayMouseDownTarget = e.target;
-        });
-        overlay.addEventListener("click", function (e) {
-            if (presetsOverlayMouseDownTarget === overlay || presetsOverlayMouseDownTarget === e.currentTarget) {
-                overlay.remove();
-            }
-            presetsOverlayMouseDownTarget = null;
-        });
-        document.body.appendChild(overlay);
-        });
-    }
-
     // -----------------------------------------------------------------------
     // Import/Export
     // -----------------------------------------------------------------------
@@ -2713,9 +2624,6 @@
                             loadPreset(tabName, presetName);
                         });
                 }
-            }
-            if (msg.type === "SG_PRESETS") {
-                showPresetsMenu(tab);
             }
             if (msg.type === "SG_IMPORT_EXPORT") {
                 showExportImport(tab);

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  resolvePresetMembers,
   suggestPresetName,
   useStylesStore,
+  type ResolvedPresetMember,
 } from '../store/stylesStore'
 
 export interface SaveSetDialogProps {
@@ -10,9 +12,9 @@ export interface SaveSetDialogProps {
 }
 
 export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
+  const styles = useStylesStore((s) => s.styles)
   const selectedStyles = useStylesStore((s) => s.selectedStyles)
   const activeWildcards = useStylesStore((s) => s.activeWildcards)
-  const activePresetName = useStylesStore((s) => s.activePresetName)
   const presets = useStylesStore((s) => s.presets)
   const savePreset = useStylesStore((s) => s.savePreset)
   const showToast = useStylesStore((s) => s.showToast)
@@ -32,15 +34,36 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
       setExistsWarning(false)
       return
     }
-    const activePreset = activePresetName ? presets[activePresetName] : undefined
-    setName(activePresetName || suggestPresetName(selectedStyles))
-    setNote(activePreset?.note ?? '')
+    const wcKey = (c: string, s: string) =>
+      `${String(c || '').toLowerCase()}\0${String(s || '').toLowerCase()}`
+    const activeWcKeys = new Set(activeWildcards.map((w) => wcKey(w.category, w.spec)))
+    const matches: string[] = []
+    for (const [presetName, preset] of Object.entries(presets)) {
+      const members = resolvePresetMembers(preset.styles ?? [], styles)
+      const foundMembers = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
+        m.status === 'found')
+      const presetWcKeys = new Set(
+        (preset.wildcards ?? []).map((wc) => wcKey(String(wc.category || ''), String(wc.spec || '')))
+      )
+      const isActive = foundMembers.length > 0 &&
+        foundMembers.every((m) => selectedStyles.some((s) => s.name === m.style.name)) &&
+        [...presetWcKeys].every((k) => activeWcKeys.has(k))
+      if (isActive) matches.push(presetName)
+    }
+    if (matches.length === 1) {
+      const matchName = matches[0]
+      setName(matchName)
+      setNote(presets[matchName]?.note ?? '')
+    } else {
+      setName(suggestPresetName(selectedStyles))
+      setNote('')
+    }
     setIncludeWildcards(hasWildcards)
     setExistsWarning(false)
     setIsSubmitting(false)
     const id = requestAnimationFrame(() => inputRef.current?.focus())
     return () => cancelAnimationFrame(id)
-  }, [open, selectedStyles, hasWildcards, activePresetName, presets])
+  }, [open, selectedStyles, hasWildcards, activeWildcards, styles, presets])
 
   useEffect(() => {
     if (!open) return

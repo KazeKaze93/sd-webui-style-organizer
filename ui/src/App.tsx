@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
-  Package, Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
+  Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
   Eye, EyeOff,
 } from 'lucide-react'
 import { onHostMessage, sendToHost } from './bridge'
@@ -173,7 +173,12 @@ export default function App() {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })
       }
       if (msg.type === 'SG_CLEAR_SELECTION') {
-        useStylesStore.setState({ selectedStyles: [], conflicts: [] })
+        useStylesStore.setState({
+          selectedStyles: [],
+          conflicts: [],
+          activeWildcards: [],
+          activePresetName: null,
+        })
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
         const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
@@ -293,13 +298,6 @@ export default function App() {
             >
               {silentMode ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
-            <ToolBtn
-              icon={Package}
-              label="Presets"
-              colorClassName="text-amber-400/80"
-              onClick={() => sendToHost({ type: 'SG_PRESETS' })}
-            />
-            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Save}
               label="Backup CSV"

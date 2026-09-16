@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { Reorder } from 'framer-motion'
-import { LORA_SOURCE, useStylesStore } from '../store/stylesStore'
+import { useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { describeSpec } from '../lib/wildcardSlice'
+import { SaveSetDialog } from './SaveSetDialog'
 
 export function SelectedBar() {
   const {
@@ -9,6 +11,7 @@ export function SelectedBar() {
     activeWildcards, setActiveWildcards, removeWildcard,
     styles, activeSource,
   } = useStylesStore()
+  const [saveOpen, setSaveOpen] = useState(false)
 
   if (selectedStyles.length === 0 && activeWildcards.length === 0) return null
 
@@ -21,53 +24,67 @@ export function SelectedBar() {
     const want = category.toLowerCase()
     return styles
       .filter((s) => {
-          if (want === 'lora') return s.source_file === LORA_SOURCE
-          if ((s.category || 'OTHER').toLowerCase() !== want) return false
-          if (activeSource && s.source_file !== activeSource) return false
-          return true
+        if ((s.category || 'OTHER').toLowerCase() !== want) return false
+        if (activeSource && s.source_file !== activeSource) return false
+        return true
       })
       .map((s) => s.name)
   }
+
   return (
     <>
-      {selectedStyles.length > 0 && (
-        <Reorder.Group
-          axis="x"
-          values={selectedStyles}
-          onReorder={(newOrder) => {
-            setSelectedStyles(newOrder)
-            // Rebuild prompt in new order
-            sendToHost({
-              type: 'SG_REORDER_STYLES',
-              styleIds: newOrder.map(s => s.name)
-            })
-          }}
-          className="flex flex-wrap gap-2 px-4 pt-2"
-          as="div"
-        >
-          {selectedStyles.map(s => (
-            <Reorder.Item
-              key={s.name}
-              value={s}
-              as="span"
-              className="flex items-center gap-1 px-2 py-1 rounded-full
-                         bg-sg-accent/20 border border-sg-accent/40
-                         text-xs text-sg-text cursor-grab active:cursor-grabbing
-                         hover:bg-sg-accent/30 transition-colors select-none"
-              whileDrag={{ scale: 1.05, zIndex: 50 }}
+      <div className="flex items-start gap-2 px-4 pt-2">
+        <div className="min-w-0 flex-1">
+          {selectedStyles.length > 0 && (
+            <Reorder.Group
+              axis="x"
+              values={selectedStyles}
+              onReorder={(newOrder) => {
+                setSelectedStyles(newOrder)
+                sendToHost({
+                  type: 'SG_REORDER_STYLES',
+                  styleIds: newOrder.map(s => s.name)
+                })
+              }}
+              className="flex flex-wrap gap-2"
+              as="div"
             >
-              <span className="text-sg-muted/50 mr-0.5 text-[10px]">⠿</span>
-              {displayName(s.name)}
-              <button
-                onPointerDown={e => e.stopPropagation()}
-                onClick={() => toggleStyle(s)}
-                className="text-sg-muted hover:text-sg-text ml-1
-                           transition-colors leading-none"
-              >✕</button>
-            </Reorder.Item>
-          ))}
-        </Reorder.Group>
-      )}
+              {selectedStyles.map(s => (
+                <Reorder.Item
+                  key={s.name}
+                  value={s}
+                  as="span"
+                  className="flex items-center gap-1 px-2 py-1 rounded-full
+                             bg-sg-accent/20 border border-sg-accent/40
+                             text-xs text-sg-text cursor-grab active:cursor-grabbing
+                             hover:bg-sg-accent/30 transition-colors select-none"
+                  whileDrag={{ scale: 1.05, zIndex: 50 }}
+                >
+                  <span className="text-sg-muted/50 mr-0.5 text-[10px]">⠿</span>
+                  {displayName(s.name)}
+                  <button
+                    onPointerDown={e => e.stopPropagation()}
+                    onClick={() => toggleStyle(s)}
+                    className="text-sg-muted hover:text-sg-text ml-1
+                               transition-colors leading-none"
+                  >✕</button>
+                </Reorder.Item>
+              ))}
+            </Reorder.Group>
+          )}
+        </div>
+        {selectedStyles.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setSaveOpen(true)}
+            className="shrink-0 px-2.5 py-1 text-xs rounded border border-sg-accent/50
+                       bg-sg-accent/15 text-sg-text hover:bg-sg-accent/25 transition-colors"
+            title="Save current selection as a set"
+          >
+            Save set ({selectedStyles.length})
+          </button>
+        )}
+      </div>
 
       {activeWildcards.length > 0 && (
         <Reorder.Group
@@ -123,6 +140,8 @@ export function SelectedBar() {
           })}
         </Reorder.Group>
       )}
+
+      <SaveSetDialog open={saveOpen} onClose={() => setSaveOpen(false)} />
     </>
   )
 }

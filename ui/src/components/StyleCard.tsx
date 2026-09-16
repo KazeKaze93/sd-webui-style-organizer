@@ -1,8 +1,9 @@
-import { memo, useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
+import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
-import { getCategoryColor, LORA_SOURCE, useStylesStore } from '../store/stylesStore'
+import { getCategoryColor, LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { ThumbnailPreview } from './ThumbnailPreview'
 
@@ -17,16 +18,23 @@ const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
 export const StyleCard = memo(function StyleCard({ style, windowed = false, presetName }: Props) {
-  const {
-    selectedStyles, toggleStyle, isFavorite, toggleFavorite, usageCounts, styles, activeSource
-  } = useStylesStore()
+  const isSelected = useStylesStore(
+    s => !presetName && s.selectedStyles.some(sel => sel.name === style.name)
+  )
+  const fav = useStylesStore(s => s.favorites.has(styleRowKey(style)))
+  const usageCount = useStylesStore(s => s.usageCounts[style.name] || 0)
+  const activeSource = useStylesStore(s => s.activeSource)
+  const styles = useStylesStore(s => s.styles)
+  const { toggleStyle, toggleFavorite } = useStylesStore(
+    useShallow(s => ({ toggleStyle: s.toggleStyle, toggleFavorite: s.toggleFavorite }))
+  )
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
-  const isSelected = !presetName && selectedStyles.some(s => s.name === style.name)
   const isLora = style.source_file === LORA_SOURCE
-  const fav = isFavorite(style)
-  const usageCount = usageCounts[style.name] || 0
-  const duplicates = styles.filter(s => s.name === style.name)
+  const duplicates = useMemo(
+    () => styles.filter(s => s.name === style.name),
+    [styles, style.name],
+  )
   const hasMultipleSources = duplicates.length > 1
   const sourceLabels = duplicates.map((dup) =>
     ((dup.source_file || 'Unknown').split(/[\\/]/).pop() || 'Unknown')

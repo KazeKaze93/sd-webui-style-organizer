@@ -106,7 +106,9 @@ class StyleGridScript(scripts.Script):
             key = (s.get("category") or "").lower()
             styles_by_cat.setdefault(key, []).append(s)
         # Reserved {sg:LoRA}: aggregate all LoRA styles by source marker.
-        lora_styles = [s for s in wildcard_pool if s.get("source_file") == LORA_SOURCE]
+        # LoRA files have no CSV source — always draw from the full library,
+        # never from wildcard_pool, which may already be filtered to one CSV.
+        lora_styles = [s for s in all_styles if s.get("source_file") == LORA_SOURCE]
         if lora_styles:
             styles_by_cat["lora"] = lora_styles
 

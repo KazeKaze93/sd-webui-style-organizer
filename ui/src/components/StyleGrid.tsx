@@ -7,6 +7,7 @@ import {
   getCategoryColor,
   LORA_SOURCE,
   LORA_VIEW,
+  matchesSearch,
   selectFilteredStyles,
   styleRowKey,
   useStylesStore,
@@ -58,14 +59,20 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     [styles, search, activeSource, favorites, recentNames, presets]
   )
 
-  /** Currently visible (search/filter-applied) cards for the slice category. */
+  /** Currently visible (search/filter-applied) cards for the slice category.
+   * LoRA bypasses sliceModeFiltered entirely — it has no CSV source, so the
+   * shared selectFilteredStyles source-scoping (correct for every other
+   * caller) must not apply here. */
   const visibleSliceStyles = useMemo(() => {
     if (!sliceCategory) return [] as Style[]
+    if (sliceCategory === 'LoRA') {
+      return styles.filter(s => s.source_file === LORA_SOURCE && matchesSearch(s, search))
+    }
     const want = sliceCategory.toLowerCase()
     return sliceModeFiltered.filter(
       (s) => (s.category || 'OTHER').toLowerCase() === want,
     )
-  }, [sliceModeFiltered, sliceCategory])
+  }, [styles, search, sliceModeFiltered, sliceCategory])
 
   /** Unfiltered category total for the compactor (source-scoped, not search-scoped). */
   const allNamesInCategory = useMemo(() => {

@@ -49,7 +49,7 @@ export function getCategoryColor(category: string): string {
     '#bfdbfe', // powder blue
     '#ddd6fe', // lavender
     '#fed7aa', // peach
-    '#bbf7d0', // seafoam
+    '#fbbf24', // gold
   ]
 
   // Deterministic index based on category name hash

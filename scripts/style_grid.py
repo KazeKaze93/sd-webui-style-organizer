@@ -103,12 +103,19 @@ class StyleGridScript(scripts.Script):
 
         styles_by_cat = {}
         for s in wildcard_pool:
+            if s.get("source_file") == LORA_SOURCE:
+                continue  # LoRA is source-independent — handled below from all_styles
             key = (s.get("category") or "").lower()
             styles_by_cat.setdefault(key, []).append(s)
-        # Reserved {sg:LoRA}: aggregate all LoRA styles by source marker.
-        # LoRA files have no CSV source — always draw from the full library,
-        # never from wildcard_pool, which may already be filtered to one CSV.
+
+        # LoRA: always source-independent. Root-level files use category "LoRA";
+        # subfoldered files use their subfolder name as category (set at scan
+        # time in lora_scan.py). Both get bucketed here from the full library,
+        # plus a "lora" aggregate covering every LoRA regardless of subfolder.
         lora_styles = [s for s in all_styles if s.get("source_file") == LORA_SOURCE]
+        for s in lora_styles:
+            key = (s.get("category") or "").lower()
+            styles_by_cat.setdefault(key, []).append(s)
         if lora_styles:
             styles_by_cat["lora"] = lora_styles
 

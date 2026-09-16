@@ -1,3 +1,4 @@
+import { startTransition } from 'react'
 import { useStylesStore } from '../store/stylesStore'
 
 interface Props {
@@ -74,7 +75,7 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
               return (
                 <button
                   key={token}
-                  onClick={() => setCategory(resolved.category!)}
+                  onClick={() => startTransition(() => setCategory(resolved.category!))}
                   className="px-2 py-0.5 rounded text-xs border transition-colors
                     bg-orange-500/10 border-orange-500/30 text-orange-400
                     hover:bg-orange-500/20"

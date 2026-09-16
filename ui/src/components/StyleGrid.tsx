@@ -19,7 +19,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const [loraCatMenu, setLoraCatMenu] = useState<{ x: number; y: number; cat: string } | null>(null)
   const {
     styles, search, activeCategory, activeSource,
-    favorites, recentNames, presets,
+    favorites, recentNames,
     compactMode, collapsedCategories, toggleCollapse,
     selectedStyles, selectAllInCategory,
     sliceMode, sliceSelection,
@@ -33,7 +33,6 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       activeSource: s.activeSource,
       favorites: s.favorites,
       recentNames: s.recentNames,
-      presets: s.presets,
       compactMode: s.compactMode,
       collapsedCategories: s.collapsedCategories,
       toggleCollapse: s.toggleCollapse,
@@ -49,16 +48,16 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   )
 
   const filtered = useMemo(
-    () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames, presets),
-    [styles, search, activeCategory, activeSource, favorites, recentNames, presets]
+    () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames),
+    [styles, search, activeCategory, activeSource, favorites, recentNames]
   )
 
   const sliceCategory = sliceMode?.category ?? null
 
   /** Search/source-filtered styles without the sidebar category filter — slice mode may target another category. */
   const sliceModeFiltered = useMemo(
-    () => selectFilteredStyles(styles, search, null, activeSource, favorites, recentNames, presets),
-    [styles, search, activeSource, favorites, recentNames, presets]
+    () => selectFilteredStyles(styles, search, null, activeSource, favorites, recentNames),
+    [styles, search, activeSource, favorites, recentNames]
   )
 
   /** Currently visible (search/filter-applied) cards for the slice category.

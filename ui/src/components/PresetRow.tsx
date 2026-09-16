@@ -5,6 +5,7 @@ import {
   styleDisplayName,
   useStylesStore,
   type PresetRecord,
+  type ResolvedPresetMember,
 } from '../store/stylesStore'
 
 type Props = {
@@ -14,8 +15,10 @@ type Props = {
 
 export function PresetRow({ name, preset }: Props) {
   const styles = useStylesStore((s) => s.styles)
-  const activePresetName = useStylesStore((s) => s.activePresetName)
+  const selectedStyles = useStylesStore((s) => s.selectedStyles)
+  const activeWildcards = useStylesStore((s) => s.activeWildcards)
   const loadPreset = useStylesStore((s) => s.loadPreset)
+  const unapplyPreset = useStylesStore((s) => s.unapplyPreset)
   const deletePreset = useStylesStore((s) => s.deletePreset)
   const renamePreset = useStylesStore((s) => s.renamePreset)
   const showToast = useStylesStore((s) => s.showToast)
@@ -29,11 +32,21 @@ export function PresetRow({ name, preset }: Props) {
   const renameRef = useRef<HTMLInputElement>(null)
 
   const members = resolvePresetMembers(preset.styles ?? [], styles)
-  const found = members.filter((m) => m.status === 'found').length
+  const foundMembers = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
+    m.status === 'found')
+  const found = foundMembers.length
   const total = members.length
   const missing = total - found
   const wcCount = (preset.wildcards ?? []).length
-  const isActive = activePresetName === name
+  const wcKey = (c: string, s: string) =>
+    `${String(c || '').toLowerCase()}\0${String(s || '').toLowerCase()}`
+  const presetWcKeys = new Set(
+    (preset.wildcards ?? []).map((wc) => wcKey(String(wc.category || ''), String(wc.spec || '')))
+  )
+  const activeWcKeys = new Set(activeWildcards.map((w) => wcKey(w.category, w.spec)))
+  const isActive = foundMembers.length > 0 &&
+    foundMembers.every((m) => selectedStyles.some((s) => s.name === m.style.name)) &&
+    [...presetWcKeys].every((k) => activeWcKeys.has(k))
 
   useEffect(() => {
     if (!renameOpen) return
@@ -135,11 +148,11 @@ export function PresetRow({ name, preset }: Props) {
         <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
-            onClick={() => loadPreset(name)}
+            onClick={() => isActive ? unapplyPreset(name) : loadPreset(name)}
             className="px-2 py-1 text-xs rounded border border-sg-border text-sg-text hover:bg-sg-accent/20 transition-colors"
-            title="Apply this set to the current selection"
+            title={isActive ? 'Remove this set from the current selection' : 'Apply this set to the current selection'}
           >
-            Apply
+            {isActive ? 'Unapply' : 'Apply'}
           </button>
           <button
             type="button"

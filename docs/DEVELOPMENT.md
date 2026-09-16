@@ -70,7 +70,7 @@ The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegr
 
 **`shadcn`:** listed under `ui` **devDependencies**. The app only `@import "shadcn/tailwind.css"` at build time; the package is the CLI (and its MCP/express subtree), not a runtime dependency.
 
-**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`, **`matchesSearch`**, **`matchesNameSearch`**). Favorites / Recent / presets / **🧬 LoRA** (`LORA_VIEW`) are special branches; normal category views **exclude** `source_file === LORA_SOURCE`. **`StyleGrid`** and **`Sidebar`** use Zustand **`useShallow`**. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`**.
+**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`, **`matchesSearch`**, **`matchesNameSearch`**). Favorites / Recent / **🧬 LoRA** (`LORA_VIEW`) are special branches; the **Presets** sidebar entry short-circuits to **`PresetList`** (not a `selectFilteredStyles` branch). Normal category views **exclude** `source_file === LORA_SOURCE`. **`StyleGrid`** and **`Sidebar`** use Zustand **`useShallow`**. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`**.
 
 **LoRA:** `get_cached_styles()` returns CSV cache + `get_cached_lora_styles()`. Optional roots: gitignored `config/lora_roots.json`. Title fetch is iframe-only (`App.tsx` → `POST /style_grid/lora/fetch_titles`); poll status every 1.5s while running. After titles land, reopen the panel so `/styles` reloads with `display_name`.
 ## Message Bridge (Host <-> Frame)
@@ -123,11 +123,7 @@ sequenceDiagram
 
 **Import:** failed `POST /import` (including name **collisions**) is shown to the user (alert with error + colliding names); success path unchanged.
 
-**Presets — Load:** **`loadPreset(tabName, presetName)`** (shared by the modal **Load** button and the iframe) clears the selection, posts **`SG_CLEAR_SELECTION`**, applies each saved style with name+source resolve (`applyStyleImmediate`, host `.sg-card` classes), posts **`SG_STYLE_APPLIED`** per resolved style, and calls **`updateSelectedUI`**. The classic presets UI (`showPresetsMenu`) runs on the host DOM and calls **`loadPreset`** from the **Load** button.
-
-The React sidebar **Presets** view (`activeCategory === 'presets'`) renders preset names with the same **`StyleCard`** component as ordinary styles (`presetName` prop); a click sends **`SG_LOAD_PRESET`** with the preset name. The host handler calls **`loadPreset(tab, name)`**; if **`state[tab].presets`** does not yet include that key, it **`fetch`es `GET /style_grid/presets/list`**, merges into **`state[tab].presets`**, then invokes **`loadPreset`** — so loading from the iframe works even when the host cache was empty. V2 preset category filter accepts dual-format `{name, source_file}` entries.
-
-**Thumbnail hover:** **`ThumbnailPreview`** skips the hover popup wrapper when **`presetName`** is set (preset tiles are name-only; no thumbnail preview for the preset name string).
+**Presets:** Sidebar **Presets** renders **`PresetList`** / **`PresetRow`** (Replace / Add / rename / delete). Save is **`SaveSetDialog`** from **`SelectedBar`** (`savePreset` / overwrite guard on the API). Load applies name+source members via the host apply path (`SG_APPLY` / selection sync); there is no host Package modal and no **`StyleCard presetName`** tile mode.
 
 **Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, and returns **`[silent_styles, source_filter]`**. In `process(*args)`, `args[0]` is silent JSON and `args[1]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools — paths compared via `normalize_source_path`. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
 

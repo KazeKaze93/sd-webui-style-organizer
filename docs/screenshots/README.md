@@ -4,13 +4,13 @@ Images in this folder are referenced from the root **`README.md`**. After UI cha
 
 ## When to refresh (current UI)
 
-**Tiles no longer show a favorite star** — favorites are only toggled from the **style card context menu** (right‑click → Add/Remove Favorites). Any screenshot that still shows `★` on cards is outdated.
+Favorites are toggled from the **style card context menu** (not a star on the tile). Re-shoot when the chrome in the table no longer matches the live panel.
 
 | Priority | File | What to capture |
 |----------|------|-----------------|
-| 1 | `browse-and-filter.png` | Main grid + sidebar + source dropdown — cards **without** stars. |
+| 1 | `browse-and-filter.png` | Main grid + sidebar + source dropdown. |
 | 2 | `apply-and-reorder.png` | Selected styles + bottom bar with chips. |
-| 3 | `favorites-in-category.png` | A normal category view; cards have **no** stars (favorites are in the sidebar filter / context menu only). |
+| 3 | `favorites-in-category.png` | A normal category view (favorites via sidebar / context menu only). |
 | 4 | `favorites-view.png` | **Favorites** selected in the sidebar; grid of favorited styles. |
 | 5 | `recent-styles.png` | **Recent** in the sidebar. |
 | 6 | `img2img-support.png` | Style Grid open on **img2img** tab (if layout differs from txt2img). |
@@ -19,8 +19,10 @@ Images in this folder are referenced from the root **`README.md`**. After UI cha
 | 9 | `fullscreen-mode.png` | Fullscreen toggle result — edge‑to‑edge panel. |
 | 10 | `lora-view.png` | **🧬 LoRA** selected in the sidebar; grid grouped by LoRA sub-folder with `display_name` titles (and 🌐 in the top bar when in this view). |
 | 11 | `lora-fetch-titles.png` | Hover tooltip on the **🌐** “Fetch LoRA titles from CivitAI” toolbar button (LoRA view only). |
+| 12 | `slice-selection-mode.png` | Slice mode bar + per-card checkboxes. |
+| 13 | `wildcard-slice-chips.png` | Wildcard chips including a slice chip label. |
 
-**Usually still valid** (no stars on tiles): `style-card-context-menu.png` (re-shoot if **Remove preview image** is missing from the capture), `category-context-wildcard-previews*.png`, `top-bar-icons.png` — re-shoot only if those UIs change.
+`style-card-context-menu.png`, `category-context-wildcard-previews.png`, `top-bar-icons.png` — re-shoot only when those UIs change. Orphan/`cards-star-alignment.png` is not referenced by `README.md`.
 
 ---
 

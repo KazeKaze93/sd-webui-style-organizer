@@ -9,8 +9,7 @@ import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
-import { StyleInfoPanel } from './components/StyleInfoPanel'
-import { SelectedBar } from './components/SelectedBar'
+import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
 import { Toast } from './components/Toast'
 import {
@@ -20,6 +19,8 @@ import {
   TooltipTrigger,
 } from './components/ui/tooltip'
 import { cn } from './lib/utils'
+
+const WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
 const ToolBtn = ({
   icon: Icon,
@@ -213,13 +214,18 @@ export default function App() {
     if (!wrapper) return
 
     if (isFullscreen) {
-      // Windowed mode (master-like): centered and readable
-      wrapper.style.top = '80px'
-      wrapper.style.right = '16px'
+      let saved: { top?: string; right?: string; width?: string; height?: string } = {}
+      try {
+        const raw = localStorage.getItem(WINDOWED_SIZE_KEY)
+        if (raw) saved = JSON.parse(raw)
+      } catch { /* ignore malformed/unavailable storage */ }
+
+      wrapper.style.top = saved.top || '80px'
+      wrapper.style.right = saved.right || '16px'
       wrapper.style.left = 'auto'
       wrapper.style.transform = 'none'
-      wrapper.style.width = '1000px'
-      wrapper.style.height = '650px'
+      wrapper.style.width = saved.width || '1000px'
+      wrapper.style.height = saved.height || '650px'
       wrapper.style.minWidth = '600px'
       wrapper.style.minHeight = '400px'
       wrapper.style.maxWidth = '95vw'
@@ -230,6 +236,15 @@ export default function App() {
       setIsFullscreen(false)
       return
     }
+
+    try {
+      localStorage.setItem(WINDOWED_SIZE_KEY, JSON.stringify({
+        top: wrapper.style.top,
+        right: wrapper.style.right,
+        width: wrapper.style.width,
+        height: wrapper.style.height,
+      }))
+    } catch { /* ignore storage unavailable */ }
 
     // Fullscreen mode
     wrapper.style.top = '0'
@@ -444,8 +459,7 @@ export default function App() {
 
       {/* Bottom panels — fixed height */}
       <div className="shrink-0">
-        <StyleInfoPanel />
-        <SelectedBar />
+        <BottomPanel />
       </div>
       <ThumbProgressModal />
       <Toast />

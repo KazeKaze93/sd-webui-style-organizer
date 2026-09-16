@@ -23,7 +23,7 @@ export function PresetList() {
         <p className="text-sg-muted text-sm">No saved sets yet</p>
         <p className="max-w-sm text-sg-muted/70 text-xs leading-relaxed">
           Select styles, then use <span className="text-sg-text/90">Save set</span> in the
-          selection bar. Replace clears the current selection; Add merges.
+          selection bar. Apply merges a set into your current selection.
         </p>
       </div>
     )

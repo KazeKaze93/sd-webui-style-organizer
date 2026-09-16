@@ -2,7 +2,7 @@ import { startTransition, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Reorder } from 'framer-motion'
 import { BookMarked } from 'lucide-react'
-import { onHostMessage, sendToHost } from '../bridge'
+import { sendToHost } from '../bridge'
 import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -37,12 +37,6 @@ export function Sidebar() {
 
   useEffect(() => {
     void useStylesStore.getState().fetchPresets()
-    const unsub = onHostMessage((msg) => {
-      if (msg.type === 'SG_PRESETS_UPDATED') {
-        void useStylesStore.getState().fetchPresets()
-      }
-    })
-    return unsub
   }, [])
 
   const count = (cat: string | null) => {

@@ -6,11 +6,9 @@ import { styleRowKey, useStylesStore } from '../store/stylesStore'
 interface Props {
   style: Style
   children: React.ReactNode
-  /** When set, skip hover thumbnail popup; render children only. */
-  presetName?: string
 }
 
-export function ThumbnailPreview({ style, children, presetName }: Props) {
+export function ThumbnailPreview({ style, children }: Props) {
   /**
    * Delays preview open (300ms) to reduce flicker during fast cursor travel,
    * and falls back to text-only popup if thumbnail image fails to load.
@@ -77,10 +75,6 @@ export function ThumbnailPreview({ style, children, presetName }: Props) {
     })
     return unsub
   }, [style.name, style.source_file, thumbVersionLsKey])
-
-  if (presetName) {
-    return <>{children}</>
-  }
 
   return (
     <div

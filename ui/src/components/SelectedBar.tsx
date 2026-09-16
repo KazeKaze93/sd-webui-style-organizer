@@ -21,11 +21,10 @@ export function SelectedBar() {
     const want = category.toLowerCase()
     return styles
       .filter((s) => {
-        if (want === 'lora') {
-          if (s.source_file !== LORA_SOURCE) return false
-        } else if ((s.category || 'OTHER').toLowerCase() !== want) return false
-        if (activeSource && s.source_file !== activeSource) return false
-        return true
+          if (want === 'lora') return s.source_file === LORA_SOURCE
+          if ((s.category || 'OTHER').toLowerCase() !== want) return false
+          if (activeSource && s.source_file !== activeSource) return false
+          return true
       })
       .map((s) => s.name)
   }

@@ -150,17 +150,6 @@ export function resolvePresetMembers(
   })
 }
 
-function presetEntryDedupeKey(entry: PresetStyleEntry): string | null {
-  if (typeof entry === 'string') {
-    return entry || null
-  }
-  if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
-    return null
-  }
-  const source = typeof entry.source_file === 'string' ? entry.source_file : ''
-  return source ? styleRowKey({ name: entry.name, source_file: source }) : entry.name
-}
-
 /** Safe localStorage JSON array read — never throws on corrupt data. */
 function loadStringArrayFromLs(key: string): string[] {
   try {
@@ -374,23 +363,6 @@ export function selectFilteredStyles(
   if (activeCategory === '🕑 Recent') {
     return recentNames
       .map((key) => styles.find((s) => styleRowKey(s) === key && bySource(s)))
-      .filter(Boolean)
-      .filter(s => matchesSearch(s as Style, search)) as Style[]
-  }
-
-  if (activeCategory === 'presets') {
-    const order: PresetStyleEntry[] = []
-    const seen = new Set<string>()
-    for (const key of Object.keys(presets).sort()) {
-      for (const entry of presets[key]?.styles ?? []) {
-        const dedupe = presetEntryDedupeKey(entry)
-        if (!dedupe || seen.has(dedupe)) continue
-        seen.add(dedupe)
-        order.push(entry)
-      }
-    }
-    return order
-      .map((entry) => resolvePresetStyleEntry(entry, styles, bySource))
       .filter(Boolean)
       .filter(s => matchesSearch(s as Style, search)) as Style[]
   }

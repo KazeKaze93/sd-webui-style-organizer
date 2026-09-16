@@ -350,7 +350,6 @@ export function selectFilteredStyles(
   activeSource: string | null,
   favorites: Set<string>,
   recentNames: string[],
-  presets: Record<string, PresetRecord>,
 ): Style[] {
   const bySource = (s: Style) => !activeSource || s.source_file === activeSource
 

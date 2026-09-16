@@ -792,6 +792,17 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       } else {
         await get().fetchPresets()
       }
+      const nextContributors = { ...get().styleContributors }
+      for (const entry of styles) {
+        const key = presetEntryName(entry)
+        if (!key) continue
+        const existing = nextContributors[key] ?? new Set<string>()
+        const next = new Set(existing)
+        next.delete('manual')
+        next.add(name)
+        nextContributors[key] = next
+      }
+      set({ styleContributors: nextContributors })
       return { ok: true as const }
     } catch {
       return { ok: false as const }

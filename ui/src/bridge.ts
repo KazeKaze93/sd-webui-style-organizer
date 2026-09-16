@@ -30,9 +30,6 @@ export type FrameMessage =
   | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
   | { type: 'SG_DELETE_STYLE';  styleId: string }
   | { type: 'SG_CLOSE_REQUEST' }
-  // Phase B: React orchestrates replace/add via SG_CLEAR_ALL + SG_APPLY + wildcard
-  // messages (host owns prompt). Kept for Phase C host-modal cleanup — do not extend.
-  | { type: 'SG_LOAD_PRESET'; name: string }
   | { type: 'SG_BACKUP' }
   | { type: 'SG_IMPORT_EXPORT' }
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }

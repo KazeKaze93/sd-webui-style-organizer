@@ -1574,42 +1574,6 @@
     }
 
     // -----------------------------------------------------------------------
-    // Presets UI
-    // -----------------------------------------------------------------------
-    function loadPreset(tabName, presetName) {
-        var p = (state[tabName].presets || {})[presetName];
-        if (!p) return;
-        var sgFrame = document.getElementById("sg-frame-" + tabName);
-        const presetStyles = p.styles || [];
-        presetStyles.forEach(function (entry) {
-            var styleName;
-            var styleObj;
-            if (entry && typeof entry === "object") {
-                styleName = entry.name;
-                styleObj = findStyleByNameAndSource(tabName, styleName, entry.source_file || "");
-            } else {
-                styleName = entry;
-                styleObj = findStyleByName(tabName, styleName);
-            }
-            if (!styleName) return;
-            if (state[tabName].selected.has(styleName)) return;
-            state[tabName].selected.add(styleName);
-            state[tabName].selectedOrder.push(styleName);
-            if (styleObj && styleObj.source_file) {
-                applyStyleImmediate(tabName, styleName, { source_file: styleObj.source_file });
-            } else {
-                applyStyleImmediate(tabName, styleName);
-            }
-            if (sgFrame && sgFrame.contentWindow) {
-                if (styleObj) {
-                    sgFrame.contentWindow.postMessage({ type: "SG_STYLE_APPLIED", style: styleObj }, "*");
-                }
-            }
-        });
-        syncSelectionChrome(tabName);
-    }
-
-    // -----------------------------------------------------------------------
     // Import/Export
     // -----------------------------------------------------------------------
     function showExportImport(tabName) {
@@ -2609,21 +2573,6 @@
             }
             if (msg.type === "SG_CLEAR_ALL") {
                 clearAll(tab);
-            }
-            if (msg.type === "SG_LOAD_PRESET") {
-                var presetName = msg.name;
-                var tabName = tab;
-                var existing = (state[tabName].presets || {})[presetName];
-                if (existing) {
-                    loadPreset(tabName, presetName);
-                } else {
-                    fetch('/style_grid/presets/list')
-                        .then(function(r) { return r.json(); })
-                        .then(function(data) {
-                            state[tabName].presets = data || {};
-                            loadPreset(tabName, presetName);
-                        });
-                }
             }
             if (msg.type === "SG_IMPORT_EXPORT") {
                 showExportImport(tab);

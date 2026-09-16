@@ -12,6 +12,8 @@ export interface SaveSetDialogProps {
 export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
   const selectedStyles = useStylesStore((s) => s.selectedStyles)
   const activeWildcards = useStylesStore((s) => s.activeWildcards)
+  const activePresetName = useStylesStore((s) => s.activePresetName)
+  const presets = useStylesStore((s) => s.presets)
   const savePreset = useStylesStore((s) => s.savePreset)
   const showToast = useStylesStore((s) => s.showToast)
 
@@ -30,14 +32,15 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
       setExistsWarning(false)
       return
     }
-    setName(suggestPresetName(selectedStyles))
-    setNote('')
+    const activePreset = activePresetName ? presets[activePresetName] : undefined
+    setName(activePresetName || suggestPresetName(selectedStyles))
+    setNote(activePreset?.note ?? '')
     setIncludeWildcards(hasWildcards)
     setExistsWarning(false)
     setIsSubmitting(false)
     const id = requestAnimationFrame(() => inputRef.current?.focus())
     return () => cancelAnimationFrame(id)
-  }, [open, selectedStyles, hasWildcards])
+  }, [open, selectedStyles, hasWildcards, activePresetName, presets])
 
   useEffect(() => {
     if (!open) return

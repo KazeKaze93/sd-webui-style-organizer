@@ -339,8 +339,9 @@ interface StylesStore {
   ) => Promise<{ ok: true } | { ok: false; error?: string }>
   touchPreset: (name: string) => Promise<void>
   /**
-   * Phase B load path (Option B): React orchestrates SG_CLEAR_ALL + SG_APPLY +
-   * wildcard messages. Host owns prompt/selection; do not extend SG_LOAD_PRESET.
+   * React orchestrates clear + apply + wildcard messages directly
+   * (SG_CLEAR_ALL / SG_APPLY / SG_WILDCARD_*). The host no longer has its
+   * own preset-loading path.
    */
   loadPreset: (name: string, mode: 'replace' | 'add') => void
   
@@ -857,8 +858,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       // ignore
     }
   },
-  // Option B: React-orchestrated clear + apply (host owns prompt via SG_*).
-  // SG_LOAD_PRESET only merges host-cached styles and ignores wildcards/replace.
+  // React-orchestrated clear + apply (host owns prompt via SG_APPLY/SG_CLEAR_ALL).
   loadPreset: (name, mode) => {
     const preset = get().presets[name]
     if (!preset) return

@@ -69,8 +69,8 @@ export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
   return `${s.source_file}\0${s.name}`
 }
 
-/** Preset style ref: legacy bare name, or backend-normalized {name, source_file}. */
-export type PresetStyleEntry = string | { name: string; source_file?: string }
+/** Preset style ref: legacy bare name, or backend-normalized {name, source_file, weight?}. */
+export type PresetStyleEntry = string | { name: string; source_file?: string; weight?: number }
 
 type StyleIdentity = Pick<Style, 'name' | 'source_file'>
 
@@ -226,7 +226,7 @@ interface StylesStore {
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
   /** Saved style presets from backend (`/style_grid/presets` / list API). */
-  presets: Record<string, { styles: PresetStyleEntry[]; created: string }>
+  presets: Record<string, { styles: PresetStyleEntry[]; created: string; wildcards?: { category: string; spec: string }[]; note?: string; last_used?: string }>
   
   // Actions
   setStyles: (styles: Style[], tab: Tab) => void
@@ -276,7 +276,7 @@ export function selectFilteredStyles(
   activeSource: string | null,
   favorites: Set<string>,
   recentNames: string[],
-  presets: Record<string, { styles: PresetStyleEntry[]; created: string }>,
+  presets: Record<string, { styles: PresetStyleEntry[]; created: string; wildcards?: { category: string; spec: string }[]; note?: string; last_used?: string }>,
 ): Style[] {
   const bySource = (s: Style) => !activeSource || s.source_file === activeSource
 

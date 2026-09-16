@@ -46,6 +46,7 @@ from stylegrid.data_files import (
     load_presets,
     load_usage,
     migrate_usage_on_rename,
+    preset_styles_payload_ok,
     save_presets,
 )
 from stylegrid.lora_scan import (
@@ -272,14 +273,38 @@ def _register_preset_routes(app):
         presets = load_presets()
         name = data.get("name", "").strip()
         styles = data.get("styles", [])
+        wildcards = data.get("wildcards", [])
+        note = data.get("note", "")
         overwrite = bool(data.get("overwrite"))
         if not name:
             return {"error": "Name required"}
+        if not preset_styles_payload_ok(styles):
+            return {"error": "styles must be a list of names or {name, source_file?, weight?}"}
+        if wildcards is None:
+            wildcards = []
+        if not isinstance(wildcards, list):
+            return {"error": "wildcards must be a list"}
+        if not isinstance(note, str):
+            note = ""
         if name in presets and not overwrite:
             return {"error": "exists", "name": name}
-        presets[name] = {"styles": styles, "created": time.strftime("%Y-%m-%dT%H:%M:%S")}
-        save_presets(presets)
-        return {"ok": True, "presets": presets}
+        prev = presets.get(name) if isinstance(presets.get(name), dict) else None
+        created = (
+            prev["created"]
+            if prev and isinstance(prev.get("created"), str) and prev.get("created")
+            else time.strftime("%Y-%m-%dT%H:%M:%S")
+        )
+        entry = {
+            "styles": styles,
+            "wildcards": wildcards,
+            "note": note,
+            "created": created,
+        }
+        if prev and isinstance(prev.get("last_used"), str) and prev.get("last_used"):
+            entry["last_used"] = prev["last_used"]
+        presets[name] = entry
+        saved = save_presets(presets)
+        return {"ok": True, "presets": saved}
 
     @app.post("/style_grid/presets/delete")
     async def api_delete_preset(data: dict):
@@ -287,8 +312,38 @@ def _register_preset_routes(app):
         name = data.get("name", "")
         if name in presets:
             del presets[name]
-            save_presets(presets)
+            saved = save_presets(presets)
+            return {"ok": True, "presets": saved}
         return {"ok": True, "presets": presets}
+
+    @app.post("/style_grid/presets/rename")
+    async def api_rename_preset(data: dict):
+        old_name = (data.get("old_name") or "").strip()
+        new_name = (data.get("new_name") or "").strip()
+        overwrite = bool(data.get("overwrite"))
+        if not old_name or not new_name:
+            return {"error": "Name required"}
+        presets = load_presets()
+        if old_name not in presets:
+            return {"error": "not_found", "name": old_name}
+        if new_name != old_name and new_name in presets and not overwrite:
+            return {"error": "exists", "name": new_name}
+        entry = presets.pop(old_name)
+        presets[new_name] = entry
+        saved = save_presets(presets)
+        return {"ok": True, "presets": saved}
+
+    @app.post("/style_grid/presets/touch")
+    async def api_touch_preset(data: dict):
+        name = (data.get("name") or "").strip()
+        if not name:
+            return {"error": "Name required"}
+        presets = load_presets()
+        if name not in presets:
+            return {"error": "not_found", "name": name}
+        presets[name]["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+        saved = save_presets(presets)
+        return {"ok": True, "presets": saved}
 
     @app.get("/style_grid/presets/list")
     async def api_list_presets():

@@ -508,25 +508,27 @@ def test_post_rename_rewrites_preset_member_with_basename_source(
         f"member source_file={abs_sf!r}."
     )
     assert alpha[0]["source_file"] == abs_sf
-    assert alpha[1] == {"name": "Test Style A", "source_file": abs_sf}
+    assert alpha[0]["weight"] == 1.0
+    assert alpha[1] == {"name": "Test Style A", "source_file": abs_sf, "weight": 1.0}
 
     assert loaded["Beta"]["styles"] == [
-        {"name": "Style With Spaces", "source_file": abs_sf},
+        {"name": "Style With Spaces", "source_file": abs_sf, "weight": 1.0},
     ]
     assert loaded["Gamma"]["styles"] == [
-        {"name": "Test Style B", "source_file": other_sf},
+        {"name": "Test Style B", "source_file": other_sf, "weight": 1.0},
     ]
 
 
-def test_post_rename_no_preset_refs_does_not_rewrite_file(
+def test_post_rename_no_preset_refs_does_not_change_members(
     style_grid_client, tmp_csv, tmp_path, monkeypatch
 ):
     from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
     from stylegrid import routes as sg_routes
 
     monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
-    presets_path = _seed_presets_file(
+    _seed_presets_file(
         monkeypatch,
         tmp_path,
         {
@@ -537,7 +539,6 @@ def test_post_rename_no_preset_refs_does_not_rewrite_file(
             }
         },
     )
-    before = presets_path.read_bytes()
 
     r = style_grid_client.post(
         "/style_grid/style/rename",
@@ -549,7 +550,10 @@ def test_post_rename_no_preset_refs_does_not_rewrite_file(
     )
     assert r.status_code == 200
     assert r.json().get("ok") is True
-    assert presets_path.read_bytes() == before
+    loaded = sg_data.load_presets()
+    assert loaded["OnlyOther"]["styles"] == [
+        {"name": "Test Style A", "source_file": abs_sf, "weight": 1.0},
+    ]
 
 
 def test_post_rename_ok_when_preset_save_fails(
@@ -748,3 +752,170 @@ def test_post_rename_ok_when_usage_save_fails(
     names = [s["name"] for s in csv_io.parse_styles_csv(str(tmp_csv))]
     assert "Renamed Despite Usage Fail" in names
     assert "Test Style B" not in names
+
+
+# --- Presets schema / overwrite / rename / touch (Phase A) ---
+
+
+def test_load_presets_keeps_unresolved_bare_name(tmp_csv, tmp_path, monkeypatch):
+    import json
+
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+
+    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    path = tmp_path / "presets.json"
+    path.write_text(
+        json.dumps(
+            {
+                "Ghost": {
+                    "styles": ["Test Style A", "Missing Style X"],
+                    "created": "2026-01-01T00:00:00",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sg_data, "PRESETS_FILE", str(path))
+
+    loaded = sg_data.load_presets()
+    names = [e["name"] for e in loaded["Ghost"]["styles"]]
+    assert names == ["Test Style A", "Missing Style X"]
+    ghost = loaded["Ghost"]
+    assert ghost["wildcards"] == []
+    assert ghost["note"] == ""
+    assert all("weight" in e for e in ghost["styles"])
+    missing = next(e for e in ghost["styles"] if e["name"] == "Missing Style X")
+    assert missing["source_file"] == ""
+    # First load rewrites extended shape to disk.
+    disk = json.loads(path.read_text(encoding="utf-8"))
+    assert "wildcards" in disk["Ghost"]
+    assert disk["Ghost"]["styles"][1]["name"] == "Missing Style X"
+
+
+def test_presets_save_exists_without_overwrite(style_grid_client, tmp_csv, tmp_path, monkeypatch):
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    abs_sf = csv_io.normalize_source_path(str(tmp_csv))
+    _seed_presets_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Warrior": {
+                "styles": [{"name": "Test Style A", "source_file": abs_sf}],
+                "created": "2026-01-01T00:00:00",
+                "wildcards": [],
+                "note": "old",
+            }
+        },
+    )
+
+    r = style_grid_client.post(
+        "/style_grid/presets/save",
+        json={"name": "Warrior", "styles": [{"name": "Test Style B", "source_file": abs_sf}]},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("error") == "exists"
+    assert body.get("name") == "Warrior"
+    loaded = sg_data.load_presets()
+    assert loaded["Warrior"]["note"] == "old"
+    assert loaded["Warrior"]["styles"][0]["name"] == "Test Style A"
+
+
+def test_presets_save_overwrite_preserves_created(style_grid_client, tmp_csv, tmp_path, monkeypatch):
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    abs_sf = csv_io.normalize_source_path(str(tmp_csv))
+    _seed_presets_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Warrior": {
+                "styles": [{"name": "Test Style A", "source_file": abs_sf}],
+                "created": "2026-01-01T00:00:00",
+                "wildcards": [],
+                "note": "old",
+            }
+        },
+    )
+
+    r = style_grid_client.post(
+        "/style_grid/presets/save",
+        json={
+            "name": "Warrior",
+            "styles": [{"name": "Test Style B", "source_file": abs_sf}],
+            "wildcards": [{"category": "POSE", "spec": ""}],
+            "note": "new note",
+            "overwrite": True,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body.get("ok") is True
+    warrior = body["presets"]["Warrior"]
+    assert warrior["created"] == "2026-01-01T00:00:00"
+    assert warrior["note"] == "new note"
+    assert warrior["wildcards"] == [{"category": "POSE", "spec": ""}]
+    assert warrior["styles"][0]["name"] == "Test Style B"
+    assert warrior["styles"][0]["weight"] == 1.0
+
+
+def test_presets_rename_and_touch(style_grid_client, tmp_csv, tmp_path, monkeypatch):
+    from stylegrid import csv_io
+    from stylegrid import data_files as sg_data
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    abs_sf = csv_io.normalize_source_path(str(tmp_csv))
+    _seed_presets_file(
+        monkeypatch,
+        tmp_path,
+        {
+            "Old": {
+                "styles": [{"name": "Test Style A", "source_file": abs_sf, "weight": 1.0}],
+                "created": "2026-01-01T00:00:00",
+                "wildcards": [],
+                "note": "",
+            },
+            "Taken": {
+                "styles": [{"name": "Test Style B", "source_file": abs_sf, "weight": 1.0}],
+                "created": "2026-01-02T00:00:00",
+                "wildcards": [],
+                "note": "",
+            },
+        },
+    )
+
+    r = style_grid_client.post(
+        "/style_grid/presets/rename",
+        json={"old_name": "Old", "new_name": "New"},
+    )
+    assert r.status_code == 200
+    assert r.json().get("ok") is True
+    assert "New" in r.json()["presets"]
+    assert "Old" not in r.json()["presets"]
+
+    r2 = style_grid_client.post(
+        "/style_grid/presets/rename",
+        json={"old_name": "New", "new_name": "Taken"},
+    )
+    assert r2.json().get("error") == "exists"
+
+    r3 = style_grid_client.post(
+        "/style_grid/presets/touch",
+        json={"name": "New"},
+    )
+    assert r3.status_code == 200
+    assert r3.json().get("ok") is True
+    assert isinstance(r3.json()["presets"]["New"].get("last_used"), str)
+    assert r3.json()["presets"]["New"]["last_used"]

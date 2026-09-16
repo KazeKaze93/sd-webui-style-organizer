@@ -228,10 +228,28 @@ Conflict item fields:
 
 ## Presets
 
+Canonical on-disk / API shape (normalized on load; legacy bare-name style entries and missing fields are upgraded):
+
+```json
+{
+  "Warrior": {
+    "styles": [
+      { "name": "Style_A", "source_file": "/abs/path/pack.csv", "weight": 1.0 }
+    ],
+    "wildcards": [{ "category": "POSE", "spec": "" }],
+    "note": "",
+    "created": "2026-01-01T12:00:00",
+    "last_used": "2026-03-01T09:00:00"
+  }
+}
+```
+
+Defaults when absent: `wildcards: []`, `note: ""`, `weight: 1.0`. Unresolvable style names are **kept** (empty `source_file`) so clients can show missing members. First load after upgrade rewrites `data/presets.json` when the file is still in a legacy shape.
+
 ## GET /presets
 
 **Method:** GET  
-**Description:** Returns all saved presets. On load, style entries are **normalized in memory** to `{name, source_file}` (legacy bare-name strings resolve via first match in `load_all_styles`). Disk is rewritten only when `save_presets` runs.
+**Description:** Returns all saved presets, normalized to the canonical shape above.
 
 **Parameters:**
 
@@ -252,26 +270,36 @@ Conflict item fields:
 Preset object fields:
 
 
-| field     | type          | description |
-| --------- | ------------- | ----------- |
-| `styles`  | array[object] | Selected styles as `{ "name", "source_file" }` (dual-format; bare strings accepted on write and normalized on next load). |
-| `created` | string        | Timestamp (`YYYY-MM-DDTHH:MM:SS`). |
+| field       | type          | description |
+| ----------- | ------------- | ----------- |
+| `styles`    | array[object] | `{ "name", "source_file", "weight" }` (legacy bare strings accepted on write / import and normalized). |
+| `wildcards` | array[object] | `{ "category", "spec" }` (default `[]`). |
+| `note`      | string        | Freeform note (default `""`). |
+| `created`   | string        | Timestamp (`YYYY-MM-DDTHH:MM:SS`); preserved on overwrite. |
+| `last_used` | string        | Optional; set by `POST /presets/touch`. |
 
 
 **Error cases:** None explicitly returned as `{error}`.
 
+## GET /presets/list
+
+Same payload as **GET /presets** (normalized map).
+
 ## POST /presets/save
 
 **Method:** POST  
-**Description:** Saves or updates a preset name with a style list.
+**Description:** Creates a preset, or updates it when `overwrite` is true. Without `overwrite`, an existing name returns `{ "error": "exists" }` (no silent clobber).
 
 **Parameters:**
 
 
-| name     | in   | required | type                     | description |
-| -------- | ---- | -------- | ------------------------ | ----------- |
-| `name`   | body | Yes      | string                   | Preset name (trimmed). |
-| `styles` | body | No       | array[string \| object] | Styles list (bare names and/or `{name, source_file}`). |
+| name        | in   | required | type                     | description |
+| ----------- | ---- | -------- | ------------------------ | ----------- |
+| `name`      | body | Yes      | string                   | Preset name (trimmed). |
+| `styles`    | body | No       | array[string \| object] | Bare names and/or `{name, source_file?, weight?}`. |
+| `wildcards` | body | No       | array[object]            | `{category, spec}` list. |
+| `note`      | body | No       | string                   | Freeform note. |
+| `overwrite` | body | No       | boolean                  | Required true to replace an existing name. |
 
 
 **Response:**
@@ -288,9 +316,11 @@ Success:
 **Error cases:**
 
 
-| case                 | response body                  |
-| -------------------- | ------------------------------ |
-| Missing/empty `name` | `{ "error": "Name required" }` |
+| case                          | response body                              |
+| ----------------------------- | ------------------------------------------ |
+| Missing/empty `name`          | `{ "error": "Name required" }`             |
+| Name exists, `overwrite` falsy | `{ "error": "exists", "name": "<name>" }` |
+| Invalid `styles` shape        | `{ "error": "styles must be a list of names or {name, source_file?, weight?}" }` |
 
 
 ## POST /presets/delete
@@ -316,6 +346,42 @@ Success:
 
 
 **Error cases:** None explicitly returned as `{error}`.
+
+## POST /presets/rename
+
+**Method:** POST  
+**Description:** Renames a preset. Target collision without `overwrite` returns `exists`.
+
+**Parameters:**
+
+
+| name        | in   | required | type    | description |
+| ----------- | ---- | -------- | ------- | ----------- |
+| `old_name`  | body | Yes      | string  | Existing preset name. |
+| `new_name`  | body | Yes      | string  | New preset name. |
+| `overwrite` | body | No       | boolean | Replace target if it already exists. |
+
+
+**Response:** `{ "ok": true, "presets": … }` on success.
+
+**Error cases:** `Name required`; `{ "error": "not_found", "name" }`; `{ "error": "exists", "name" }`.
+
+## POST /presets/touch
+
+**Method:** POST  
+**Description:** Sets `last_used` on an existing preset to now.
+
+**Parameters:**
+
+
+| name   | in   | required | type   | description |
+| ------ | ---- | -------- | ------ | ----------- |
+| `name` | body | Yes      | string | Preset name. |
+
+
+**Response:** `{ "ok": true, "presets": … }` on success.
+
+**Error cases:** `Name required`; `{ "error": "not_found", "name" }`.
 
 ## Thumbnails
 

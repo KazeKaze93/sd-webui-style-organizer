@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
 import { useStylesStore } from '../store/stylesStore'
 import { ComboChips } from './ComboChips'
-import { motion, AnimatePresence } from 'framer-motion'
 
 export function StyleInfoPanel() {
   const { selectedStyles, styles } = useStylesStore()
@@ -39,29 +38,20 @@ export function StyleInfoPanel() {
   }
 
   return (
-    <AnimatePresence>
-      <motion.div
-        initial={{ height: 0, opacity: 0 }}
-        animate={{ height: 'auto', opacity: 1 }}
-        exit={{ height: 0, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="border-t border-sg-border bg-sg-surface/30 
-                   px-4 py-2 overflow-hidden"
-      >
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="text-sm font-semibold text-white">
-              {displayName}
-            </div>
-            {resolvedStyle.description && !resolvedStyle.description.includes('Combos:') && (
-              <div className="text-xs text-sg-muted mt-0.5 line-clamp-2">
-                {resolvedStyle.description.replace(/Combos?:[^.]+\.?/i, '').trim()}
-              </div>
-            )}
-            <ComboChips style={resolvedStyle} onBeforeToggle={handlePin} />
+    <div className="px-4 py-2">
+      <div className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold text-white">
+            {displayName}
           </div>
+          {resolvedStyle.description && !resolvedStyle.description.includes('Combos:') && (
+            <div className="text-xs text-sg-muted mt-0.5 line-clamp-2">
+              {resolvedStyle.description.replace(/Combos?:[^.]+\.?/i, '').trim()}
+            </div>
+          )}
+          <ComboChips style={resolvedStyle} onBeforeToggle={handlePin} />
         </div>
-      </motion.div>
-    </AnimatePresence>
+      </div>
+    </div>
   )
 }

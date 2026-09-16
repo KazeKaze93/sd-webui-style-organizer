@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, type Style } from '../bridge'
@@ -15,6 +15,7 @@ import {
 import { StyleCard } from './StyleCard'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
+  const [loraCatMenu, setLoraCatMenu] = useState<{ x: number; y: number; cat: string } | null>(null)
   const {
     styles, search, activeCategory, activeSource,
     favorites, recentNames, presets,
@@ -60,27 +61,37 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   )
 
   /** Currently visible (search/filter-applied) cards for the slice category.
-   * LoRA bypasses sliceModeFiltered entirely — it has no CSV source, so the
-   * shared selectFilteredStyles source-scoping (correct for every other
-   * caller) must not apply here. */
+   * Aggregate "LoRA" bypasses CSV source-scoping (all LoRA files).
+   * LoRA *subfolder* categories also keep LoRA-sourced rows even when a CSV
+   * activeSource is set — otherwise slice mode opened from an in-grid LoRA
+   * header would show "No styles". CSV rows still respect activeSource. */
   const visibleSliceStyles = useMemo(() => {
     if (!sliceCategory) return [] as Style[]
     if (sliceCategory === 'LoRA') {
       return styles.filter(s => s.source_file === LORA_SOURCE && matchesSearch(s, search))
     }
     const want = sliceCategory.toLowerCase()
-    return sliceModeFiltered.filter(
+    const fromCsv = sliceModeFiltered.filter(
       (s) => (s.category || 'OTHER').toLowerCase() === want,
     )
+    const fromLora = styles.filter(
+      (s) =>
+        s.source_file === LORA_SOURCE &&
+        (s.category || 'OTHER').toLowerCase() === want &&
+        matchesSearch(s, search),
+    )
+    return fromCsv.length === 0 ? fromLora : fromCsv.concat(fromLora)
   }, [styles, search, sliceModeFiltered, sliceCategory])
 
-  /** Unfiltered category total for the compactor (source-scoped, not search-scoped). */
+  /** Unfiltered category total for the compactor (source-scoped, not search-scoped).
+   * LoRA-sourced rows matching the category skip activeSource (same reason as above). */
   const allNamesInCategory = useMemo(() => {
     if (!sliceCategory) return [] as string[]
     return styles
       .filter((s) => {
           if (sliceCategory === 'LoRA') return s.source_file === LORA_SOURCE
           if ((s.category || 'OTHER') !== sliceCategory) return false
+          if (s.source_file === LORA_SOURCE) return true
           if (activeSource && s.source_file !== activeSource) return false
           return true
       })
@@ -311,6 +322,15 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               className="flex items-center gap-2 mb-2 sticky top-0 
                             bg-sg-bg/95 backdrop-blur-sm py-1 z-10 cursor-pointer hover:bg-sg-surface/30 rounded-md transition-colors -mx-1 px-1"
               onClick={() => toggleCollapse(cat)}
+              onContextMenu={
+                activeCategory === LORA_VIEW
+                  ? (e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      setLoraCatMenu({ x: e.clientX, y: e.clientY, cat })
+                    }
+                  : undefined
+              }
             >
               <span className="text-sg-muted">
                 {isCollapsed ? '▶' : '▼'}
@@ -367,6 +387,37 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
           </div>
         )
       })}
+      {loraCatMenu && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setLoraCatMenu(null)} />
+          <div
+            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
+            style={{ left: loraCatMenu.x, top: loraCatMenu.y }}
+          >
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+              onClick={() => {
+                sendToHost({
+                  type: 'SG_WILDCARD_CATEGORY',
+                  category: loraCatMenu.cat,
+                })
+                setLoraCatMenu(null)
+              }}
+            >
+              🎲 Add category as wildcard
+            </button>
+            <button
+              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+              onClick={() => {
+                useStylesStore.getState().startSliceMode(loraCatMenu.cat)
+                setLoraCatMenu(null)
+              }}
+            >
+              🎲 Select styles for wildcard...
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

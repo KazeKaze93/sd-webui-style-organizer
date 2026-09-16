@@ -281,7 +281,7 @@ interface StylesStore {
   categoryOrder: string[]
   /** Saved style presets from backend (`/style_grid/presets` / list API). */
   presets: Record<string, PresetRecord>
-  /** Last preset loaded via Replace/Add; informational only (no click-to-unload). */
+  /** Last preset loaded via Apply; informational only (no click-to-unload). */
   activePresetName: string | null
   
   // Actions
@@ -339,11 +339,11 @@ interface StylesStore {
   ) => Promise<{ ok: true } | { ok: false; error?: string }>
   touchPreset: (name: string) => Promise<void>
   /**
-   * React orchestrates clear + apply + wildcard messages directly
-   * (SG_CLEAR_ALL / SG_APPLY / SG_WILDCARD_*). The host no longer has its
-   * own preset-loading path.
+   * Merge preset styles/wildcards into the current selection
+   * (SG_APPLY / SG_WILDCARD_*). The host no longer has its own
+   * preset-loading path. Toolbar Eraser still uses SG_CLEAR_ALL.
    */
-  loadPreset: (name: string, mode: 'replace' | 'add') => void
+  loadPreset: (name: string) => void
   
   // Derived
   categories: () => string[]
@@ -858,28 +858,18 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       // ignore
     }
   },
-  // React-orchestrated clear + apply (host owns prompt via SG_APPLY/SG_CLEAR_ALL).
-  loadPreset: (name, mode) => {
+  // React-orchestrated merge apply (host owns prompt via SG_APPLY / SG_WILDCARD_*).
+  loadPreset: (name) => {
     const preset = get().presets[name]
     if (!preset) return
     const { styles, showToast, incrementUsage, detectConflicts, addToRecent, silentMode } = get()
-
-    if (mode === 'replace') {
-      sendToHost({ type: 'SG_CLEAR_ALL' })
-      set({
-        selectedStyles: [],
-        conflicts: [],
-        activeWildcards: [],
-        activePresetName: null,
-      })
-    }
 
     const members = resolvePresetMembers(preset.styles ?? [], styles)
     const found = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
       m.status === 'found')
     const missing = members.filter((m) => m.status === 'missing')
 
-    const selected = mode === 'replace' ? [] : [...get().selectedStyles]
+    const selected = [...get().selectedStyles]
     const selectedNames = new Set(selected.map((s) => s.name))
     for (const m of found) {
       if (selectedNames.has(m.style.name)) continue
@@ -899,7 +889,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({ selectedStyles: selected, activePresetName: name })
     detectConflicts()
 
-    const activeWc = mode === 'replace' ? [] : [...get().activeWildcards]
+    const activeWc = [...get().activeWildcards]
     const wcKey = (c: string, s: string) =>
       `${String(c || '').toLowerCase()}\0${String(s || '').toLowerCase()}`
     const activeWcKeys = new Set(activeWc.map((w) => wcKey(w.category, w.spec)))
@@ -907,7 +897,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       const cat = String(wc.category || '')
       if (!cat) continue
       const spec = String(wc.spec || '')
-      if (mode === 'add' && activeWcKeys.has(wcKey(cat, spec))) continue
+      if (activeWcKeys.has(wcKey(cat, spec))) continue
       activeWcKeys.add(wcKey(cat, spec))
       if (spec) {
         sendToHost({ type: 'SG_WILDCARD_SLICE', category: cat, spec })

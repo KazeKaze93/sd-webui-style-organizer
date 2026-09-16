@@ -88,6 +88,11 @@ export function Sidebar() {
           key={id}
           type="button"
           onClick={() => setCategory(activeCategory === id ? null : id)}
+          onContextMenu={id === LORA_VIEW ? (e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setCatMenu({ x: e.clientX, y: e.clientY, cat: 'LoRA' })
+          } : undefined}
           className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors
       ${activeCategory === id
         ? 'bg-sg-accent text-white'
@@ -201,23 +206,25 @@ export function Sidebar() {
             >
               🎲 Select styles for wildcard...
             </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                const rawSrc =
-                  useStylesStore.getState().activeSource ??
-                  (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
-                sendToHost({
-                  type: 'SG_GENERATE_CATEGORY_PREVIEWS',
-                  category: catMenu.cat,
-                  missingCount: 0,
-                  ...(rawSrc ? { source: rawSrc } : {}),
-                })
-                setCatMenu(null)
-              }}
-            >
-              🎨 Generate previews...
-            </button>
+            {catMenu.cat !== 'LoRA' && (
+              <button
+                className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+                onClick={() => {
+                  const rawSrc =
+                    useStylesStore.getState().activeSource ??
+                    (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
+                  sendToHost({
+                    type: 'SG_GENERATE_CATEGORY_PREVIEWS',
+                    category: catMenu.cat,
+                    missingCount: 0,
+                    ...(rawSrc ? { source: rawSrc } : {}),
+                  })
+                  setCatMenu(null)
+                }}
+              >
+                🎨 Generate previews...
+              </button>
+            )}
           </div>
         </>
       )}

@@ -16,6 +16,7 @@ from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR
 from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
 from stylegrid.data_files import increment_usage, load_presets, load_usage
+from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.routes import register_api
 from stylegrid.wildcards import resolve_sg_wildcards
 
@@ -104,6 +105,10 @@ class StyleGridScript(scripts.Script):
         for s in wildcard_pool:
             key = (s.get("category") or "").lower()
             styles_by_cat.setdefault(key, []).append(s)
+        # Reserved {sg:LoRA}: aggregate all LoRA styles by source marker.
+        lora_styles = [s for s in wildcard_pool if s.get("source_file") == LORA_SOURCE]
+        if lora_styles:
+            styles_by_cat["lora"] = lora_styles
 
         for i in range(len(p.all_prompts)):
             p.all_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))

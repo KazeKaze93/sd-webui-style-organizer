@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { startTransition, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Reorder } from 'framer-motion'
 import { BookMarked } from 'lucide-react'
@@ -60,7 +60,7 @@ export function Sidebar() {
     <div className="w-44 shrink-0 flex flex-col gap-1 pr-2">
       <button
         type="button"
-        onClick={() => setCategory(null)}
+        onClick={() => startTransition(() => setCategory(null))}
         className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors relative overflow-hidden
           ${!activeCategory
             ? 'text-white'
@@ -87,7 +87,7 @@ export function Sidebar() {
         <button
           key={id}
           type="button"
-          onClick={() => setCategory(activeCategory === id ? null : id)}
+          onClick={() => startTransition(() => setCategory(activeCategory === id ? null : id))}
           onContextMenu={id === LORA_VIEW ? (e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -106,7 +106,7 @@ export function Sidebar() {
     })}
       <button
         type="button"
-        onClick={() => setCategory(activeCategory === 'presets' ? null : 'presets')}
+        onClick={() => startTransition(() => setCategory(activeCategory === 'presets' ? null : 'presets'))}
         className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors relative overflow-hidden
           ${activeCategory === 'presets'
             ? 'text-white'
@@ -148,7 +148,7 @@ export function Sidebar() {
               <button
                 type="button"
                 onPointerDown={e => e.stopPropagation()}
-                onClick={() => setCategory(activeCategory === cat ? null : cat)}
+                onClick={() => startTransition(() => setCategory(activeCategory === cat ? null : cat))}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()

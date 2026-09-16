@@ -33,7 +33,7 @@ export function SelectedBar() {
 
   return (
     <>
-      <div className="flex items-start gap-2 px-4 pt-2">
+      <div className="flex items-start gap-2 px-4 py-2">
         <div className="min-w-0 flex-1">
           {selectedStyles.length > 0 && (
             <Reorder.Group

@@ -17,34 +17,11 @@ from stylegrid.config import DATA_DIR
 from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
 from stylegrid.data_files import load_presets, load_usage
 from stylegrid.lora_scan import LORA_SOURCE
+from stylegrid.prompt_ops import dedup_prompt
 from stylegrid.routes import register_api
 from stylegrid.wildcards import resolve_sg_wildcards
 
 script_callbacks.on_app_started(register_api)
-
-
-def _dedup_prompt(prompt_str):
-    """Remove duplicate tags from a comma-separated prompt.
-    First occurrence wins. Weighted (tag:1.3) and plain tag are
-    treated as the same identity via normalized key. BREAK is kept
-    as-is and never deduplicated.
-    """
-    import re as _re
-    out = []
-    seen = {}
-    for seg in prompt_str.split(","):
-        s = seg.strip()
-        if not s:
-            continue
-        if s.upper() == "BREAK":
-            out.append(s)
-            continue
-        m = _re.match(r'^\((.+?):\d+\.?\d*\)$', s)
-        key = m.group(1).strip().lower() if m else s.lower()
-        if key not in seen:
-            seen[key] = True
-            out.append(s)
-    return ", ".join(out)
 
 
 class StyleGridScript(scripts.Script):
@@ -119,6 +96,6 @@ class StyleGridScript(scripts.Script):
             styles_by_cat["lora"] = lora_styles
 
         for i in range(len(p.all_prompts)):
-            p.all_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))
+            p.all_prompts[i] = dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))
         for i in range(len(p.all_negative_prompts)):
-            p.all_negative_prompts[i] = _dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat, field="negative_prompt"))
+            p.all_negative_prompts[i] = dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat, field="negative_prompt"))

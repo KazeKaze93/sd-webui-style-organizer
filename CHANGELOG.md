@@ -65,6 +65,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **V2 store (pre–PR #67):** restoring `activeSource` from persistence matches stored values against loaded sources via basename-aware `resolveSourceInList`. **PR #67:** `setStyles` always notifies the host via `SG_SOURCE_CHANGE` (including All Sources / empty) so Gradio clears stale paths; see **Changed** name+source / tab persistence above.
 
 ### Removed
+- **Silent mode (2026-09-19):** styles are now always applied to the visible prompt fields; usage tracking always fires on apply instead of being skipped and re-counted at generate time.
 - **CSV table editor:** removed the disabled 📋 control from the React and host toolbars, the host stub / `SG_CSV_EDITOR` toast path, the bridge message type, and related CSS. Edit styles via the per-style editor or CSV on disk.
 - **In-grid category context menu (PR #75):** duplicate category-header context menu removed from the React grid. The sidebar category menu is now the only entry point; its **Generate previews…** item no longer reports a missing-preview count.
 - **V2 style cards:** inline favorite star control removed from tiles — add/remove **Favorites** only via the **style card context menu** (right‑click), reducing clutter and freeing space for labels.

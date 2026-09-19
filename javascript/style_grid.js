@@ -1,6 +1,6 @@
 /**
  * Style Grid - Visual grid/gallery style selector for Forge WebUI
- * v2.0 — Full-featured: silent mode, dynamic apply, presets,
+ * v2.0 — Full-featured: dynamic apply, presets,
  * conflict detection, context menu, inline editor, etc.
  * v2.0.1 — thumb cache (localStorage), popup 253x184, no remove-preview in menu
  */
@@ -25,7 +25,6 @@
             selectedSourceFile: null,
             usage: {},
             presets: {},
-            silentMode: false,
             userPromptBase: "",
             userPromptBaseNeg: "",
             appliedNestOrder: [],
@@ -67,21 +66,6 @@
             const d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}");
             d[t] = v;
             localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d));
-        } catch (_) { }
-    }
-    function getSilentMode(t) {
-        try {
-            const d = JSON.parse(localStorage.getItem("sg_silent") || "{}");
-            return !!d[t];
-        } catch (_) {
-            return false;
-        }
-    }
-    function setSilentMode(t, v) {
-        try {
-            const d = JSON.parse(localStorage.getItem("sg_silent") || "{}");
-            d[t] = v;
-            localStorage.setItem("sg_silent", JSON.stringify(d));
         } catch (_) { }
     }
 
@@ -210,28 +194,6 @@
             if (f) return f;
         }
         return findStyleByName(t, name);
-    }
-    /** Map selected styles → {name, source_file}[] for presets / silent Gradio.
-     * Prefer selectedOrder (apply order); skip order entries not in selected;
-     * append any selected names missing from order (same reconcile as syncSelectionChrome). */
-    function selectedAsNameSourceEntries(tabName) {
-        var selected = state[tabName].selected;
-        var order = (state[tabName].selectedOrder || []).filter(function (n) {
-            return selected.has(n);
-        });
-        selected.forEach(function (n) {
-            if (order.indexOf(n) === -1) order.push(n);
-        });
-        return order.map(function (n) {
-            var rec = state[tabName].applied.get(n);
-            if (rec && rec.source_file) {
-                return { name: n, source_file: rec.source_file };
-            }
-            var s = findStyleByName(tabName, n);
-            return s
-                ? { name: s.name, source_file: s.source_file || "" }
-                : { name: n, source_file: "" };
-        });
     }
 
     // ════════════════════════════════════════════════════
@@ -390,13 +352,6 @@
             data: value
         }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    function setSilentGradio(tabName) {
-        var silentEl = qs("#style_grid_silent_" + tabName + " textarea");
-        var names = state[tabName].silentMode ? selectedAsNameSourceEntries(tabName) : [];
-        if (!silentEl) return;
-        setPromptValue(silentEl, JSON.stringify(names));
-        syncSourceInput(tabName);
     }
     function syncSourceInput(tab) {
         var src = state[tab].selectedSourceFile || "";
@@ -646,18 +601,6 @@
             : findStyleByName(tabName, styleName);
         if (!style) return;
 
-        if (state[tabName].silentMode) {
-            // Silent: just track, don't touch prompt fields
-            state[tabName].applied.set(styleName, {
-                prompt: style.prompt || null,
-                negative: style.negative_prompt || null,
-                silent: true,
-                source_file: style.source_file || "",
-            });
-            setSilentGradio(tabName);
-            return;
-        }
-
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
@@ -758,7 +701,7 @@
     window._sgApplyStyle = applyStyleImmediate;
     window._sgUnapplyStyle = unapplyStyle;
 
-    /** Live-branch textarea cleanup shared by unapplyStyle and convertLiveAppliesToSilent. */
+    /** Live-branch textarea cleanup used by unapplyStyle. */
     function stripLiveApplyFromTextareas(tabName, styleName, record) {
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
@@ -797,50 +740,14 @@
         }
     }
 
-    /**
-     * OFF→ON silent: strip live prompt deltas, mark records silent:true.
-     * Does not call setSilentGradio — that must run after silentMode is true
-     * (setSilentGradio writes [] while silentMode is false).
-     */
-    function convertLiveAppliesToSilent(tabName) {
-        var toConvert = [];
-        state[tabName].applied.forEach(function (rec, name) {
-            if (!rec.silent) toConvert.push(name);
-        });
-        toConvert.forEach(function (name) {
-            var record = state[tabName].applied.get(name);
-            if (!record || record.silent) return;
-            stripLiveApplyFromTextareas(tabName, name, record);
-            var style = record.source_file
-                ? findStyleByNameAndSource(tabName, name, record.source_file)
-                : findStyleByName(tabName, name);
-            state[tabName].applied.set(name, {
-                prompt: style ? (style.prompt || null) : (record.prompt || null),
-                negative: style ? (style.negative_prompt || null) : (record.negative || null),
-                silent: true,
-                source_file: (style && style.source_file) || record.source_file || "",
-            });
-        });
-    }
-
     function unapplyStyle(tabName, styleName) {
         const record = state[tabName].applied.get(styleName);
         if (!record) {
             if (state[tabName].selected && state[tabName].selected.has(styleName)) {
                 state[tabName].selected.delete(styleName);
                 state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
-                setSilentGradio(tabName);
+                syncSourceInput(tabName);
             }
-            return;
-        }
-
-        if (record.silent) {
-            state[tabName].applied.delete(styleName);
-            if (state[tabName].selected) state[tabName].selected.delete(styleName);
-            state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
-            state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) { return n !== styleName; });
-            setSilentGradio(tabName);
-            syncWildcards(tabName);
             return;
         }
 
@@ -851,30 +758,11 @@
         syncWildcards(tabName);
     }
 
-    function clearHostSilentSelection(tabName) {
-        state[tabName].selected = new Set();
-        state[tabName].selectedOrder = [];
-        var toClear = [];
-        state[tabName].applied.forEach(function (rec, name) {
-            if (rec.silent) toClear.push(name);
-        });
-        for (var i = 0; i < toClear.length; i++) {
-            unapplyStyle(tabName, toClear[i]);
-        }
-    }
-
     function postClearSelectionToIframes(tabName) {
-        // Optional tabName: post only to sg-frame-{tabName}. Omit to broadcast
-        // both frames (silent-mode-off is global). clearAll is per-tab and must pass tabName.
-        var ids = tabName
-            ? ["sg-frame-" + tabName]
-            : ["sg-frame-txt2img", "sg-frame-img2img"];
-        ids.forEach(function (id) {
-            var fr = document.getElementById(id);
-            if (fr && fr.contentWindow) {
-                fr.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
-            }
-        });
+        var fr = document.getElementById("sg-frame-" + tabName);
+        if (fr && fr.contentWindow) {
+            fr.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
+        }
     }
 
    // THUMBNAILS (batch / generate / upload — context menu entry points below)
@@ -1671,7 +1559,6 @@
     function syncPanelHostState(tabName) {
         var categories = loadStyles(tabName);
         state[tabName].categories = categories;
-        state[tabName].silentMode = getSilentMode(tabName);
 
         state[tabName].selectedSource = getStoredSource(tabName);
         var sources = getUniqueSources(tabName);
@@ -1709,22 +1596,20 @@
             savedSelection.forEach(function (n) { restoreOrder.push(n); });
 
             // Live-derived base: unwind current nesting before clearing applied records.
-            if (!state[tabName].silentMode) {
-                var promptEl = qs("#" + tabName + "_prompt textarea");
-                var negEl = qs("#" + tabName + "_neg_prompt textarea");
-                var p = promptEl ? (promptEl.value || "") : "";
-                var n = negEl ? (negEl.value || "") : "";
-                var nest = state[tabName].appliedNestOrder || [];
-                for (var i = nest.length - 1; i >= 0; i--) {
-                    var unwindName = nest[i];
-                    var unwindRec = state[tabName].applied.get(unwindName);
-                    if (!unwindRec) continue;
-                    p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
-                    n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
-                }
-                state[tabName]._restoreSimP = p;
-                state[tabName]._restoreSimN = n;
+            var promptEl = qs("#" + tabName + "_prompt textarea");
+            var negEl = qs("#" + tabName + "_neg_prompt textarea");
+            var p = promptEl ? (promptEl.value || "") : "";
+            var n = negEl ? (negEl.value || "") : "";
+            var nest = state[tabName].appliedNestOrder || [];
+            for (var i = nest.length - 1; i >= 0; i--) {
+                var unwindName = nest[i];
+                var unwindRec = state[tabName].applied.get(unwindName);
+                if (!unwindRec) continue;
+                p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
+                n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
             }
+            state[tabName]._restoreSimP = p;
+            state[tabName]._restoreSimN = n;
 
             // Snapshot before clear: vanished styles (delete/move/CSV gone) need these deltas to strip live text.
             var appliedSnapshot = new Map(state[tabName].applied);
@@ -1734,7 +1619,7 @@
             restoreOrder.forEach(function (n) {
                 applyStyleImmediate(tabName, n, { silent: true });
             });
-            // Silent replay does not push nest; align nest to what actually restored (drops missing CSV styles).
+            // Restore-only replay does not push nest; align nest to what actually restored (drops missing CSV styles).
             state[tabName].appliedNestOrder = restoreOrder.filter(function (name) {
                 return state[tabName].applied.has(name);
             });
@@ -1749,27 +1634,25 @@
                 var vanishedSet = Object.create(null);
                 vanishedNames.forEach(function (name) { vanishedSet[name] = true; });
                 var didStripLive = false;
-                if (!state[tabName].silentMode) {
-                    var livePromptEl = qs("#" + tabName + "_prompt textarea");
-                    var liveNegEl = qs("#" + tabName + "_neg_prompt textarea");
-                    if (livePromptEl && liveNegEl) {
-                        var liveP = livePromptEl.value || "";
-                        var liveN = liveNegEl.value || "";
-                        var beforeP = liveP;
-                        var beforeN = liveN;
-                        for (var vi = preClearNestOrder.length - 1; vi >= 0; vi--) {
-                            var goneName = preClearNestOrder[vi];
-                            if (!vanishedSet[goneName]) continue;
-                            var goneRec = appliedSnapshot.get(goneName);
-                            if (!goneRec || goneRec.silent) continue;
-                            liveP = stripWrapOrTagsFromText(liveP, goneRec.wrapTemplate, goneRec.prompt);
-                            liveN = stripWrapOrTagsFromText(liveN, goneRec.negWrapTemplate, goneRec.negative);
-                        }
-                        if (liveP !== beforeP || liveN !== beforeN) {
-                            setPromptValue(livePromptEl, liveP);
-                            setPromptValue(liveNegEl, liveN);
-                            didStripLive = true;
-                        }
+                var livePromptEl = qs("#" + tabName + "_prompt textarea");
+                var liveNegEl = qs("#" + tabName + "_neg_prompt textarea");
+                if (livePromptEl && liveNegEl) {
+                    var liveP = livePromptEl.value || "";
+                    var liveN = liveNegEl.value || "";
+                    var beforeP = liveP;
+                    var beforeN = liveN;
+                    for (var vi = preClearNestOrder.length - 1; vi >= 0; vi--) {
+                        var goneName = preClearNestOrder[vi];
+                        if (!vanishedSet[goneName]) continue;
+                        var goneRec = appliedSnapshot.get(goneName);
+                        if (!goneRec) continue;
+                        liveP = stripWrapOrTagsFromText(liveP, goneRec.wrapTemplate, goneRec.prompt);
+                        liveN = stripWrapOrTagsFromText(liveN, goneRec.negWrapTemplate, goneRec.negative);
+                    }
+                    if (liveP !== beforeP || liveN !== beforeN) {
+                        setPromptValue(livePromptEl, liveP);
+                        setPromptValue(liveNegEl, liveN);
+                        didStripLive = true;
                     }
                 }
                 vanishedNames.forEach(function (name) {
@@ -1784,7 +1667,7 @@
                             var toastName = preClearNestOrder[ti];
                             if (!vanishedSet[toastName]) continue;
                             var toastRec = appliedSnapshot.get(toastName);
-                            if (!toastRec || toastRec.silent) continue;
+                            if (!toastRec) continue;
                             strippedForToast.push(toastName);
                         }
                         var toastMsg = strippedForToast.length === 1
@@ -1802,10 +1685,8 @@
                 }
             }
 
-            if (!state[tabName].silentMode) {
-                delete state[tabName]._restoreSimP;
-                delete state[tabName]._restoreSimN;
-            }
+            delete state[tabName]._restoreSimP;
+            delete state[tabName]._restoreSimN;
             syncSelectionChrome(tabName);
         }).catch(function () {
             var frRef = state[tabName] && state[tabName].sgFrame;
@@ -1914,17 +1795,13 @@
         state[tabName].applied.clear();
         state[tabName].appliedNestOrder = [];
 
-        setSilentGradio(tabName);
+        syncSourceInput(tabName);
         syncSelectionChrome(tabName);
         syncWildcards(tabName);
         postClearSelectionToIframes(tabName);
     }
 
     function rebuildPromptFromOrder(tabName) {
-        if (state[tabName].silentMode) {
-            setSilentGradio(tabName);
-            return;
-        }
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
@@ -1999,7 +1876,6 @@
                     type: "SG_INIT",
                     tab: tabName,
                     styles: styles,
-                    silentMode: !!getSilentMode(tabName),
                 }, "*");
                 state[tabName].sgV2HostInitSent = true;
             })
@@ -2376,7 +2252,6 @@
                                 type: "SG_INIT",
                                 tab: tab,
                                 styles: allStyles,
-                                silentMode: !!getSilentMode(tab),
                             }, "*");
                         }
                     });
@@ -2445,7 +2320,6 @@
                             type: "SG_INIT",
                             tab: tab,
                             styles: allStyles,
-                            silentMode: !!getSilentMode(tab),
                         }, "*");
                         state[tab].sgV2HostInitSent = true;
                     })
@@ -2453,30 +2327,16 @@
             }
 
             if (msg.type === "SG_APPLY") {
-                if (msg.silent) {
-                    if (!state[tab].selected) state[tab].selected = new Set();
-                    state[tab].selected.add(msg.styleId);
-                    state[tab].selectedOrder = state[tab].selectedOrder || [];
-                    if (state[tab].selectedOrder.indexOf(msg.styleId) === -1) {
-                        state[tab].selectedOrder.push(msg.styleId);
-                    }
-                    state[tab].silentMode = true;
-                    setSilentMode(tab, true);
-                } else {
-                    state[tab].silentMode = false;
-                    setSilentMode(tab, false);
-                    if (!state[tab].selected) state[tab].selected = new Set();
-                    state[tab].selected.add(msg.styleId);
-                    state[tab].selectedOrder = state[tab].selectedOrder || [];
-                    if (state[tab].selectedOrder.indexOf(msg.styleId) === -1) {
-                        state[tab].selectedOrder.push(msg.styleId);
-                    }
+                if (!state[tab].selected) state[tab].selected = new Set();
+                state[tab].selected.add(msg.styleId);
+                state[tab].selectedOrder = state[tab].selectedOrder || [];
+                if (state[tab].selectedOrder.indexOf(msg.styleId) === -1) {
+                    state[tab].selectedOrder.push(msg.styleId);
                 }
                 window._sgApplyStyle(tab, msg.styleId, {
-                    silent: msg.silent,
                     source_file: msg.source_file,
                 });
-                setSilentGradio(tab);
+                syncSourceInput(tab);
                 syncSelectionChrome(tab);
             }
 
@@ -2487,22 +2347,6 @@
                 }
                 window._sgUnapplyStyle(tab, msg.styleId);
                 syncSelectionChrome(tab);
-            }
-
-            if (msg.type === "SG_TOGGLE_SILENT") {
-                var t = msg.tab || tab;
-                if (state[t]) {
-                    if (msg.value) {
-                        convertLiveAppliesToSilent(t);
-                    }
-                    state[t].silentMode = msg.value;
-                    setSilentMode(t, msg.value);
-                    if (!msg.value) {
-                        clearHostSilentSelection(t);
-                        postClearSelectionToIframes();
-                    }
-                    setSilentGradio(t);
-                }
             }
 
             if (msg.type === "SG_REORDER_STYLES") {

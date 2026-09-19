@@ -46,7 +46,7 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 
 `parse_sg_token` and `select_slice` are module-level in `stylegrid/wildcards.py` and are the **single source of truth**. The frontend’s `resolveSliceNames` in `ui/src/lib/wildcardSlice.ts` mirrors their semantics purely to compute chip labels and must be kept in sync if the grammar changes. Shared cases live in `tests/fixtures/slice_grammar.json` and are asserted by `tests/test_slice_grammar_parity.py` (Python) and `ui/src/lib/wildcardSlice.parity.test.ts` (Vitest).
 
-**Compatibility:** Automatic1111-style wildcard extensions (e.g. file-based **`__wildcard__`** tokens) use **different** syntax. They do not consume `{sg:…}` and Style Grid does not consume `__…__` — no mandatory conflict. **`{sg:…}` does not require** installing external wildcard extensions; it is self-contained in this extension. The same resolver also runs over **silently injected** style prompt/negative text at generate time (not only the user’s typed prompt boxes).
+**Compatibility:** Automatic1111-style wildcard extensions (e.g. file-based **`__wildcard__`** tokens) use **different** syntax. They do not consume `{sg:…}` and Style Grid does not consume `__…__` — no mandatory conflict. **`{sg:…}` does not require** installing external wildcard extensions; it is self-contained in this extension.
 
 ## Styles
 
@@ -172,7 +172,7 @@ Style object fields include:
 ## POST /usage/increment
 
 **Method:** POST  
-**Description:** Increments usage counters for the provided style names. Writes are serialized with a `threading.Lock` so concurrent live-apply POSTs and silent `process()` cannot lose counts.
+**Description:** Increments usage counters for the provided style names. Writes are serialized with a `threading.Lock` so concurrent live-apply POSTs cannot lose counts.
 
 **Parameters:**
 

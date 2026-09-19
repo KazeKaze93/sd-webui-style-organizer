@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
   Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
-  Eye, EyeOff,
 } from 'lucide-react'
 import { onHostMessage, sendToHost } from './bridge'
 import { LORA_VIEW, useStylesStore } from './store/stylesStore'
@@ -85,8 +84,6 @@ export default function App() {
     styles,
     activeSource,
     conflicts,
-    silentMode,
-    toggleSilent,
     toggleStyle,
     toggleCompact,
     collapsedCategories,
@@ -159,10 +156,6 @@ export default function App() {
             : useStylesStore.getState().tab,
         )
         void useStylesStore.getState().fetchPresets()
-        if (msg.type === 'SG_INIT') {
-          // Direct set — do not call toggleSilent (would post SG_TOGGLE_SILENT back to host)
-          useStylesStore.setState({ silentMode: !!msg.silentMode })
-        }
       }
       if (msg.type === 'SG_HOST_TAB') {
         // Intentionally ignored for tab identity: host broadcasts which Forge
@@ -286,19 +279,6 @@ export default function App() {
         </div>
         <TooltipProvider>
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => toggleSilent()}
-              title={silentMode ? 'Silent mode ON' : 'Silent mode OFF'}
-              aria-label={silentMode ? 'Silent mode ON' : 'Silent mode OFF'}
-              className={`w-8 h-8 flex items-center justify-center rounded
-              transition-colors text-sm border border-transparent shrink-0
-            ${silentMode 
-              ? 'bg-sg-accent/20 text-sg-accent' 
-              : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface hover:border-sg-border'}`}
-            >
-              {silentMode ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
             <ToolBtn
               icon={Save}
               label="Backup CSV"

@@ -24,6 +24,8 @@ Favorites are toggled from the **style card context menu** (not a star on the ti
 
 `style-card-context-menu.png`, `category-context-wildcard-previews.png`, `top-bar-icons.png` — re-shoot only when those UIs change. Orphan/`cards-star-alignment.png` is not referenced by `README.md`.
 
+- **TODO — silent mode removed:** every shot that includes the top bar still shows the 👁 silent-mode button, which no longer exists. Re-shoot `top-bar-icons.png` first, then the full-panel shots (`browse-and-filter.png`, `apply-and-reorder.png`, `search-autocomplete.png`, `favorites-*.png`, `recent-styles.png`, `lora-*.png`, `fullscreen-mode.png`, `img2img-support.png`, `slice-selection-mode.png`, `wildcard-slice-chips.png`).
+
 ---
 
 **For maintainers:** ask the user to attach new PNGs when README text no longer matches what’s on screen; save under the names above and run `cd ui && npm run build` after code changes (not required for image-only updates).

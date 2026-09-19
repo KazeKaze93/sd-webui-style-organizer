@@ -88,7 +88,7 @@ sequenceDiagram
   F->>H: SG_READY
   H->>API: GET /style_grid/styles
   API-->>H: categories + usage
-  H->>F: SG_INIT (styles array, silentMode)
+  H->>F: SG_INIT (styles array)
   Note over F: Tab identity from SG_INIT only; SG_HOST_TAB ignored for per-frame tab
   F->>H: SG_APPLY (styleId + source_file) / SG_UNAPPLY / actions
   H->>API: CRUD/thumbnail/preset/etc requests
@@ -101,9 +101,7 @@ sequenceDiagram
 
 **Thumbnails:** Cached CSV files live under `data/thumbnails/` via `get_thumbnail_path(name, source_file)` (required source). HTTP GET/upload/generate/delete require `source` for CSV styles — see `docs/API.md`. Generation uses the FIFO **`ThumbnailGenerationManager`**: poll `job_id`, cancel via `POST /thumbnail/cancel`. Missing-preview counts come from `GET /thumbnails/list` (`{name, source_file}`), not bare-name localStorage. Per-style generate/upload posts the style’s `source_file` on the bridge (not only the active filter).
 
-**Silent mode:** injection for `scripts/style_grid.py` `process()` reads the hidden Gradio component `style_grid_silent_<tab>` (JSON array of `{name, source_file}` or legacy bare names, ordered by `selectedOrder`). The host keeps that in sync via `setSilentGradio()` from `state[tab].selected` while `silentMode` is on. `SG_UNAPPLY` must remove the id from both `applied` and `selected`; `SG_TOGGLE_SILENT` with `value: false` runs `clearHostSilentSelection` and `postClearSelectionToIframes` (`SG_CLEAR_SELECTION`). Turning silent **on** converts live applies into silent records (strip prompt deltas). Every **`SG_INIT`** includes `silentMode`; V2 hydrates via `setState` without posting `SG_TOGGLE_SILENT`. `{sg:…}` wildcards also resolve inside silently injected style text. **Source of truth for generation is the host textbox**, not the iframe selection UI: after silent turns off, V2 may still show tiles/chips as selected until the user toggles or clears — that mismatch is visual-only and must not imply silent styles are still injected.
-
-**Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** In **non-silent** mode the host must still maintain `state[tab].selected` and `selectedOrder` (not only in silent mode), because presets and other features read that set — applying a style adds the id and remembers `source_file` on the applied record; unapply removes it. This keeps **Save preset** consistent with what is actually selected. **Reorder** updates `selectedOrder` and rebuilds prompts from existing additive/wrap records (including wrap templates) without fabricating full-prompt deltas.
+**Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** The host maintains `state[tab].selected` and `selectedOrder`, because presets and other features read that set — applying a style adds the id and remembers `source_file` on the applied record; unapply removes it. This keeps **Save preset** consistent with what is actually selected. **Reorder** updates `selectedOrder` and rebuilds prompts from existing additive/wrap records (including wrap templates) without fabricating full-prompt deltas.
 
 **Clear:** host `clearAll` restores textareas from `userPromptBase` / `userPromptBaseNeg` instead of wiping typed user text. That snapshot usage is intentional and unchanged.
 
@@ -125,7 +123,7 @@ sequenceDiagram
 
 **Presets:** Sidebar **Presets** renders **`PresetList`** / **`PresetRow`** (Replace / Add / rename / delete). Save is **`SaveSetDialog`** from **`SelectedBar`** (`savePreset` / overwrite guard on the API). Load applies name+source members via the host apply path (`SG_APPLY` / selection sync); there is no host Package modal and no **`StyleCard presetName`** tile mode.
 
-**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, the silent textbox, and the apply trigger, and returns **`[silent_styles, source_filter]`**. In `process(*args)`, `args[0]` is silent JSON and `args[1]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools — paths compared via `normalize_source_path`. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
+**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, and the apply trigger, and returns **`[source_filter]`**. In `process(*args)`, `args[0]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools — paths compared via `normalize_source_path`. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
 
 **CSV / samples:** `samples/` is read-only for save/delete (**403**). Basename resolve prefers writable CSVs over the demo pack (`is_samples_source`, `_resolve_target_csv_path`).
 

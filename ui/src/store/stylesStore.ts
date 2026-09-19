@@ -256,7 +256,6 @@ interface StylesStore {
   selectedStyles: Style[]
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
-  silentMode: boolean
   compactMode: boolean
   /** Favorite style row keys (styleRowKey) persisted in localStorage. */
   favorites: Set<string>
@@ -282,7 +281,6 @@ interface StylesStore {
   setSearch: (q: string) => void
   setCategory: (cat: string | null) => void
   setActiveSource: (src: string | null) => void
-  toggleSilent: () => void
   toggleCompact: () => void
   toggleCollapse: (cat: string) => void
   collapseAll: () => void
@@ -397,7 +395,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     localStorage.getItem('sg_v2_category_order') || '[]'
   ) as string[],
   collapsedCategories: new Set(),
-  silentMode: false,
   compactMode: false,
   favorites: new Set(loadStringArrayFromLs('sg_v2_favorites')),
   recentNames: loadStringArrayFromLs('sg_v2_recent'),
@@ -466,22 +463,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({ activeSource })
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
-  toggleSilent: () => {
-    const newVal = !get().silentMode
-    if (!newVal) {
-      set({ silentMode: newVal, selectedStyles: [], conflicts: [] })
-    } else {
-      set({ silentMode: newVal })
-    }
-    window.parent.postMessage(
-      { type: 'SG_TOGGLE_SILENT', tab: 'txt2img', value: newVal },
-      '*'
-    )
-    window.parent.postMessage(
-      { type: 'SG_TOGGLE_SILENT', tab: 'img2img', value: newVal },
-      '*'
-    )
-  },
   toggleCompact: () => set((s) => ({ compactMode: !s.compactMode })),
   toggleCollapse: (cat) => set((s) => {
     const next = new Set(s.collapsedCategories)
@@ -499,7 +480,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   },
   expandAll: () => set({ collapsedCategories: new Set() }),
   selectAllInCategory: (cat) => {
-    const { styles, activeSource, selectedStyles, silentMode } = get()
+    const { styles, activeSource, selectedStyles } = get()
     const src = activeSource
       ? styles.filter(s => s.source_file === activeSource)
       : styles
@@ -533,7 +514,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         prompt: style.prompt,
         neg: style.negative_prompt,
         source_file: style.source_file,
-        silent: silentMode,
       })
     })
     get().detectConflicts()
@@ -585,7 +565,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         prompt: style.prompt,
         neg: style.negative_prompt,
         source_file: style.source_file,
-        silent: get().silentMode,
       })
       get().detectConflicts()
     }
@@ -705,14 +684,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const counts = { ...get().usageCounts }
     counts[name] = (counts[name] || 0) + 1
     set({ usageCounts: counts })
-    // Persist on live apply only; silent mode is counted at generate time in Python
-    if (!get().silentMode) {
-      fetch('/style_grid/usage/increment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ styles: [name] })
-      }).catch(() => {})
-    }
+    fetch('/style_grid/usage/increment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ styles: [name] })
+    }).catch(() => {})
   },
   fetchPresets: async () => {
     const parse = (raw: unknown): Record<string, PresetRecord> =>
@@ -890,7 +866,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   loadPreset: (name) => {
     const preset = get().presets[name]
     if (!preset) return
-    const { styles, showToast, incrementUsage, detectConflicts, addToRecent, silentMode } = get()
+    const { styles, showToast, incrementUsage, detectConflicts, addToRecent } = get()
 
     const members = resolvePresetMembers(preset.styles ?? [], styles)
     const found = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
@@ -915,7 +891,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         prompt: m.style.prompt,
         neg: m.style.negative_prompt,
         source_file: m.style.source_file,
-        silent: silentMode,
       })
     }
     set({ selectedStyles: selected, activePresetName: name, styleContributors: nextContributors })

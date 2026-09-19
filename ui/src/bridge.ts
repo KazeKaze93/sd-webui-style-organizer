@@ -1,7 +1,7 @@
 /** Messages sent from Forge host script to the React iframe. */
 export type HostMessage =
   | { type: 'SG_CLEAR_SELECTION' }
-  | { type: 'SG_INIT';           tab: Tab; styles: Style[]; silentMode: boolean }
+  | { type: 'SG_INIT';           tab: Tab; styles: Style[] }
   | { type: 'SG_HOST_TAB';       tab: Tab }
   | { type: 'SG_STYLES_UPDATE';  styles: Style[] }
   | { type: 'SG_WILDCARDS_ACTIVE'; categories: WildcardRef[] }
@@ -15,7 +15,7 @@ export type HostMessage =
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
   | { type: 'SG_READY' }
-  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string; silent?: boolean }
+  | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string }
   | { type: 'SG_UNAPPLY';       styleId: string }
   | { type: 'SG_EDIT_STYLE';      styleId: string }
   | { type: 'SG_DUPLICATE_STYLE'; styleId: string }
@@ -35,7 +35,6 @@ export type FrameMessage =
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }
   | { type: 'SG_CLEAR_ALL' }
   | { type: 'SG_SOURCE_CHANGE'; source: string | null }
-  | { type: 'SG_TOGGLE_SILENT'; tab: Tab; value: boolean }
 
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'

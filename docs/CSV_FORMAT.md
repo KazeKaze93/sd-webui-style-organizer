@@ -70,7 +70,7 @@ Category wildcard insertion and resolution:
 | Injection from UI | Right-click a **sidebar** category → insert whole-category `{sg:<category_lowercase>}`, or **Select styles for wildcard…** to build a slice token. (The in-grid category-header menu was removed.) |
 | Whole category | `{sg:<category>}` — e.g. `{sg:furry_body}`. |
 | Slice | `{sg:<category>:<spec>}`. Spec is a comma-separated list of style-name **suffixes** (category prefix omitted): plain include, `-` exclude, trailing `*` glob. |
-| Resolution | At generation time, `resolve_sg_wildcards` in `stylegrid/wildcards.py` (via `scripts/style_grid.py`) replaces `{sg:…}` tokens using regex `\{sg:([^}]+)\}`. Capture splits on the **first** `:`; `select_slice` unions includes then subtracts excludes. Also runs over **silently injected** style text. |
+| Resolution | At generation time, `resolve_sg_wildcards` in `stylegrid/wildcards.py` (via `scripts/style_grid.py`) replaces `{sg:…}` tokens using regex `\{sg:([^}]+)\}`. Capture splits on the **first** `:`; `select_slice` unions includes then subtracts excludes. |
 | Empty slice pool | Falls back to the full category so a stale/missing-name token still generates. |
 | Match key | Token category is lowercased and looked up in `styles_by_category` (also keyed by lowercased category). |
 | Source filter | When an active CSV source is set, the pool is filtered with `normalize_source_path` against each style’s `source_file`. |

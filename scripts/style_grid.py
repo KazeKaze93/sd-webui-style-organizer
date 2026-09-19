@@ -24,6 +24,21 @@ from stylegrid.wildcards import resolve_sg_wildcards
 script_callbacks.on_app_started(register_api)
 
 
+def _resolve_hires_prompts(hr_prompts, first_pass_raw, first_pass_resolved, styles_by_cat, field):
+    """Resolve wildcards in a hires-pass prompt list, in place.
+
+    Forge builds the hires lists in setup_prompts(), before scripts run, and fills
+    them from the first-pass prompt when the "Hires prompt" box is left empty. An
+    entry that still matches the unresolved first-pass text reuses the first-pass
+    result so both passes draw the same styles; a real override is resolved on its own.
+    """
+    for i, text in enumerate(hr_prompts):
+        if i < len(first_pass_raw) and text == first_pass_raw[i]:
+            hr_prompts[i] = first_pass_resolved[i]
+        else:
+            hr_prompts[i] = dedup_prompt(resolve_sg_wildcards(text, styles_by_cat, field=field))
+
+
 class StyleGridScript(scripts.Script):
     def title(self):
         return "Style Grid"
@@ -95,7 +110,20 @@ class StyleGridScript(scripts.Script):
         if lora_styles:
             styles_by_cat["lora"] = lora_styles
 
+        first_pass_raw = list(p.all_prompts)
+        first_pass_raw_negative = list(p.all_negative_prompts)
+
         for i in range(len(p.all_prompts)):
             p.all_prompts[i] = dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))
         for i in range(len(p.all_negative_prompts)):
             p.all_negative_prompts[i] = dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat, field="negative_prompt"))
+
+        # Hires fix samples its second pass from all_hr_prompts / all_hr_negative_prompts;
+        # without this the {sg:...} tokens reach the model as literal text. Both lists are
+        # None unless hires fix is on (and absent entirely in img2img).
+        hr_prompts = getattr(p, "all_hr_prompts", None)
+        if hr_prompts:
+            _resolve_hires_prompts(hr_prompts, first_pass_raw, p.all_prompts, styles_by_cat, "prompt")
+        hr_negative_prompts = getattr(p, "all_hr_negative_prompts", None)
+        if hr_negative_prompts:
+            _resolve_hires_prompts(hr_negative_prompts, first_pass_raw_negative, p.all_negative_prompts, styles_by_cat, "negative_prompt")

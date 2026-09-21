@@ -180,6 +180,8 @@ After a successful run, the iframe is notified so the UI can refresh that style�
 
 Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…&source=…` (CSV styles **require** `source` = that row’s `source_file`). Preview URLs may also include a version for browser cache. **Generate / upload / delete** send the same source identity so duplicate names across CSVs keep separate previews. Generation is queued (`job_id`); the host polls status and can cancel.
 
+**Upgrading from older builds:** thumbnails used to be stored under a **name-only** hash. On first list/cleanup, a unique name is renamed to the new `(name, source)` file automatically. If the same style name exists in more than one loaded pack, that old file is **not** assigned to either pack — regenerate the preview for each.
+
 **What the card shows**
 
 - The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — you see it when you **hover**.

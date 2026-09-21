@@ -962,8 +962,9 @@
                        _batchState.jobId = null;
                        done++;
                        state[tabName2].hasThumbnail.add(thumbIdentityKey(styleName, styleSourceFile));
-                       _thumbVersions[styleName] = Date.now();
-                       localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
+                       var batchThumbKey = thumbIdentityKey(styleName, styleSourceFile);
+                       _thumbVersions[batchThumbKey] = Date.now();
+                       localStorage.setItem("sg_thumb_v_" + batchThumbKey, _thumbVersions[batchThumbKey].toString());
                        _saveThumbVersions();
                        updateProgress(index + 1, styleName, "✓");
                        setTimeout(function () { processNext(index + 1); }, 300);
@@ -1068,14 +1069,15 @@
                     return;
                 }
                 if (r.status === "done") {
-                    state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, sourceFile));
-                    _thumbVersions[styleName] = Date.now();
-                    localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
+                    var doneThumbKey = thumbIdentityKey(styleName, sourceFile);
+                    state[tabName].hasThumbnail.add(doneThumbKey);
+                    _thumbVersions[doneThumbKey] = Date.now();
+                    localStorage.setItem("sg_thumb_v_" + doneThumbKey, _thumbVersions[doneThumbKey].toString());
                     _saveThumbVersions();
                     if (typeof onProgress === "function") {
                         onProgress("done", 100);
                     }
-                    if (typeof onDone === "function") onDone(_thumbVersions[styleName]);
+                    if (typeof onDone === "function") onDone(_thumbVersions[doneThumbKey]);
                 } else if (r.status === "error" || r.status === "cancelled") {
                     var failPollMsg = r.status === "cancelled"
                         ? "Generation cancelled"
@@ -1145,16 +1147,17 @@
                 })
                     .then(function (r) {
                         if (r.ok) {
-                            state[tabName].hasThumbnail.add(thumbIdentityKey(styleName, resolvedSource));
-                            _thumbVersions[styleName] = Date.now();
-                            localStorage.setItem("sg_thumb_v_" + styleName, _thumbVersions[styleName].toString());
+                            var uploadThumbKey = thumbIdentityKey(styleName, resolvedSource);
+                            state[tabName].hasThumbnail.add(uploadThumbKey);
+                            _thumbVersions[uploadThumbKey] = Date.now();
+                            localStorage.setItem("sg_thumb_v_" + uploadThumbKey, _thumbVersions[uploadThumbKey].toString());
                             _saveThumbVersions();
                             var fr = state[tabName] && state[tabName].sgFrame;
                             if (fr && fr.contentWindow) {
                                 fr.contentWindow.postMessage({
                                     type: "SG_THUMB_DONE",
                                     styleId: styleName,
-                                    version: _thumbVersions[styleName],
+                                    version: _thumbVersions[uploadThumbKey],
                                     source_file: resolvedSource,
                                 }, "*");
                             }

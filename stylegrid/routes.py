@@ -735,7 +735,11 @@ def _register_thumbnail_routes(app):
 
     @app.post("/style_grid/thumbnails/cleanup")
     async def api_cleanup_thumbnails():
-        """Migrate unique legacy thumbs, then remove orphans (incl. ambiguous leftovers)."""
+        """Migrate safe legacy thumbs, then remove true orphans.
+
+        Preserves name-only legacy files for styles still in the catalog so
+        migration stays rollback-friendly (copy, not delete).
+        """
         migration = migrate_legacy_thumbnails()
         if not os.path.isdir(THUMBNAILS_DIR):
             return {"removed": 0, **migration}
@@ -744,10 +748,16 @@ def _register_thumbnail_routes(app):
             source = s.get("source_file") or ""
             if not source:
                 continue
-            h = hashlib.md5(
-                _thumbnail_hash_input(s["name"], source).encode("utf-8")
-            ).hexdigest()
-            valid_hashes.add(h)
+            valid_hashes.add(
+                hashlib.md5(
+                    _thumbnail_hash_input(s["name"], source).encode("utf-8")
+                ).hexdigest()
+            )
+            valid_hashes.add(
+                hashlib.md5(
+                    _thumbnail_hash_input(s["name"], "").encode("utf-8")
+                ).hexdigest()
+            )
         removed = 0
         for fname in os.listdir(THUMBNAILS_DIR):
             if not fname.endswith(".webp"):

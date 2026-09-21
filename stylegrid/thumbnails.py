@@ -1,14 +1,18 @@
 """Thumbnail file paths, listing, and background SD preview generation."""
 
+import csv
 import hashlib
 import os
+import shutil
 import threading
 import time
 import uuid
 from collections import deque
 
 from stylegrid.cache import get_cached_styles
-from stylegrid.config import THUMBNAILS_DIR, get_styles_dirs
+from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR, get_styles_dirs
+
+_RENAME_MAP_BASENAME = "RELEASE_NOTES_RENAMES.csv"
 
 
 def _thumbnail_hash_input(style_name, csv_path=""):
@@ -49,20 +53,79 @@ def get_thumbnail_path(style_name, csv_path):
     return os.path.join(THUMBNAILS_DIR, safe + ".webp")
 
 
-def migrate_legacy_thumbnails(styles=None):
-    """Move name-only thumbnail files to (name, source) keys when unambiguous.
+def load_renamed_old_names(path):
+    """Return the set of old_name values from a RELEASE_NOTES_RENAMES.csv file."""
+    names = set()
+    if not path or not os.path.isfile(path):
+        return names
+    with open(path, "r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            old = (row.get("old_name") or "").strip()
+            if old:
+                names.add(old)
+    return names
 
-    If a style name maps to exactly one known source_file, rename the legacy
-    WebP to the source-aware path. If the same name appears in multiple packs,
-    leave the legacy file unmapped (needs regeneration — do not guess).
 
-    Returns counts: migrated / ambiguous / skipped_existing.
+def discover_renamed_old_names():
+    """Load rename old_names from data/ or extension root when the map file is present."""
+    for base in (DATA_DIR, EXT_DIR):
+        path = os.path.join(base, _RENAME_MAP_BASENAME)
+        if os.path.isfile(path):
+            return load_renamed_old_names(path)
+    return set()
+
+
+def _prompt_negative_pair(style):
+    return (style.get("prompt") or "", style.get("negative_prompt") or "")
+
+
+def _content_identical_across_sources(entries):
+    """True when every source_file shares the same prompt+negative_prompt bytes."""
+    per_source = {}
+    for s in entries:
+        source = s.get("source_file") or ""
+        if not source:
+            continue
+        pair = _prompt_negative_pair(s)
+        prev = per_source.get(source)
+        if prev is None:
+            per_source[source] = pair
+        elif prev != pair:
+            return False
+    if len(per_source) <= 1:
+        return True
+    return len(set(per_source.values())) == 1
+
+
+def migrate_legacy_thumbnails(styles=None, renamed_old_names=None, legacy_names=None):
+    """Copy name-only thumbnail files to (name, source) keys when safe.
+
+    Non-destructive: legacy WebPs are copied, never renamed or deleted.
+
+    Auto-migrate when the name maps to one source, or to multiple sources whose
+    prompt and negative_prompt are byte-identical. Need regeneration when content
+    diverges across files, or when the name appears as old_name in a rename map.
+    Orphaned: a legacy name with no matching style in the catalog.
+
+    Returns migrated / need_regeneration / orphaned / skipped_existing.
+    ``ambiguous`` is kept as an alias of need_regeneration for older callers.
     """
+    empty = {
+        "migrated": 0,
+        "need_regeneration": 0,
+        "orphaned": 0,
+        "skipped_existing": 0,
+        "ambiguous": 0,
+    }
     if not os.path.isdir(THUMBNAILS_DIR):
-        return {"migrated": 0, "ambiguous": 0, "skipped_existing": 0}
+        return empty
 
     if styles is None:
         styles = get_cached_styles()
+    if renamed_old_names is None:
+        renamed_old_names = discover_renamed_old_names()
+    renamed_old_names = set(renamed_old_names)
 
     by_name = {}
     for s in styles:
@@ -73,36 +136,57 @@ def migrate_legacy_thumbnails(styles=None):
         # LoRA previews are sibling files, never name-only WebP hashes.
         if source == "__style_grid_lora__" or name.startswith("LORA_"):
             continue
-        by_name.setdefault(name, []).append(source)
+        by_name.setdefault(name, []).append(s)
+
+    if legacy_names is None:
+        names_to_check = list(by_name.keys())
+    else:
+        names_to_check = list(dict.fromkeys(legacy_names))
 
     migrated = 0
-    ambiguous = 0
+    need_regeneration = 0
+    orphaned = 0
     skipped_existing = 0
-    for name, sources in by_name.items():
-        uniq_sources = list(dict.fromkeys(sources))
+    for name in names_to_check:
         legacy_path = os.path.join(THUMBNAILS_DIR, legacy_thumbnail_stem(name) + ".webp")
         if not os.path.isfile(legacy_path):
             continue
-        if len(uniq_sources) != 1:
-            ambiguous += 1
+        entries = by_name.get(name) or []
+        if not entries:
+            orphaned += 1
             continue
-        new_path = get_thumbnail_path(name, uniq_sources[0])
-        if os.path.isfile(new_path):
-            skipped_existing += 1
+        if name in renamed_old_names:
+            need_regeneration += 1
+            continue
+        uniq_sources = list(dict.fromkeys(s.get("source_file") or "" for s in entries))
+        uniq_sources = [s for s in uniq_sources if s]
+        if len(uniq_sources) > 1 and not _content_identical_across_sources(entries):
+            need_regeneration += 1
+            continue
+
+        copied_any = False
+        all_existed = True
+        for source in uniq_sources:
+            new_path = get_thumbnail_path(name, source)
+            if os.path.isfile(new_path):
+                continue
+            all_existed = False
             try:
-                os.remove(legacy_path)
+                shutil.copy2(legacy_path, new_path)
+                copied_any = True
             except OSError:
                 pass
-            continue
-        try:
-            os.rename(legacy_path, new_path)
+        if copied_any:
             migrated += 1
-        except OSError:
-            pass
+        elif all_existed and uniq_sources:
+            skipped_existing += 1
+
     return {
         "migrated": migrated,
-        "ambiguous": ambiguous,
+        "need_regeneration": need_regeneration,
+        "orphaned": orphaned,
         "skipped_existing": skipped_existing,
+        "ambiguous": need_regeneration,
     }
 
 

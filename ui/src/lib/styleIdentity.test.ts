@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { Style } from '../bridge'
 import {
   findStyleBySourceAndName,
+  parseComboPart,
+  parseComboParts,
   parseComboTokens,
   resolveCombosInSourceFile,
   resolveSelectedStyleRow,
+  splitOutsideParens,
 } from './styleIdentity'
 
 function row(
@@ -52,6 +55,50 @@ describe('findStyleBySourceAndName / resolveSelectedStyleRow', () => {
   })
 })
 
+describe('combo part parsing', () => {
+  it('strips parenthetical comment from NAME (comment)', () => {
+    expect(parseComboPart('BODY_Petite_Small (size contrast)')).toEqual({
+      name: 'BODY_Petite_Small',
+      comment: 'size contrast',
+      raw: 'BODY_Petite_Small (size contrast)',
+    })
+  })
+
+  it('splits A (x) + B (y) into two parts', () => {
+    const parts = parseComboParts(
+      'x. Combos: EXPRESSION_Contemptuous (dom) + STATE_Crying_Tears (sub).',
+    )
+    expect(parts).toEqual([
+      {
+        name: 'EXPRESSION_Contemptuous',
+        comment: 'dom',
+        raw: 'EXPRESSION_Contemptuous (dom)',
+      },
+      {
+        name: 'STATE_Crying_Tears',
+        comment: 'sub',
+        raw: 'STATE_Crying_Tears (sub)',
+      },
+    ])
+  })
+
+  it('keeps bare names without parentheses', () => {
+    expect(parseComboPart('LIGHTING_Neon_Colorful')).toEqual({
+      name: 'LIGHTING_Neon_Colorful',
+      comment: '',
+      raw: 'LIGHTING_Neon_Colorful',
+    })
+  })
+
+  it('does not split on semicolon inside parentheses', () => {
+    expect(splitOutsideParens('A (x; y); B', ';')).toEqual(['A (x; y)', 'B'])
+    expect(parseComboTokens('t. Combos: BODY_Petite_Small (a; b); LIGHTING_Rim.')).toEqual([
+      'BODY_Petite_Small (a; b)',
+      'LIGHTING_Rim',
+    ])
+  })
+})
+
 describe('resolveCombosInSourceFile', () => {
   it('resolves Combos names only inside the same source file', () => {
     const styles = [
@@ -71,9 +118,49 @@ describe('resolveCombosInSourceFile', () => {
     }
   })
 
+  it('resolves NAME (comment) to a style chip with comment tooltip data', () => {
+    const styles = [
+      row('SCENE_X', FILE_A, {
+        description: 'x. Combos: BODY_Petite_Small (size contrast); LIGHTING_Neon_Colorful (UV glow).',
+      }),
+      row('BODY_Petite_Small', FILE_A, { category: 'BODY' }),
+      row('LIGHTING_Neon_Colorful', FILE_A, { category: 'LIGHTING' }),
+    ]
+    const resolved = resolveCombosInSourceFile(styles[0].description, styles, FILE_A)
+    expect(resolved).toEqual([
+      {
+        type: 'style',
+        token: 'BODY_Petite_Small',
+        style: styles[1],
+        comment: 'size contrast',
+      },
+      {
+        type: 'style',
+        token: 'LIGHTING_Neon_Colorful',
+        style: styles[2],
+        comment: 'UV glow',
+      },
+    ])
+  })
+
+  it('resolves A (x) + B (y) as two style chips', () => {
+    const styles = [
+      row('SCENE_X', FILE_A, {
+        description: 'x. Combos: EXPRESSION_Contemptuous (dom) + STATE_Crying_Tears (sub).',
+      }),
+      row('EXPRESSION_Contemptuous', FILE_A, { category: 'EXPRESSION' }),
+      row('STATE_Crying_Tears', FILE_A, { category: 'STATE' }),
+    ]
+    const resolved = resolveCombosInSourceFile(styles[0].description, styles, FILE_A)
+    expect(resolved.map((r) => ({ type: r.type, token: r.token, comment: 'comment' in r ? r.comment : '' }))).toEqual([
+      { type: 'style', token: 'EXPRESSION_Contemptuous', comment: 'dom' },
+      { type: 'style', token: 'STATE_Crying_Tears', comment: 'sub' },
+    ])
+  })
+
   it('omits Combos names absent from this file (no chip, no error)', () => {
     const styles = [
-      row('BODY_Ears', FILE_B, { description: 'plain. Combos: ONLY_IN_CORE.' }),
+      row('BODY_Ears', FILE_B, { description: 'plain. Combos: ONLY_IN_CORE (hint).' }),
       row('ONLY_IN_CORE', FILE_A),
     ]
     expect(resolveCombosInSourceFile(styles[0].description, styles, FILE_B)).toEqual([])
@@ -85,7 +172,20 @@ describe('resolveCombosInSourceFile', () => {
       row('LIGHTING_Soft', FILE_B, { category: 'LIGHTING' }),
     ]
     const resolved = resolveCombosInSourceFile(styles[0].description, styles, FILE_B)
-    expect(resolved).toEqual([{ type: 'category', token: 'LIGHTING_*', category: 'LIGHTING' }])
+    expect(resolved).toEqual([
+      { type: 'category', token: 'LIGHTING_*', category: 'LIGHTING', comment: '' },
+    ])
+  })
+
+  it('emits raw chip only when the piece has no style name', () => {
+    const styles = [
+      row('BODY_Ears', FILE_A, { description: 'x. Combos: (orphan note); BODY_Ears.' }),
+    ]
+    const resolved = resolveCombosInSourceFile(styles[0].description, styles, FILE_A)
+    expect(resolved).toEqual([
+      { type: 'raw', token: '(orphan note)' },
+      { type: 'style', token: 'BODY_Ears', style: styles[0], comment: '' },
+    ])
   })
 })
 

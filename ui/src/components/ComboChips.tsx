@@ -8,6 +8,10 @@ interface Props {
   onBeforeToggle?: () => void
 }
 
+function chipLabel(token: string): string {
+  return token.includes('_') ? token.split('_').slice(1).join(' ') : token
+}
+
 export function ComboChips({ style, onBeforeToggle }: Props) {
   const { styles, setCategory, toggleStyle, selectedStyles } = useStylesStore()
 
@@ -24,15 +28,17 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
   return (
     <div className="flex flex-wrap gap-1.5 mt-2">
       <span className="text-xs text-sg-muted self-center">Works with:</span>
-      {resolvedCombos.map((resolved) => {
+      {resolvedCombos.map((resolved, index) => {
         if (resolved.type === 'style') {
           const isSelected = selectedStyles.some(
             (s) => styleRowKey(s) === styleRowKey(resolved.style),
           )
           const token = resolved.token
+          const title = resolved.comment
+            || `Click to ${isSelected ? 'deselect' : 'select'} ${token}`
           return (
             <button
-              key={token}
+              key={`s:${token}:${resolved.comment}:${index}`}
               onClick={() => {
                 onBeforeToggle?.()
                 toggleStyle(resolved.style)
@@ -41,26 +47,38 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
                 ${isSelected
                   ? 'bg-blue-500/30 border-blue-500/60 text-blue-300'
                   : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'}`}
-              title={`Click to ${isSelected ? 'deselect' : 'select'} ${token}`}
+              title={title}
             >
-              {isSelected ? '✓ ' : ''}{token.includes('_')
-                ? token.split('_').slice(1).join(' ')
-                : token}
+              {isSelected ? '✓ ' : ''}{chipLabel(token)}
+            </button>
+          )
+        }
+
+        if (resolved.type === 'category') {
+          const title = resolved.comment || `Filter by category ${resolved.category}`
+          return (
+            <button
+              key={`c:${resolved.token}:${resolved.comment}:${index}`}
+              onClick={() => startTransition(() => setCategory(resolved.category))}
+              className="px-2 py-0.5 rounded text-xs border transition-colors
+                bg-orange-500/10 border-orange-500/30 text-orange-400
+                hover:bg-orange-500/20"
+              title={title}
+            >
+              {resolved.token}
             </button>
           )
         }
 
         return (
-          <button
-            key={resolved.token}
-            onClick={() => startTransition(() => setCategory(resolved.category))}
-            className="px-2 py-0.5 rounded text-xs border transition-colors
-              bg-orange-500/10 border-orange-500/30 text-orange-400
-              hover:bg-orange-500/20"
-            title={`Filter by category ${resolved.category}`}
+          <span
+            key={`r:${resolved.token}:${index}`}
+            className="px-2 py-0.5 rounded text-xs border
+              bg-orange-500/10 border-orange-500/30 text-orange-400"
+            title={resolved.token}
           >
             {resolved.token}
-          </button>
+          </span>
         )
       })}
     </div>

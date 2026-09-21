@@ -183,7 +183,19 @@
         }
         return null;
     }
-    /** Prefer name+source_file match; fall back to name-only when source missing or no hit. */
+    function styleCacheIdentity(s) {
+        return String(s.name) + "\0" + String(s.source_file || s.source || "").replace(/\\/g, "/");
+    }
+    function pushStyleIntoCategories(categories, s) {
+        var cat = s.category || "OTHER";
+        if (!categories[cat]) categories[cat] = [];
+        var key = styleCacheIdentity(s);
+        var exists = categories[cat].some(function (x) {
+            return styleCacheIdentity(x) === key;
+        });
+        if (!exists) categories[cat].push(s);
+    }
+    /** Prefer name+source_file match. When source is given, never fall back to another file. */
     function findStyleByNameAndSource(t, name, sourceFile) {
         var want = String(sourceFile || "").replace(/\\/g, "/");
         if (!want) return findStyleByName(t, name);
@@ -193,7 +205,7 @@
             });
             if (f) return f;
         }
-        return findStyleByName(t, name);
+        return null;
     }
 
     // ════════════════════════════════════════════════════
@@ -596,9 +608,22 @@
         opts = opts || {};
         var restoreOnly = opts.silent === true;
         if (!restoreOnly && state[tabName].applied.has(styleName)) return;
-        const style = opts.source_file
+        var style = opts.source_file
             ? findStyleByNameAndSource(tabName, styleName, opts.source_file)
             : findStyleByName(tabName, styleName);
+        if (!style && (opts.prompt !== undefined || opts.neg !== undefined)) {
+            style = {
+                name: styleName,
+                prompt: opts.prompt || "",
+                negative_prompt: opts.neg || "",
+                source_file: opts.source_file || "",
+            };
+        } else if (style && (opts.prompt !== undefined || opts.neg !== undefined)) {
+            style = Object.assign({}, style, {
+                prompt: opts.prompt !== undefined ? opts.prompt : style.prompt,
+                negative_prompt: opts.neg !== undefined ? opts.neg : style.negative_prompt,
+            });
+        }
         if (!style) return;
 
         const promptEl = qs("#" + tabName + "_prompt textarea");
@@ -2243,12 +2268,7 @@
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};
                         allStyles.forEach(function (s) {
-                            var cat = s.category || "OTHER";
-                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
-                            var exists = state[tab].categories[cat].some(function (x) {
-                                return x.name === s.name;
-                            });
-                            if (!exists) state[tab].categories[cat].push(s);
+                            pushStyleIntoCategories(state[tab].categories, s);
                         });
                         if (frame.contentWindow) {
                             frame.contentWindow.postMessage({
@@ -2300,6 +2320,12 @@
                 }
                 return null;
             }
+            function findStyleForMessage(styleName, sourceFile) {
+                if (sourceFile) {
+                    return findStyleByNameAndSource(tab, styleName, sourceFile);
+                }
+                return findStyleByName(styleName);
+            }
             if (msg.type === "SG_READY") {
                 if (state[tab].sgV2HostInitSent) return;
                 fetch("/style_grid/styles")
@@ -2312,12 +2338,7 @@
                         if (!state[tab]) state[tab] = {};
                         if (!state[tab].categories) state[tab].categories = {};
                         allStyles.forEach(function (s) {
-                            var cat = s.category || "OTHER";
-                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
-                            var exists = state[tab].categories[cat].some(function (x) {
-                                return x.name === s.name;
-                            });
-                            if (!exists) state[tab].categories[cat].push(s);
+                            pushStyleIntoCategories(state[tab].categories, s);
                         });
                         frame.contentWindow.postMessage({
                             type: "SG_INIT",
@@ -2338,6 +2359,8 @@
                 }
                 window._sgApplyStyle(tab, msg.styleId, {
                     source_file: msg.source_file,
+                    prompt: msg.prompt,
+                    neg: msg.neg,
                 });
                 syncSourceInput(tab);
                 syncSelectionChrome(tab);
@@ -2428,19 +2451,19 @@
                 openStyleEditor(tab, null, msg.sourceFile);
             }
             if (msg.type === "SG_EDIT_STYLE") {
-                var styleToEdit = findStyleByName(msg.styleId);
+                var styleToEdit = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToEdit) {
                     openStyleEditor(tab, styleToEdit);
                 }
             }
             if (msg.type === "SG_DUPLICATE_STYLE") {
-                var styleToDup = findStyleByName(msg.styleId);
+                var styleToDup = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToDup) {
                     duplicateStyle(tab, styleToDup, refreshAndNotifyFrame);
                 }
             }
             if (msg.type === "SG_MOVE_TO_CATEGORY") {
-                var styleToMove = findStyleByName(msg.styleId);
+                var styleToMove = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToMove) {
                     moveToCategory(tab, styleToMove, refreshAndNotifyFrame);
                 }
@@ -2616,7 +2639,7 @@
                 uploadThumbnail(tab, msg.styleId, uploadSource);
             }
             if (msg.type === "SG_DELETE_STYLE") {
-                var styleToDelete = findStyleByName(msg.styleId);
+                var styleToDelete = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToDelete) {
                     deleteStyle(tab, styleToDelete.name, styleToDelete.source || styleToDelete.source_file, refreshAndNotifyFrame);
                 }

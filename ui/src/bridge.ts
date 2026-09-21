@@ -17,9 +17,9 @@ export type FrameMessage =
   | { type: 'SG_READY' }
   | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string }
   | { type: 'SG_UNAPPLY';       styleId: string }
-  | { type: 'SG_EDIT_STYLE';      styleId: string }
-  | { type: 'SG_DUPLICATE_STYLE'; styleId: string }
-  | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string }
+  | { type: 'SG_EDIT_STYLE';      styleId: string; source_file?: string }
+  | { type: 'SG_DUPLICATE_STYLE'; styleId: string; source_file?: string }
+  | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string; source_file?: string }
   | { type: 'SG_GENERATE_PREVIEW'; styleId: string; source: string }
   | { type: 'SG_UPLOAD_PREVIEW';   styleId: string; source: string }
   | { type: 'SG_WILDCARD_CATEGORY'; category: string }
@@ -28,7 +28,7 @@ export type FrameMessage =
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
   | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
-  | { type: 'SG_DELETE_STYLE';  styleId: string }
+  | { type: 'SG_DELETE_STYLE';  styleId: string; source_file?: string }
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_BACKUP' }
   | { type: 'SG_IMPORT_EXPORT' }

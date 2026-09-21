@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
-import { useStylesStore } from '../store/stylesStore'
+import { styleRowKey, useStylesStore } from '../store/stylesStore'
+import { resolveSelectedStyleRow } from '../lib/styleIdentity'
 import { ComboChips } from './ComboChips'
 
 export function StyleInfoPanel() {
@@ -15,13 +16,15 @@ export function StyleInfoPanel() {
   // briefly drop the pin. Not a subscription — disable react-hooks/refs for that read.
   const resolvedStyle = (() => {
     if (pinnedStyle) {
-      const stillSelected = selectedStyles.some(s => s.name === pinnedStyle.name)
+      const stillSelected = selectedStyles.some(
+        (s) => styleRowKey(s) === styleRowKey(pinnedStyle),
+      )
       // eslint-disable-next-line react-hooks/refs -- same-tick chip-click guard; see comment above
       if (stillSelected || isChipClick.current) return pinnedStyle
       // Pin target was deselected — clear pin
       setPinnedStyle(null)
     }
-    return lastSelected ? (styles.find(s => s.name === lastSelected.name) || lastSelected) : null
+    return resolveSelectedStyleRow(styles, lastSelected)
   })()
 
   if (!resolvedStyle) return null
@@ -32,7 +35,7 @@ export function StyleInfoPanel() {
 
   const handlePin = () => {
     isChipClick.current = true
-    const full = styles.find(s => s.name === resolvedStyle.name) || resolvedStyle
+    const full = resolveSelectedStyleRow(styles, resolvedStyle) || resolvedStyle
     setPinnedStyle(full)
     setTimeout(() => { isChipClick.current = false }, 0)
   }

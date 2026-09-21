@@ -41,7 +41,7 @@ export function SearchBar() {
     setOpen(false)
     // Apply immediately if not already selected. Query text is left as-is —
     // picking a suggestion should not also wipe the search context.
-    const isSelected = selectedStyles.some(s => s.name === style.name)
+    const isSelected = selectedStyles.some(s => styleRowKey(s) === styleRowKey(style))
     if (!isSelected) toggleStyle(style)
   }
 
@@ -105,7 +105,7 @@ export function SearchBar() {
                     </span>
                     <span className="text-xs !text-slate-400">{style.category}</span>
                   </div>
-                  {selectedStyles.some(s => s.name === style.name) && (
+                  {selectedStyles.some(s => styleRowKey(s) === styleRowKey(style)) && (
                     <span className="text-sg-accent text-xs ml-2 shrink-0">✓</span>
                   )}
                 </CommandItem>

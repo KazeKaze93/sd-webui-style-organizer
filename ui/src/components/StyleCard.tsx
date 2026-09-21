@@ -17,7 +17,7 @@ const Portal = ({ children }: { children: React.ReactNode }) =>
 
 export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
   const isSelected = useStylesStore(
-    s => s.selectedStyles.some(sel => sel.name === style.name)
+    s => s.selectedStyles.some(sel => styleRowKey(sel) === styleRowKey(style))
   )
   const fav = useStylesStore(s => s.favorites.has(styleRowKey(style)))
   const usageCount = useStylesStore(s => s.usageCounts[style.name] || 0)
@@ -161,19 +161,40 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               <>
                 <button
                   className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => { sendToHost({ type: 'SG_EDIT_STYLE', styleId: style.name }); setMenuPos(null) }}
+                  onClick={() => {
+                    sendToHost({
+                      type: 'SG_EDIT_STYLE',
+                      styleId: style.name,
+                      source_file: style.source_file,
+                    })
+                    setMenuPos(null)
+                  }}
                 >
                   ✏️ Edit
                 </button>
                 <button
                   className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => { sendToHost({ type: 'SG_DUPLICATE_STYLE', styleId: style.name }); setMenuPos(null) }}
+                  onClick={() => {
+                    sendToHost({
+                      type: 'SG_DUPLICATE_STYLE',
+                      styleId: style.name,
+                      source_file: style.source_file,
+                    })
+                    setMenuPos(null)
+                  }}
                 >
                   📄 Duplicate
                 </button>
                 <button
                   className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => { sendToHost({ type: 'SG_MOVE_TO_CATEGORY', styleId: style.name }); setMenuPos(null) }}
+                  onClick={() => {
+                    sendToHost({
+                      type: 'SG_MOVE_TO_CATEGORY',
+                      styleId: style.name,
+                      source_file: style.source_file,
+                    })
+                    setMenuPos(null)
+                  }}
                 >
                   📂 Move to category...
                 </button>
@@ -201,7 +222,14 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                 <div className="h-px my-1 bg-sg-border" />
                 <button
                   className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
-                  onClick={() => { sendToHost({ type: 'SG_DELETE_STYLE', styleId: style.name }); setMenuPos(null) }}
+                  onClick={() => {
+                    sendToHost({
+                      type: 'SG_DELETE_STYLE',
+                      styleId: style.name,
+                      source_file: style.source_file,
+                    })
+                    setMenuPos(null)
+                  }}
                 >
                   🗑️ Delete
                 </button>

@@ -268,7 +268,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
         const isCollapsed = collapsedCategories.has(cat)
         const color = getCategoryColor(cat)
         const allSelected = catStyles.every(s =>
-          selectedStyles.some(sel => sel.name === s.name)
+          selectedStyles.some(sel => styleRowKey(sel) === styleRowKey(s))
         )
 
         return (

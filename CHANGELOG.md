@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Thumbnail identity:** on-disk thumbnails and host `sg_thumb_v_*` / `SG_THUMB_DONE` version maps use **`(source file, name)`**. Legacy name-only thumbnail files migrate automatically when the name is unique across loaded packs; ambiguous UNIVERSAL duplicates are left for regeneration (not guessed).
+
 ### Added
 - **Vitest UI suite:** `cd ui && npm test` (Vitest 5) covers `wildcardSlice` compact/resolve/chip-count (`wildcardSlice.test.ts`) and Python parity (`wildcardSlice.parity.test.ts`). `tsconfig.test.json` typechecks test files with Node types; `tsconfig.app.json` excludes `*.test.ts`.
 - **Shared slice-grammar fixture:** `tests/fixtures/slice_grammar.json` drives `tests/test_slice_grammar_parity.py` and the Vitest parity file so `select_slice` and `resolveSliceNames` cannot drift silently.

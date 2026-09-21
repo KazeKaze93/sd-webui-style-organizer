@@ -38,13 +38,76 @@ def thumbnail_hash_key(name: str, source: str) -> str:
     return hashlib.md5(_thumbnail_hash_input(name, source).encode("utf-8")).hexdigest()
 
 
+def legacy_thumbnail_stem(style_name: str) -> str:
+    """Pre-source-aware stem: md5(style name only)."""
+    return hashlib.md5(_thumbnail_hash_input(style_name, "").encode("utf-8")).hexdigest()
+
+
 def get_thumbnail_path(style_name, csv_path):
     """Return deterministic thumbnail file path using md5(name + source path) hash naming."""
     safe = thumbnail_hash_key(style_name, csv_path)
     return os.path.join(THUMBNAILS_DIR, safe + ".webp")
 
 
+def migrate_legacy_thumbnails(styles=None):
+    """Move name-only thumbnail files to (name, source) keys when unambiguous.
+
+    If a style name maps to exactly one known source_file, rename the legacy
+    WebP to the source-aware path. If the same name appears in multiple packs,
+    leave the legacy file unmapped (needs regeneration — do not guess).
+
+    Returns counts: migrated / ambiguous / skipped_existing.
+    """
+    if not os.path.isdir(THUMBNAILS_DIR):
+        return {"migrated": 0, "ambiguous": 0, "skipped_existing": 0}
+
+    if styles is None:
+        styles = get_cached_styles()
+
+    by_name = {}
+    for s in styles:
+        name = s.get("name") or ""
+        source = s.get("source_file") or ""
+        if not name or not source:
+            continue
+        # LoRA previews are sibling files, never name-only WebP hashes.
+        if source == "__style_grid_lora__" or name.startswith("LORA_"):
+            continue
+        by_name.setdefault(name, []).append(source)
+
+    migrated = 0
+    ambiguous = 0
+    skipped_existing = 0
+    for name, sources in by_name.items():
+        uniq_sources = list(dict.fromkeys(sources))
+        legacy_path = os.path.join(THUMBNAILS_DIR, legacy_thumbnail_stem(name) + ".webp")
+        if not os.path.isfile(legacy_path):
+            continue
+        if len(uniq_sources) != 1:
+            ambiguous += 1
+            continue
+        new_path = get_thumbnail_path(name, uniq_sources[0])
+        if os.path.isfile(new_path):
+            skipped_existing += 1
+            try:
+                os.remove(legacy_path)
+            except OSError:
+                pass
+            continue
+        try:
+            os.rename(legacy_path, new_path)
+            migrated += 1
+        except OSError:
+            pass
+    return {
+        "migrated": migrated,
+        "ambiguous": ambiguous,
+        "skipped_existing": skipped_existing,
+    }
+
+
 def list_thumbnails():
+    migrate_legacy_thumbnails()
     if not os.path.isdir(THUMBNAILS_DIR):
         return []
     hashes = {

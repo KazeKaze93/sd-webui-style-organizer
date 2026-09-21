@@ -387,6 +387,8 @@ Success:
 
 CSV thumbnail identity is **`name` + `source` (`source_file`)**. Filenames under `data/thumbnails/` are `md5(name::relative_or_basename).webp` via `thumbnail_hash_key` / `get_thumbnail_path` in `stylegrid/thumbnails.py`. Legacy name-only hashes are no longer used for GET/upload/generate/delete.
 
+On `GET /thumbnails/list` and `POST /thumbnails/cleanup`, `migrate_legacy_thumbnails()` renames a legacy name-only WebP to the source-aware path **only when that style name belongs to exactly one known CSV**. Names present in multiple packs are left unmapped (ambiguous → regenerate; cleanup may remove the leftover orphan).
+
 Generation is a **FIFO single-worker queue** (`ThumbnailGenerationManager`): enqueue returns a `job_id`; clients poll status and may cancel.
 
 ## GET /thumbnails/list

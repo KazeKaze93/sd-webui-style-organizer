@@ -62,6 +62,7 @@ from stylegrid.thumbnails import (
     _thumbnail_hash_input,
     get_thumbnail_path,
     list_thumbnails,
+    migrate_legacy_thumbnails,
     thumbnail_generation_manager,
 )
 
@@ -734,13 +735,17 @@ def _register_thumbnail_routes(app):
 
     @app.post("/style_grid/thumbnails/cleanup")
     async def api_cleanup_thumbnails():
-        """Remove thumbnails for styles that no longer exist in any CSV."""
+        """Migrate unique legacy thumbs, then remove orphans (incl. ambiguous leftovers)."""
+        migration = migrate_legacy_thumbnails()
         if not os.path.isdir(THUMBNAILS_DIR):
-            return {"removed": 0}
+            return {"removed": 0, **migration}
         valid_hashes = set()
         for s in get_cached_styles():
+            source = s.get("source_file") or ""
+            if not source:
+                continue
             h = hashlib.md5(
-                _thumbnail_hash_input(s["name"], s.get("source_file") or "").encode("utf-8")
+                _thumbnail_hash_input(s["name"], source).encode("utf-8")
             ).hexdigest()
             valid_hashes.add(h)
         removed = 0
@@ -754,7 +759,7 @@ def _register_thumbnail_routes(app):
                     removed += 1
                 except Exception:
                     pass
-        return {"removed": removed}
+        return {"removed": removed, **migration}
 
 
 def _register_lora_routes(app):

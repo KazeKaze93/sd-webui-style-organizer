@@ -3,7 +3,7 @@ import {
   Save, Import, Eraser, Rows3, ChevronsUpDown, Plus, Globe,
 } from 'lucide-react'
 import { onHostMessage, sendToHost } from './bridge'
-import { LORA_VIEW, useStylesStore } from './store/stylesStore'
+import { LORA_VIEW, styleRowKey, useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
@@ -176,7 +176,7 @@ export default function App() {
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
         const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
-        const exists = selectedStyles.some(s => s.name === msg.style.name)
+        const exists = selectedStyles.some(s => styleRowKey(s) === styleRowKey(msg.style))
         if (!exists) {
           useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
           addToRecent(msg.style)

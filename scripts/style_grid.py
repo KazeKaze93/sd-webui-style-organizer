@@ -19,12 +19,28 @@ from stylegrid.data_files import load_presets, load_usage
 from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.prompt_ops import dedup_prompt
 from stylegrid.routes import register_api
-from stylegrid.wildcards import resolve_sg_wildcards
+from stylegrid.wildcards import DeckContext, resolve_sg_wildcards
 
 script_callbacks.on_app_started(register_api)
 
+DECK_FALLBACK_SEED = 0
 
-def _resolve_hires_prompts(hr_prompts, first_pass_raw, first_pass_resolved, styles_by_cat, field):
+
+def _deck_base_seed(p) -> int:
+    """Prefer p.all_seeds[0]; p.seed is still -1 when AlwaysVisible process() runs."""
+    if getattr(p, "all_seeds", None):
+        return int(p.all_seeds[0])
+    return DECK_FALLBACK_SEED
+
+
+def _resolve_hires_prompts(
+    hr_prompts,
+    first_pass_raw,
+    first_pass_resolved,
+    styles_by_cat,
+    field,
+    base_seed: int | None = None,
+):
     """Resolve wildcards in a hires-pass prompt list, in place.
 
     Forge builds the hires lists in setup_prompts(), before scripts run, and fills
@@ -36,7 +52,10 @@ def _resolve_hires_prompts(hr_prompts, first_pass_raw, first_pass_resolved, styl
         if i < len(first_pass_raw) and text == first_pass_raw[i]:
             hr_prompts[i] = first_pass_resolved[i]
         else:
-            hr_prompts[i] = dedup_prompt(resolve_sg_wildcards(text, styles_by_cat, field=field))
+            deck = DeckContext(base_seed, i) if base_seed is not None else None
+            hr_prompts[i] = dedup_prompt(
+                resolve_sg_wildcards(text, styles_by_cat, field=field, deck=deck)
+            )
 
 
 class StyleGridScript(scripts.Script):
@@ -113,17 +132,39 @@ class StyleGridScript(scripts.Script):
         first_pass_raw = list(p.all_prompts)
         first_pass_raw_negative = list(p.all_negative_prompts)
 
+        base_seed = _deck_base_seed(p)
+
         for i in range(len(p.all_prompts)):
-            p.all_prompts[i] = dedup_prompt(resolve_sg_wildcards(p.all_prompts[i], styles_by_cat))
+            p.all_prompts[i] = dedup_prompt(
+                resolve_sg_wildcards(
+                    p.all_prompts[i], styles_by_cat, deck=DeckContext(base_seed, i)
+                )
+            )
         for i in range(len(p.all_negative_prompts)):
-            p.all_negative_prompts[i] = dedup_prompt(resolve_sg_wildcards(p.all_negative_prompts[i], styles_by_cat, field="negative_prompt"))
+            p.all_negative_prompts[i] = dedup_prompt(
+                resolve_sg_wildcards(
+                    p.all_negative_prompts[i],
+                    styles_by_cat,
+                    field="negative_prompt",
+                    deck=DeckContext(base_seed, i),
+                )
+            )
 
         # Hires fix samples its second pass from all_hr_prompts / all_hr_negative_prompts;
         # without this the {sg:...} tokens reach the model as literal text. Both lists are
         # None unless hires fix is on (and absent entirely in img2img).
         hr_prompts = getattr(p, "all_hr_prompts", None)
         if hr_prompts:
-            _resolve_hires_prompts(hr_prompts, first_pass_raw, p.all_prompts, styles_by_cat, "prompt")
+            _resolve_hires_prompts(
+                hr_prompts, first_pass_raw, p.all_prompts, styles_by_cat, "prompt", base_seed
+            )
         hr_negative_prompts = getattr(p, "all_hr_negative_prompts", None)
         if hr_negative_prompts:
-            _resolve_hires_prompts(hr_negative_prompts, first_pass_raw_negative, p.all_negative_prompts, styles_by_cat, "negative_prompt")
+            _resolve_hires_prompts(
+                hr_negative_prompts,
+                first_pass_raw_negative,
+                p.all_negative_prompts,
+                styles_by_cat,
+                "negative_prompt",
+                base_seed,
+            )

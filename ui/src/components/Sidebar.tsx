@@ -5,6 +5,7 @@ import { BookMarked } from 'lucide-react'
 import { sendToHost } from '../bridge'
 import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
+import { WildcardMenuItems } from './WildcardMenuItems'
 
 export function Sidebar() {
   const {
@@ -179,27 +180,10 @@ export function Sidebar() {
             className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
             style={{ left: catMenu.x, top: catMenu.y }}
           >
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                sendToHost({
-                  type: 'SG_WILDCARD_CATEGORY',
-                  category: catMenu.cat
-                })
-                setCatMenu(null)
-              }}
-            >
-              🎲 Add category as wildcard
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                useStylesStore.getState().startSliceMode(catMenu.cat)
-                setCatMenu(null)
-              }}
-            >
-              🎲 Select styles for wildcard...
-            </button>
+            <WildcardMenuItems
+              category={catMenu.cat}
+              onClose={() => setCatMenu(null)}
+            />
             {catMenu.cat !== 'LoRA' && (
               <button
                 className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"

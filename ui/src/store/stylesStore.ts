@@ -1,5 +1,14 @@
 import { create } from 'zustand'
-import { sendToHost, type Style, type Tab, type WildcardRef } from '../bridge'
+import {
+  sendToHost,
+  WILDCARD_KIND_DECK,
+  WILDCARD_KIND_DICE,
+  type Style,
+  type Tab,
+  type WildcardKind,
+  type WildcardRef,
+} from '../bridge'
+import { wildcardKey } from '../lib/wildcardKey'
 
 /** Matches the backend's LORA_SOURCE marker (stylegrid/lora_scan.py). LoRA
  * cards use this as their synthetic source_file so they can be excluded
@@ -101,7 +110,7 @@ export function packBasename(sourceFile: string | undefined | null): string | nu
 export type PresetRecord = {
   styles: PresetStyleEntry[]
   created: string
-  wildcards?: { category: string; spec: string }[]
+  wildcards?: WildcardRef[]
   note?: string
   last_used?: string
 }
@@ -292,11 +301,11 @@ interface StylesStore {
   activeWildcards: WildcardRef[]
   setActiveWildcards: (refs: WildcardRef[]) => void
   removeWildcard: (ref: WildcardRef) => void
-  /** When set, the grid is picking styles for a `{sg:category:spec}` slice. */
-  sliceMode: { category: string } | null
+  /** When set, the grid is picking styles for a `{sg|sgd:category:spec}` slice. */
+  sliceMode: { category: string; kind: WildcardKind } | null
   /** Full style names selected for the current slice. */
   sliceSelection: string[]
-  startSliceMode: (category: string) => void
+  startSliceMode: (category: string, kind?: WildcardKind) => void
   exitSliceMode: () => void
   toggleSliceSelection: (name: string) => void
   /** Select all currently visible (search/filter-applied) names — caller supplies the list. */
@@ -581,25 +590,23 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   activeWildcards: [],
   setActiveWildcards: (refs) => set({ activeWildcards: refs }),
   removeWildcard: (ref) => {
-    const catKey = String(ref.category || '').toLowerCase()
-    const specKey = String(ref.spec || '').toLowerCase()
+    const targetKey = wildcardKey(ref.category, ref.spec, ref.kind)
     set((s) => ({
       activeWildcards: s.activeWildcards.filter(
-        (c) =>
-          String(c.category || '').toLowerCase() !== catKey ||
-          String(c.spec || '').toLowerCase() !== specKey,
+        (c) => wildcardKey(c.category, c.spec, c.kind) !== targetKey,
       ),
     }))
     sendToHost({
       type: 'SG_REMOVE_WILDCARD',
       category: ref.category,
       spec: ref.spec ?? '',
+      ...(ref.kind === WILDCARD_KIND_DECK ? { kind: WILDCARD_KIND_DECK } : {}),
     })
   },
   sliceMode: null,
   sliceSelection: [],
-  startSliceMode: (category) => set({
-    sliceMode: { category },
+  startSliceMode: (category, kind = WILDCARD_KIND_DICE) => set({
+    sliceMode: { category, kind },
     sliceSelection: [],
   }),
   exitSliceMode: () => set({ sliceMode: null, sliceSelection: [] }),
@@ -898,19 +905,29 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     detectConflicts()
 
     const activeWc = [...get().activeWildcards]
-    const wcKey = (c: string, s: string) =>
-      `${String(c || '').toLowerCase()}\0${String(s || '').toLowerCase()}`
-    const activeWcKeys = new Set(activeWc.map((w) => wcKey(w.category, w.spec)))
+    const activeWcKeys = new Set(
+      activeWc.map((w) => wildcardKey(w.category, w.spec, w.kind)),
+    )
     for (const wc of preset.wildcards ?? []) {
       const cat = String(wc.category || '')
       if (!cat) continue
       const spec = String(wc.spec || '')
-      if (activeWcKeys.has(wcKey(cat, spec))) continue
-      activeWcKeys.add(wcKey(cat, spec))
+      const kind = wc.kind === WILDCARD_KIND_DECK ? WILDCARD_KIND_DECK : undefined
+      const key = wildcardKey(cat, spec, kind)
+      if (activeWcKeys.has(key)) continue
+      activeWcKeys.add(key)
       if (spec) {
-        sendToHost({ type: 'SG_WILDCARD_SLICE', category: cat, spec })
+        sendToHost(
+          kind
+            ? { type: 'SG_WILDCARD_SLICE', category: cat, spec, kind }
+            : { type: 'SG_WILDCARD_SLICE', category: cat, spec },
+        )
       } else {
-        sendToHost({ type: 'SG_WILDCARD_CATEGORY', category: cat })
+        sendToHost(
+          kind
+            ? { type: 'SG_WILDCARD_CATEGORY', category: cat, kind }
+            : { type: 'SG_WILDCARD_CATEGORY', category: cat },
+        )
       }
     }
 
@@ -952,15 +969,24 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     // Wildcards: simplified scope — this preset's own wildcards are
     // removed unconditionally, without cross-preset attribution.
-    const wcKey = (c: string, s: string) =>
-      `${String(c || '').toLowerCase()}\0${String(s || '').toLowerCase()}`
     const presetWcKeys = new Set(
-      (preset.wildcards ?? []).map((wc) => wcKey(String(wc.category || ''), String(wc.spec || '')))
+      (preset.wildcards ?? []).map((wc) =>
+        wildcardKey(String(wc.category || ''), String(wc.spec || ''), wc.kind),
+      ),
     )
-    const wcToRemove = activeWildcards.filter((w) => presetWcKeys.has(wcKey(w.category, w.spec)))
-    const nextActiveWildcards = activeWildcards.filter((w) => !presetWcKeys.has(wcKey(w.category, w.spec)))
+    const wcToRemove = activeWildcards.filter((w) =>
+      presetWcKeys.has(wildcardKey(w.category, w.spec, w.kind)),
+    )
+    const nextActiveWildcards = activeWildcards.filter(
+      (w) => !presetWcKeys.has(wildcardKey(w.category, w.spec, w.kind)),
+    )
     wcToRemove.forEach((w) => {
-      sendToHost({ type: 'SG_REMOVE_WILDCARD', category: w.category, spec: w.spec ?? '' })
+      sendToHost({
+        type: 'SG_REMOVE_WILDCARD',
+        category: w.category,
+        spec: w.spec ?? '',
+        ...(w.kind === WILDCARD_KIND_DECK ? { kind: WILDCARD_KIND_DECK } : {}),
+      })
     })
 
     set({

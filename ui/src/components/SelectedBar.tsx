@@ -5,6 +5,7 @@ import { sendToHost, WILDCARD_KIND_DECK } from '../bridge'
 import { SHUFFLE_CHIP_TITLE } from '../lib/wildcardLabels'
 import { describeSpec } from '../lib/wildcardSlice'
 import { wildcardKey } from '../lib/wildcardKey'
+import { DeckIcon } from './DeckIcon'
 import { SaveSetDialog } from './SaveSetDialog'
 
 export function SelectedBar() {
@@ -136,7 +137,11 @@ export function SelectedBar() {
                 whileDrag={{ scale: 1.05, zIndex: 50 }}
               >
                 <span className="text-sg-muted/50 mr-0.5 text-[10px]">⠿</span>
-                <span className="mr-0.5">{isDeck ? '🃏' : '🎲'}</span>
+                <span className="mr-0.5">
+                  {isDeck
+                    ? <DeckIcon className="h-3 w-3 inline-block align-text-bottom shrink-0" />
+                    : '🎲'}
+                </span>
                 {isDeck && (
                   <span className="sr-only">{SHUFFLE_CHIP_TITLE}</span>
                 )}

@@ -6,6 +6,8 @@ import {
   MENU_WHOLE_CATEGORY,
 } from '../lib/wildcardLabels'
 import { useStylesStore } from '../store/stylesStore'
+import { DeckIcon } from './DeckIcon'
+import { MenuDivider } from './MenuDivider'
 
 const MENU_BTN =
   'w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors'
@@ -49,7 +51,7 @@ export function WildcardMenuItems({ category, onClose }: Props) {
           🎲 {MENU_PICK_STYLES}
         </button>
       </div>
-      <div className="border-t border-sg-border my-1" aria-hidden />
+      <MenuDivider />
       <div role="group" aria-label={MENU_GROUP_SHUFFLE}>
         <div className={MENU_HEADING} aria-hidden>
           {MENU_GROUP_SHUFFLE}
@@ -66,7 +68,7 @@ export function WildcardMenuItems({ category, onClose }: Props) {
             onClose()
           }}
         >
-          🃏 {MENU_WHOLE_CATEGORY}
+          <DeckIcon /> {MENU_WHOLE_CATEGORY}
         </button>
         <button
           type="button"
@@ -76,7 +78,7 @@ export function WildcardMenuItems({ category, onClose }: Props) {
             onClose()
           }}
         >
-          🃏 {MENU_PICK_STYLES}
+          <DeckIcon /> {MENU_PICK_STYLES}
         </button>
       </div>
     </>

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
-import { sendToHost, type Style } from '../bridge'
+import { sendToHost, WILDCARD_KIND_DECK, type Style } from '../bridge'
 import { buildSliceSpec } from '../lib/wildcardSlice'
 import {
   getCategoryColor,
@@ -14,6 +14,7 @@ import {
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
+import { WildcardMenuItems } from './WildcardMenuItems'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const [loraCatMenu, setLoraCatMenu] = useState<{ x: number; y: number; cat: string } | null>(null)
@@ -147,6 +148,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const renderSliceModeBar = () => {
     if (!sliceMode) return null
     const cat = sliceMode.category
+    const isDeck = sliceMode.kind === WILDCARD_KIND_DECK
     return (
       <div
         role="toolbar"
@@ -155,7 +157,8 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
                    border border-purple-400/40 bg-purple-500/10"
       >
         <span className="text-sm text-sg-text font-medium">
-          Slice: <span className="text-purple-300">{cat}</span>
+          {isDeck ? 'Slice (deck): ' : 'Slice: '}
+          <span className="text-purple-300">{cat}</span>
         </span>
         <span className="text-xs text-sg-muted" aria-live="polite">
           {sliceSelection.length} selected
@@ -181,16 +184,29 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
         </button>
         <button
           type="button"
-          aria-label="Add selection as wildcard slice"
+          aria-label={
+            isDeck
+              ? 'Add selection as deck wildcard slice'
+              : 'Add selection as wildcard slice'
+          }
           className="text-xs px-2.5 py-1 rounded bg-purple-500/30 border border-purple-400/50
                      text-sg-text hover:bg-purple-500/45 transition-colors font-medium"
           onClick={() => {
             const spec = buildSliceSpec(cat, sliceSelection, allNamesInCategory)
-            sendToHost({ type: 'SG_WILDCARD_SLICE', category: cat, spec })
+            sendToHost(
+              isDeck
+                ? {
+                    type: 'SG_WILDCARD_SLICE',
+                    category: cat,
+                    spec,
+                    kind: WILDCARD_KIND_DECK,
+                  }
+                : { type: 'SG_WILDCARD_SLICE', category: cat, spec },
+            )
             exitSliceMode()
           }}
         >
-          Add as wildcard
+          {isDeck ? 'Add as deck wildcard' : 'Add as wildcard'}
         </button>
         <button
           type="button"
@@ -350,27 +366,10 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
             className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
             style={{ left: loraCatMenu.x, top: loraCatMenu.y }}
           >
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                sendToHost({
-                  type: 'SG_WILDCARD_CATEGORY',
-                  category: loraCatMenu.cat,
-                })
-                setLoraCatMenu(null)
-              }}
-            >
-              🎲 Add category as wildcard
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                useStylesStore.getState().startSliceMode(loraCatMenu.cat)
-                setLoraCatMenu(null)
-              }}
-            >
-              🎲 Select styles for wildcard...
-            </button>
+            <WildcardMenuItems
+              category={loraCatMenu.cat}
+              onClose={() => setLoraCatMenu(null)}
+            />
           </div>
         </>
       )}

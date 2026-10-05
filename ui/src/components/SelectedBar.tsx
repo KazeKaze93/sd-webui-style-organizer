@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Reorder } from 'framer-motion'
 import { useStylesStore } from '../store/stylesStore'
 import { sendToHost, WILDCARD_KIND_DECK } from '../bridge'
+import { SHUFFLE_CHIP_TITLE } from '../lib/wildcardLabels'
 import { describeSpec } from '../lib/wildcardSlice'
 import { wildcardKey } from '../lib/wildcardKey'
 import { SaveSetDialog } from './SaveSetDialog'
@@ -117,8 +118,8 @@ export function SelectedBar() {
                 : names.join(', ')
             const title = isDeck
               ? (sliceTitle
-                ? `Deck wildcard, no repeats within a batch. ${sliceTitle}`
-                : 'Deck wildcard: no repeats within a batch')
+                ? `${SHUFFLE_CHIP_TITLE}. ${sliceTitle}`
+                : SHUFFLE_CHIP_TITLE)
               : sliceTitle
             return (
               <Reorder.Item
@@ -137,7 +138,7 @@ export function SelectedBar() {
                 <span className="text-sg-muted/50 mr-0.5 text-[10px]">⠿</span>
                 <span className="mr-0.5">{isDeck ? '🃏' : '🎲'}</span>
                 {isDeck && (
-                  <span className="sr-only">Deck wildcard, no repeats within a batch</span>
+                  <span className="sr-only">{SHUFFLE_CHIP_TITLE}</span>
                 )}
                 {label}
                 <button

@@ -1,8 +1,16 @@
 import { sendToHost, WILDCARD_KIND_DECK } from '../bridge'
+import {
+  MENU_GROUP_RANDOM,
+  MENU_GROUP_SHUFFLE,
+  MENU_PICK_STYLES,
+  MENU_WHOLE_CATEGORY,
+} from '../lib/wildcardLabels'
 import { useStylesStore } from '../store/stylesStore'
 
 const MENU_BTN =
   'w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors'
+
+const MENU_HEADING = 'text-xs text-sg-muted px-3 pt-1.5'
 
 type Props = {
   category: string
@@ -13,53 +21,64 @@ type Props = {
 export function WildcardMenuItems({ category, onClose }: Props) {
   return (
     <>
-      <button
-        type="button"
-        className={MENU_BTN}
-        onClick={() => {
-          sendToHost({
-            type: 'SG_WILDCARD_CATEGORY',
-            category,
-          })
-          onClose()
-        }}
-      >
-        🎲 Add category as wildcard
-      </button>
-      <button
-        type="button"
-        className={MENU_BTN}
-        onClick={() => {
-          useStylesStore.getState().startSliceMode(category)
-          onClose()
-        }}
-      >
-        🎲 Select styles for wildcard...
-      </button>
-      <button
-        type="button"
-        className={MENU_BTN}
-        onClick={() => {
-          sendToHost({
-            type: 'SG_WILDCARD_CATEGORY',
-            category,
-            kind: WILDCARD_KIND_DECK,
-          })
-          onClose()
-        }}
-      >
-        🃏 Add category as deck wildcard
-      </button>
-      <button
-        type="button"
-        className={MENU_BTN}
-        onClick={() => {
-          useStylesStore.getState().startSliceMode(category, WILDCARD_KIND_DECK)
-          onClose()
-        }}
-      >
-        🃏 Select styles for deck wildcard...
-      </button>
+      <div role="group" aria-label={MENU_GROUP_RANDOM}>
+        <div className={MENU_HEADING} aria-hidden>
+          {MENU_GROUP_RANDOM}
+        </div>
+        <button
+          type="button"
+          className={MENU_BTN}
+          onClick={() => {
+            sendToHost({
+              type: 'SG_WILDCARD_CATEGORY',
+              category,
+            })
+            onClose()
+          }}
+        >
+          🎲 {MENU_WHOLE_CATEGORY}
+        </button>
+        <button
+          type="button"
+          className={MENU_BTN}
+          onClick={() => {
+            useStylesStore.getState().startSliceMode(category)
+            onClose()
+          }}
+        >
+          🎲 {MENU_PICK_STYLES}
+        </button>
+      </div>
+      <div className="border-t border-sg-border my-1" aria-hidden />
+      <div role="group" aria-label={MENU_GROUP_SHUFFLE}>
+        <div className={MENU_HEADING} aria-hidden>
+          {MENU_GROUP_SHUFFLE}
+        </div>
+        <button
+          type="button"
+          className={MENU_BTN}
+          onClick={() => {
+            sendToHost({
+              type: 'SG_WILDCARD_CATEGORY',
+              category,
+              kind: WILDCARD_KIND_DECK,
+            })
+            onClose()
+          }}
+        >
+          🃏 {MENU_WHOLE_CATEGORY}
+        </button>
+        <button
+          type="button"
+          className={MENU_BTN}
+          onClick={() => {
+            useStylesStore.getState().startSliceMode(category, WILDCARD_KIND_DECK)
+            onClose()
+          }}
+        >
+          🃏 {MENU_PICK_STYLES}
+        </button>
+      </div>
     </>
   )
 }

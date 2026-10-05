@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { WILDCARD_KIND_DECK } from '../bridge'
+import { PRESET_SHUFFLE_SUFFIX } from '../lib/wildcardLabels'
 import { wildcardKey } from '../lib/wildcardKey'
 import {
   resolvePresetMembers,
@@ -219,6 +220,7 @@ export function PresetRow({ name, preset }: Props) {
                 >
                   {wc.kind === WILDCARD_KIND_DECK ? '🃏' : '🎲'}{' '}
                   {wc.category}{wc.spec ? `:${wc.spec}` : ''}
+                  {wc.kind === WILDCARD_KIND_DECK ? ` ${PRESET_SHUFFLE_SUFFIX}` : ''}
                 </li>
               ))}
             </ul>

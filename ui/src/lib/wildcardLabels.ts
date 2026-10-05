@@ -1,0 +1,10 @@
+export const MENU_GROUP_RANDOM = 'Wildcard: random (can repeat)'
+export const MENU_GROUP_SHUFFLE = 'Wildcard: shuffle (no repeats in a batch)'
+export const MENU_WHOLE_CATEGORY = 'Whole category'
+export const MENU_PICK_STYLES = 'Pick styles...'
+export const SLICE_BAR_TITLE_SHUFFLE = 'Shuffle slice: '
+export const SLICE_ADD_SHUFFLE = 'Add as shuffle wildcard'
+export const SLICE_ADD_SHUFFLE_ARIA = 'Add selection as shuffle wildcard slice'
+export const SHUFFLE_CHIP_TITLE =
+  'Shuffle: each style is used once before any repeats (within one batch)'
+export const PRESET_SHUFFLE_SUFFIX = '(shuffle)'

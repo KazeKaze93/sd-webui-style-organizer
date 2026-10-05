@@ -2,6 +2,11 @@ import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, WILDCARD_KIND_DECK, type Style } from '../bridge'
+import {
+  SLICE_ADD_SHUFFLE,
+  SLICE_ADD_SHUFFLE_ARIA,
+  SLICE_BAR_TITLE_SHUFFLE,
+} from '../lib/wildcardLabels'
 import { buildSliceSpec } from '../lib/wildcardSlice'
 import {
   getCategoryColor,
@@ -157,7 +162,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
                    border border-purple-400/40 bg-purple-500/10"
       >
         <span className="text-sm text-sg-text font-medium">
-          {isDeck ? 'Slice (deck): ' : 'Slice: '}
+          {isDeck ? SLICE_BAR_TITLE_SHUFFLE : 'Slice: '}
           <span className="text-purple-300">{cat}</span>
         </span>
         <span className="text-xs text-sg-muted" aria-live="polite">
@@ -186,7 +191,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
           type="button"
           aria-label={
             isDeck
-              ? 'Add selection as deck wildcard slice'
+              ? SLICE_ADD_SHUFFLE_ARIA
               : 'Add selection as wildcard slice'
           }
           className="text-xs px-2.5 py-1 rounded bg-purple-500/30 border border-purple-400/50
@@ -206,7 +211,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
             exitSliceMode()
           }}
         >
-          {isDeck ? 'Add as deck wildcard' : 'Add as wildcard'}
+          {isDeck ? SLICE_ADD_SHUFFLE : 'Add as wildcard'}
         </button>
         <button
           type="button"

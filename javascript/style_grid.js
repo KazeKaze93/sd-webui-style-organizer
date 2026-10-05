@@ -455,8 +455,17 @@
     // ════════════════════════════════════════════════════
     // WILDCARDS
     // ════════════════════════════════════════════════════
-    // Wildcard {sg:category} / {sg:category:spec} tracking (sync chips ↔ prompt textareas)
+    // Wildcard {sg|sgd:category} / {sg|sgd:category:spec} tracking (sync chips ↔ prompt textareas)
     // -----------------------------------------------------------------------
+    var WILDCARD_KIND_DICE = "sg";
+    var WILDCARD_KIND_DECK = "sgd";
+
+    function normalizeWildcardKind(kind) {
+        return String(kind || "").trim().toLowerCase() === WILDCARD_KIND_DECK
+            ? WILDCARD_KIND_DECK
+            : WILDCARD_KIND_DICE;
+    }
+
     function parseSgInner(inner) {
         var s = String(inner || "");
         var idx = s.indexOf(":");
@@ -466,16 +475,22 @@
         return { category: s.slice(0, idx).trim(), spec: s.slice(idx + 1).trim() };
     }
 
-    function buildSgToken(category, spec) {
+    function buildSgToken(category, spec, kind) {
         var cat = String(category || "").toLowerCase();
         var sp = (spec === null || spec === undefined) ? "" : String(spec);
-        return "{sg:" + cat + (sp ? ":" + sp : "") + "}";
+        var k = normalizeWildcardKind(kind);
+        return "{" + k + ":" + cat + (sp ? ":" + sp : "") + "}";
     }
 
     function extractWildcardCategories(str) {
-        return [...(str || "").matchAll(/\{sg:([^}]+)\}/gi)].map(function (m) {
-            var parsed = parseSgInner(m[1]);
-            return { category: parsed.category, spec: parsed.spec, token: m[0] };
+        return [...(str || "").matchAll(/\{(sgd?):([^}]+)\}/gi)].map(function (m) {
+            var parsed = parseSgInner(m[2]);
+            return {
+                category: parsed.category,
+                spec: parsed.spec,
+                kind: normalizeWildcardKind(m[1]),
+                token: m[0],
+            };
         });
     }
 
@@ -485,7 +500,9 @@
         var result = [];
         for (var i = 0; i < all.length; i++) {
             var entry = all[i];
-            var key = String(entry.category || "").toLowerCase() + "\0" + String(entry.spec || "").toLowerCase();
+            var key = String(entry.category || "").toLowerCase()
+                + "\0" + String(entry.spec || "").toLowerCase()
+                + "\0" + normalizeWildcardKind(entry.kind);
             if (!seen.has(key)) {
                 seen.add(key);
                 result.push(entry);
@@ -501,7 +518,11 @@
             promptEl ? promptEl.value || "" : "",
             negEl ? negEl.value || "" : ""
         ).map(function (entry) {
-            return { category: entry.category, spec: entry.spec };
+            return {
+                category: entry.category,
+                spec: entry.spec,
+                kind: normalizeWildcardKind(entry.kind),
+            };
         });
         var frame = document.getElementById("sg-frame-" + tabName);
         if (frame && frame.contentWindow) {
@@ -509,12 +530,12 @@
         }
     }
 
-    function removeWildcardCategory(tabName, category, spec) {
+    function removeWildcardCategory(tabName, category, spec, kind) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
-        // Exact token from buildSgToken — slice vs whole-category stay distinct
+        // Exact token from buildSgToken — slice vs whole-category and dice vs deck stay distinct
         // ({sg:cat} is not a substring of {sg:cat:spec} because of the closing brace).
-        var token = buildSgToken(category, spec || "");
+        var token = buildSgToken(category, spec || "", kind);
         var tokenLower = token.toLowerCase();
         var strip = function (s) {
             s = s || "";
@@ -547,10 +568,12 @@
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
         var order = Array.isArray(newOrder) ? newOrder : [];
-        var wcRe = /^\{sg:([^}]+)\}$/i;
+        var wcRe = /^\{(sgd?):([^}]+)\}$/i;
 
-        function orderKey(category, spec) {
-            return String(category || "").toLowerCase() + "\0" + String(spec || "").toLowerCase();
+        function orderKey(category, spec, kind) {
+            return String(category || "").toLowerCase()
+                + "\0" + String(spec || "").toLowerCase()
+                + "\0" + normalizeWildcardKind(kind);
         }
 
         function reorderOne(text) {
@@ -563,8 +586,8 @@
                 var m = wcRe.exec(t);
                 if (m) {
                     if (firstWcIdx === -1) firstWcIdx = i;
-                    var parsed = parseSgInner(m[1]);
-                    present[orderKey(parsed.category, parsed.spec)] = true;
+                    var parsed = parseSgInner(m[2]);
+                    present[orderKey(parsed.category, parsed.spec, m[1])] = true;
                 } else {
                     nonWildcards.push(t);
                 }
@@ -577,8 +600,9 @@
                 if (!item || typeof item !== "object") continue;
                 var cat = String(item.category || "").trim();
                 var sp = (item.spec === null || item.spec === undefined) ? "" : String(item.spec);
-                if (cat && present[orderKey(cat, sp)]) {
-                    reorderedWc.push(buildSgToken(cat, sp));
+                var kind = normalizeWildcardKind(item.kind);
+                if (cat && present[orderKey(cat, sp, kind)]) {
+                    reorderedWc.push(buildSgToken(cat, sp, kind));
                 }
             }
 
@@ -1806,7 +1830,7 @@
             n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
         }
 
-        var wcRe = /^\{sg:([^}]+)\}$/i;
+        var wcRe = /^\{(sgd?):([^}]+)\}$/i;
         var stripWildcardTokens = function (s) {
             return splitTopLevelCommas(s || "").map(function (t) { return t.trim(); }).filter(function (t) {
                 return t && !wcRe.test(t);
@@ -2471,7 +2495,7 @@
             if (msg.type === "SG_WILDCARD_CATEGORY") {
                 var catId = msg.category || "";
                 if (catId) {
-                    var wcTag = buildSgToken(catId, msg.spec || "");
+                    var wcTag = buildSgToken(catId, msg.spec || "", msg.kind);
                     var promptEl = qs("#" + tab + "_prompt textarea");
                     if (promptEl) {
                         var sep = promptEl.value.trim() ? ", " : "";
@@ -2483,7 +2507,7 @@
             if (msg.type === "SG_WILDCARD_SLICE") {
                 var sliceCat = msg.category || "";
                 if (sliceCat) {
-                    var sliceTag = buildSgToken(sliceCat, msg.spec || "");
+                    var sliceTag = buildSgToken(sliceCat, msg.spec || "", msg.kind);
                     var slicePromptEl = qs("#" + tab + "_prompt textarea");
                     if (slicePromptEl) {
                         var sliceSep = slicePromptEl.value.trim() ? ", " : "";
@@ -2494,7 +2518,7 @@
             }
             if (msg.type === "SG_REMOVE_WILDCARD") {
                 if (msg.category) {
-                    removeWildcardCategory(tab, msg.category, msg.spec || "");
+                    removeWildcardCategory(tab, msg.category, msg.spec || "", msg.kind);
                 }
             }
             if (msg.type === "SG_REORDER_WILDCARDS") {

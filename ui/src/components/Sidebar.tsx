@@ -177,7 +177,7 @@ export function Sidebar() {
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setCatMenu(null)} />
           <div
-            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
+            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52 w-max max-w-sm"
             style={{ left: catMenu.x, top: catMenu.y }}
           >
             <WildcardMenuItems

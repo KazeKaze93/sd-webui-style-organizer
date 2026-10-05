@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { wildcardKey } from '../lib/wildcardKey'
 import {
   resolvePresetMembers,
   suggestPresetName,
@@ -34,16 +35,18 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
       setExistsWarning(false)
       return
     }
-    const wcKey = (c: string, s: string) =>
-      `${String(c || '').toLowerCase()}\0${String(s || '').toLowerCase()}`
-    const activeWcKeys = new Set(activeWildcards.map((w) => wcKey(w.category, w.spec)))
+    const activeWcKeys = new Set(
+      activeWildcards.map((w) => wildcardKey(w.category, w.spec, w.kind)),
+    )
     const matches: string[] = []
     for (const [presetName, preset] of Object.entries(presets)) {
       const members = resolvePresetMembers(preset.styles ?? [], styles)
       const foundMembers = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
         m.status === 'found')
       const presetWcKeys = new Set(
-        (preset.wildcards ?? []).map((wc) => wcKey(String(wc.category || ''), String(wc.spec || '')))
+        (preset.wildcards ?? []).map((wc) =>
+          wildcardKey(String(wc.category || ''), String(wc.spec || ''), wc.kind),
+        ),
       )
       const isActive = foundMembers.length > 0 &&
         foundMembers.every((m) => selectedStyles.some((s) => s.name === m.style.name)) &&

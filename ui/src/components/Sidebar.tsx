@@ -5,6 +5,8 @@ import { BookMarked } from 'lucide-react'
 import { sendToHost } from '../bridge'
 import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
+import { MenuDivider } from './MenuDivider'
+import { WildcardMenuItems } from './WildcardMenuItems'
 
 export function Sidebar() {
   const {
@@ -176,48 +178,34 @@ export function Sidebar() {
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setCatMenu(null)} />
           <div
-            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52"
+            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52 w-max max-w-sm"
             style={{ left: catMenu.x, top: catMenu.y }}
           >
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                sendToHost({
-                  type: 'SG_WILDCARD_CATEGORY',
-                  category: catMenu.cat
-                })
-                setCatMenu(null)
-              }}
-            >
-              🎲 Add category as wildcard
-            </button>
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-              onClick={() => {
-                useStylesStore.getState().startSliceMode(catMenu.cat)
-                setCatMenu(null)
-              }}
-            >
-              🎲 Select styles for wildcard...
-            </button>
+            <WildcardMenuItems
+              category={catMenu.cat}
+              onClose={() => setCatMenu(null)}
+            />
             {catMenu.cat !== 'LoRA' && (
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-                onClick={() => {
-                  const rawSrc =
-                    useStylesStore.getState().activeSource ??
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
-                  sendToHost({
-                    type: 'SG_GENERATE_CATEGORY_PREVIEWS',
-                    category: catMenu.cat,
-                    missingCount: 0,
-                    ...(rawSrc ? { source: rawSrc } : {}),
-                  })
-                  setCatMenu(null)
-                }}
-              >
-                🎨 Generate previews...
-              </button>
+              <>
+                <MenuDivider />
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => {
+                    const rawSrc =
+                      useStylesStore.getState().activeSource ??
+                      (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
+                    sendToHost({
+                      type: 'SG_GENERATE_CATEGORY_PREVIEWS',
+                      category: catMenu.cat,
+                      missingCount: 0,
+                      ...(rawSrc ? { source: rawSrc } : {}),
+                    })
+                    setCatMenu(null)
+                  }}
+                >
+                  🎨 Generate previews...
+                </button>
+              </>
             )}
           </div>
         </>

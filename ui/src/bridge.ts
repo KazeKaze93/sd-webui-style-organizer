@@ -1,3 +1,18 @@
+// ── Shared types ──────────────────────────────────────────────
+export type Tab = 'txt2img' | 'img2img'
+
+export type WildcardKind = 'sg' | 'sgd'
+export const WILDCARD_KIND_DICE: WildcardKind = 'sg'
+export const WILDCARD_KIND_DECK: WildcardKind = 'sgd'
+
+/** Category + optional slice spec for `{sg|sgd:category}` / `{sg|sgd:category:spec}` tokens. */
+export interface WildcardRef {
+  category: string
+  spec: string
+  /** Absent or `'sg'` = dice; `'sgd'` = deck (without replacement). */
+  kind?: WildcardKind
+}
+
 /** Messages sent from Forge host script to the React iframe. */
 export type HostMessage =
   | { type: 'SG_CLEAR_SELECTION' }
@@ -22,9 +37,9 @@ export type FrameMessage =
   | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string; source_file?: string }
   | { type: 'SG_GENERATE_PREVIEW'; styleId: string; source: string }
   | { type: 'SG_UPLOAD_PREVIEW';   styleId: string; source: string }
-  | { type: 'SG_WILDCARD_CATEGORY'; category: string }
-  | { type: 'SG_WILDCARD_SLICE'; category: string; spec: string }
-  | { type: 'SG_REMOVE_WILDCARD'; category: string; spec: string }
+  | { type: 'SG_WILDCARD_CATEGORY'; category: string; kind?: WildcardKind }
+  | { type: 'SG_WILDCARD_SLICE'; category: string; spec: string; kind?: WildcardKind }
+  | { type: 'SG_REMOVE_WILDCARD'; category: string; spec: string; kind?: WildcardKind }
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
   | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
@@ -35,15 +50,6 @@ export type FrameMessage =
   | { type: 'SG_NEW_STYLE'; sourceFile?: string }
   | { type: 'SG_CLEAR_ALL' }
   | { type: 'SG_SOURCE_CHANGE'; source: string | null }
-
-// ── Shared types ──────────────────────────────────────────────
-export type Tab = 'txt2img' | 'img2img'
-
-/** Category + optional slice spec for `{sg:category}` / `{sg:category:spec}` tokens. */
-export interface WildcardRef {
-  category: string
-  spec: string
-}
 
 export interface Style {
   name:              string

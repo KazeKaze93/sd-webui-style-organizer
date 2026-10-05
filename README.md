@@ -113,11 +113,13 @@ The small tab badge in the panel header shows the active host context.
 
 | Item | What it does |
 |---|---|
-| **Add category as wildcard** | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
-| **Select styles for wildcard…** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
+| **Wildcard: random (can repeat)** → **Whole category** | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
+| **Wildcard: random (can repeat)** → **Pick styles...** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
+| **Wildcard: shuffle (no repeats in a batch)** → **Whole category** | Inserts a token into the **positive prompt** on the Forge side: `{sgd:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
+| **Wildcard: shuffle (no repeats in a batch)** → **Pick styles...** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
 | **Generate previews…** | Queues **thumbnail generation** for styles in that category (batch job in the host). Always shown; does not report a missing-preview count. |
 
-![Sidebar category context menu — Add category as wildcard, Select styles for wildcard…, and Generate previews…](docs/screenshots/category-context-wildcard-previews.png)
+![Sidebar category context menu — Wildcard: random (can repeat) and Wildcard: shuffle (no repeats in a batch) with Whole category / Pick styles..., and Generate previews…](docs/screenshots/category-context-wildcard-previews.png)
 
 ![Slice-selection mode — mode bar with selection count and Select all / Clear all / Add as wildcard / Cancel; per-card checkboxes; search stays active](docs/screenshots/slice-selection-mode.png)
 
@@ -139,10 +141,10 @@ The small tab badge in the panel header shows the active host context.
 **Compatibility with other “wildcard” extensions (e.g. `stable-diffusion-webui-wildcards` / Dynamic Prompts `__file__` style)**
 
 - Those stacks usually recognize **different** syntax — commonly **`__name__`** (double underscores) or other Dynamic Prompts / custom grammar — not `{sg:…}`.
-- Style Grid only looks for **`{sg:…}`**; other extensions only interpret **their** patterns. The two do **not** use the same delimiters, so they **do not fight over the same text** in normal use.
+- Style Grid only looks for **`{sg:…}`** and **`{sgd:…}`**; other extensions only interpret **their** patterns. The two do **not** use the same delimiters, so they **do not fight over the same text** in normal use.
 - **You do not need** the Automatic1111 wildcards extension (or any extra wildcard plugin) **for Style Grid’s `{sg:…}` feature** — it is implemented **inside this extension** (Python `resolve_sg_wildcards` + your style CSV data). Other wildcard extensions remain optional for their own `__…__` / file-based workflows.
 
-### 🃏 Shuffle wildcards
+#### 🃏 Shuffle wildcards
 
 A **shuffle wildcard** draws styles **without repeats**. Where the random wildcard `{sg:category}` may pick the same style twice in a batch, `{sgd:category}` uses every style once before any style comes back.
 

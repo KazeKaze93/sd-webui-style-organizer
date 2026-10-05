@@ -5,6 +5,7 @@ import { BookMarked } from 'lucide-react'
 import { sendToHost } from '../bridge'
 import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
+import { MenuDivider } from './MenuDivider'
 import { WildcardMenuItems } from './WildcardMenuItems'
 
 export function Sidebar() {
@@ -185,23 +186,26 @@ export function Sidebar() {
               onClose={() => setCatMenu(null)}
             />
             {catMenu.cat !== 'LoRA' && (
-              <button
-                className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
-                onClick={() => {
-                  const rawSrc =
-                    useStylesStore.getState().activeSource ??
-                    (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
-                  sendToHost({
-                    type: 'SG_GENERATE_CATEGORY_PREVIEWS',
-                    category: catMenu.cat,
-                    missingCount: 0,
-                    ...(rawSrc ? { source: rawSrc } : {}),
-                  })
-                  setCatMenu(null)
-                }}
-              >
-                🎨 Generate previews...
-              </button>
+              <>
+                <MenuDivider />
+                <button
+                  className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+                  onClick={() => {
+                    const rawSrc =
+                      useStylesStore.getState().activeSource ??
+                      (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
+                    sendToHost({
+                      type: 'SG_GENERATE_CATEGORY_PREVIEWS',
+                      category: catMenu.cat,
+                      missingCount: 0,
+                      ...(rawSrc ? { source: rawSrc } : {}),
+                    })
+                    setCatMenu(null)
+                  }}
+                >
+                  🎨 Generate previews...
+                </button>
+              </>
             )}
           </div>
         </>

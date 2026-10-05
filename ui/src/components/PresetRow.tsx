@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { WILDCARD_KIND_DECK } from '../bridge'
 import { PRESET_SHUFFLE_SUFFIX } from '../lib/wildcardLabels'
 import { wildcardKey } from '../lib/wildcardKey'
+import { DeckIcon } from './DeckIcon'
 import {
   resolvePresetMembers,
   styleDisplayName,
@@ -218,7 +219,7 @@ export function PresetRow({ name, preset }: Props) {
                   key={`w:${wildcardKey(wc.category, wc.spec, wc.kind)}:${i}`}
                   className="text-xs text-purple-300/80 truncate"
                 >
-                  {wc.kind === WILDCARD_KIND_DECK ? '🃏' : '🎲'}{' '}
+                  {wc.kind === WILDCARD_KIND_DECK ? <DeckIcon /> : '🎲'}{' '}
                   {wc.category}{wc.spec ? `:${wc.spec}` : ''}
                   {wc.kind === WILDCARD_KIND_DECK ? ` ${PRESET_SHUFFLE_SUFFIX}` : ''}
                 </li>

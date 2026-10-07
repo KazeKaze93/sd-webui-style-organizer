@@ -41,6 +41,7 @@ from stylegrid.csv_io import (
     save_style_to_csv,
 )
 from stylegrid.data_files import (
+    CorruptDataError,
     backup_csv_files,
     increment_usage,
     load_presets,
@@ -49,6 +50,7 @@ from stylegrid.data_files import (
     preset_styles_payload_ok,
     save_presets,
 )
+from stylegrid.safe_persistence import write_atomic
 from stylegrid.lora_scan import (
     LORA_SOURCE,
     get_cached_lora_styles,
@@ -149,7 +151,15 @@ def _register_style_routes(app):
         if_none_match = request.headers.get("If-None-Match", "").strip().strip('"')
         if if_none_match and if_none_match == etag:
             return Response(status_code=304)
-        response = JSONResponse(content={"categories": categories, "usage": load_usage(), "presets": load_presets()})
+        try:
+            payload = {
+                "categories": categories,
+                "usage": load_usage(),
+                "presets": load_presets(),
+            }
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
+        response = JSONResponse(content=payload)
         response.headers["ETag"] = etag
         return response
 
@@ -159,7 +169,10 @@ def _register_style_routes(app):
         invalidate_styles_cache()
         styles = get_cached_styles()
         categories = categorize_styles(styles)
-        return {"categories": categories, "usage": load_usage()}
+        try:
+            return {"categories": categories, "usage": load_usage()}
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
 
     @app.get("/style_grid/check_update")
     async def api_check_update():
@@ -171,12 +184,15 @@ def _register_style_routes(app):
 
     @app.get("/style_grid/export")
     async def api_export():
-        return {
-            "styles": load_all_styles(),
-            "presets": load_presets(),
-            "usage": load_usage(),
-            "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        }
+        try:
+            return {
+                "styles": load_all_styles(),
+                "presets": load_presets(),
+                "usage": load_usage(),
+                "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
 
     @app.post("/style_grid/import")
     async def api_import(request: Request):
@@ -190,8 +206,10 @@ def _register_style_routes(app):
                         data = json.loads(zf.read("presets.json").decode("utf-8"))
                         if isinstance(data, dict):
                             save_presets(data)
+            except CorruptDataError as exc:
+                return _corrupt_response(exc)
             except Exception:
-                pass
+                return {"error": "import_failed"}
             return {"ok": True}
         try:
             data = json.loads(raw.decode("utf-8"))
@@ -200,9 +218,12 @@ def _register_style_routes(app):
         if not isinstance(data, dict):
             return {"ok": True}
         if "presets" in data:
-            p = load_presets()
-            p.update(data["presets"])
-            save_presets(p)
+            try:
+                p = load_presets()
+                p.update(data["presets"])
+                save_presets(p)
+            except CorruptDataError as exc:
+                return _corrupt_response(exc)
         if "styles" in data and data["styles"]:
             existing_names = {
                 s["name"]
@@ -231,17 +252,18 @@ def _register_style_routes(app):
                 ext_styles = os.path.join(EXT_DIR, "styles")
                 os.makedirs(ext_styles, exist_ok=True)
                 target = os.path.join(ext_styles, f"imported_{time.strftime('%Y%m%d_%H%M%S')}.csv")
-                with open(target, "w", encoding="utf-8", newline="") as f:
-                    w = csv.writer(f)
-                    w.writerow(["name", "prompt", "negative_prompt", "description", "category"])
-                    for s in importable:
-                        w.writerow([
-                            s.get("name", ""),
-                            s.get("prompt", ""),
-                            s.get("negative_prompt", ""),
-                            s.get("description", ""),
-                            s.get("category", "") or s.get("category_explicit", ""),
-                        ])
+                buf = io.StringIO(newline="")
+                w = csv.writer(buf)
+                w.writerow(["name", "prompt", "negative_prompt", "description", "category"])
+                for s in importable:
+                    w.writerow([
+                        s.get("name", ""),
+                        s.get("prompt", ""),
+                        s.get("negative_prompt", ""),
+                        s.get("description", ""),
+                        s.get("category", "") or s.get("category_explicit", ""),
+                    ])
+                write_atomic(target, buf.getvalue().encode("utf-8-sig"))
                 invalidate_styles_cache()
 
             return {
@@ -258,20 +280,37 @@ def _register_style_routes(app):
         if not isinstance(order, list):
             return {"error": "order must be a list"}
         order_file = os.path.join(DATA_DIR, "category_order.json")
-        with open(order_file, "w", encoding="utf-8") as f:
-            json.dump(order, f, indent=2, ensure_ascii=False)
+        write_atomic(
+            order_file,
+            json.dumps(order, indent=2, ensure_ascii=False) + "\n",
+        )
         return {"ok": True}
+
+
+def _corrupt_response(exc: CorruptDataError):
+    return {
+        "error": "corrupt_data",
+        "path": exc.path,
+        "bak_path": exc.path + ".bak",
+        "message": str(exc),
+    }
 
 
 def _register_preset_routes(app):
     """Register preset CRUD routes."""
     @app.get("/style_grid/presets")
     async def get_presets():
-        return load_presets()
+        try:
+            return load_presets()
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
 
     @app.post("/style_grid/presets/save")
     async def api_save_preset(data: dict):
-        presets = load_presets()
+        try:
+            presets = load_presets()
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         name = data.get("name", "").strip()
         styles = data.get("styles", [])
         wildcards = data.get("wildcards", [])
@@ -304,16 +343,25 @@ def _register_preset_routes(app):
         if prev and isinstance(prev.get("last_used"), str) and prev.get("last_used"):
             entry["last_used"] = prev["last_used"]
         presets[name] = entry
-        saved = save_presets(presets)
+        try:
+            saved = save_presets(presets)
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
 
     @app.post("/style_grid/presets/delete")
     async def api_delete_preset(data: dict):
-        presets = load_presets()
+        try:
+            presets = load_presets()
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         name = data.get("name", "")
         if name in presets:
             del presets[name]
-            saved = save_presets(presets)
+            try:
+                saved = save_presets(presets)
+            except CorruptDataError as exc:
+                return _corrupt_response(exc)
             return {"ok": True, "presets": saved}
         return {"ok": True, "presets": presets}
 
@@ -324,14 +372,20 @@ def _register_preset_routes(app):
         overwrite = bool(data.get("overwrite"))
         if not old_name or not new_name:
             return {"error": "Name required"}
-        presets = load_presets()
+        try:
+            presets = load_presets()
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         if old_name not in presets:
             return {"error": "not_found", "name": old_name}
         if new_name != old_name and new_name in presets and not overwrite:
             return {"error": "exists", "name": new_name}
         entry = presets.pop(old_name)
         presets[new_name] = entry
-        saved = save_presets(presets)
+        try:
+            saved = save_presets(presets)
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
 
     @app.post("/style_grid/presets/touch")
@@ -339,16 +393,25 @@ def _register_preset_routes(app):
         name = (data.get("name") or "").strip()
         if not name:
             return {"error": "Name required"}
-        presets = load_presets()
+        try:
+            presets = load_presets()
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         if name not in presets:
             return {"error": "not_found", "name": name}
         presets[name]["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        saved = save_presets(presets)
+        try:
+            saved = save_presets(presets)
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
 
     @app.get("/style_grid/presets/list")
     async def api_list_presets():
-        return load_presets()
+        try:
+            return load_presets()
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
 
 
 def _register_usage_routes(app):

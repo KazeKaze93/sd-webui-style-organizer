@@ -1,6 +1,7 @@
 """CSV parsing, style CRUD, categorization."""
 
 import csv
+import io
 import os
 
 from modules import shared
@@ -8,9 +9,19 @@ from modules import shared
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import DATA_DIR, EXT_DIR, get_all_styles_file_paths, is_samples_source
 from stylegrid.lora_scan import LORA_SOURCE, get_cached_lora_styles
+from stylegrid.safe_persistence import write_atomic
 
 # Canonical CSV column order used when writing style rows back to disk.
 FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]
+
+
+def _write_csv_atomic(target_path, header, rows):
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf)
+    writer.writerow(header)
+    for row in rows:
+        writer.writerow(row)
+    write_atomic(target_path, buf.getvalue().encode("utf-8-sig"))
 
 
 def _sanitize_csv_cell(value):
@@ -205,11 +216,7 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
             found = True
     if not found:
         rows.append(make_row())
-    with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
-        for row in rows:
-            writer.writerow(row)
+    _write_csv_atomic(target_path, header, rows)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True
@@ -246,11 +253,7 @@ def delete_style_from_csv(name, source_file=None):
                 continue
             if row and row[0].strip() != name:
                 rows.append(row)
-    with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(header or FIELDNAMES)
-        for row in rows:
-            writer.writerow(row)
+    _write_csv_atomic(target_path, header or FIELDNAMES, rows)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True
@@ -351,11 +354,7 @@ def rename_style_in_csv(old_name, new_name, source_file=None, **fields):
         cat_cell,
     ]
 
-    with open(target_path, "w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(header)
-        for row in rows:
-            writer.writerow(row)
+    _write_csv_atomic(target_path, header, rows)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True

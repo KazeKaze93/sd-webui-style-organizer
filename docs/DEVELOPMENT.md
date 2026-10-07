@@ -25,6 +25,9 @@ flowchart LR
 ├─ javascript/
 │  ├─ style_grid.mjs                  # Host entry (Forge loads *.mjs as type=module)
 │  ├─ style_grid/                     # Host modules: api, state, prompt-utils, render, events
+│  │  ├─ events.js                    # Thin wiring (imports + hooks + init registration)
+│  │  └─ handlers/                    # Feature handlers (~400 lines each): wildcards, apply,
+│  │                                  # panel, thumbnails(-batch), forge-tabs, iframe(+messages)
 │  └─ sg_prompt_utils.js              # Legacy ESM bridge → prompt-utils (Vitest / test_js.html)
 ├─ scripts/style_grid.py              # Forge script entrypoint (imports stylegrid.*)
 ├─ stylegrid/                         # Backend package

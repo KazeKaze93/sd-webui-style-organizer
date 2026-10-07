@@ -313,6 +313,8 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 - Development guide: `docs/DEVELOPMENT.md`
 - V2 React bundle (iframe loading, Zustand `useShallow`, `selectFilteredStyles`): `ui/README.md` (also overlaps with **GET `/style_grid/ui`** in `docs/API.md`).
 
+Quality checks run locally via `.githooks/pre-push` (no GitHub Actions). After clone: `git config core.hooksPath .githooks`.
+
 ### Remote / share access
 
 When Forge is started with `--listen` or `--share`, mutating Style Grid API routes require a per-session `X-StyleGrid-Token` (injected into the iframe HTML). With `--gradio-auth`, `GET /style_grid/ui` and those write routes also require a Gradio login cookie (`access-token` / `access-token-unsecure` on Gradio 3.x). Prefer `--gradio-auth` whenever the UI is reachable beyond localhost. Details: `docs/DEVELOPMENT.md` § Write-route / Gradio auth.

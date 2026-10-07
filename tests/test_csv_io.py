@@ -250,6 +250,39 @@ def test_rename_preserves_row_position(tmp_path, monkeypatch):
     ]
 
 
+def test_rename_preserves_extra_columns(tmp_path, monkeypatch):
+    """Renamed row must keep trailing columns; only the name cell changes."""
+    import csv
+    import io
+
+    monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
+    p = tmp_path / "styles.csv"
+    p.write_text(
+        "name,prompt,negative_prompt,description,category,extra_a,extra_b\n"
+        "Keep,ka,kn,kd,BASE,keep1,keep2\n"
+        "RenameMe,ra,rn,rd,BODY,extra_val,42\n",
+        encoding="utf-8-sig",
+    )
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: [str(p)])
+    csv_io.rename_style_in_csv("RenameMe", "Renamed", source_file="styles.csv")
+
+    text = p.read_text(encoding="utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text)))
+    assert rows[0] == [
+        "name",
+        "prompt",
+        "negative_prompt",
+        "description",
+        "category",
+        "extra_a",
+        "extra_b",
+    ]
+    renamed = next(r for r in rows[1:] if r and r[0] == "Renamed")
+    assert renamed == ["Renamed", "ra", "rn", "rd", "BODY", "extra_val", "42"]
+    keep = next(r for r in rows[1:] if r and r[0] == "Keep")
+    assert keep == ["Keep", "ka", "kn", "kd", "BASE", "keep1", "keep2"]
+
+
 def test_rename_applies_field_updates(tmp_csv, patch_styles_dirs, monkeypatch):
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
     csv_io.rename_style_in_csv(

@@ -17,6 +17,21 @@ See `CHANGELOG.md` for full release history.
 
 ---
 
+## Requirements
+
+**Minimum WebUI / Forge for this extension:** builds that load extension `javascript/*.mjs` as ES modules (`<script type="module">`).
+
+| Host | Minimum |
+|------|---------|
+| **AUTOMATIC1111** `stable-diffusion-webui` | **1.0.0** and later |
+| **Forge / reForge** | Any build based on A1111 **≥ 1.0.0** (all current Forge/reForge trees) |
+
+**Fact check (loader source):** A1111 merged `.mjs` support in [PR #8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042) (2023-03-11). That loader is present in every numbered A1111 release from **1.0.0** onward. Forge and reForge inherit the same path in `modules/ui_gradio_extensions.py`: `scripts.list_scripts("javascript", ".mjs")` injects `type="module"`. Style Grid’s host entry is `javascript/style_grid.mjs`; sibling modules under `javascript/style_grid/` are imported by that entry (only top-level `javascript/*.mjs` / `*.js` are auto-injected).
+
+Older hosts that only inject `*.js` as classic scripts will not run this extension’s host layer.
+
+---
+
 ## Installation
 
 ### Install from URL (recommended)

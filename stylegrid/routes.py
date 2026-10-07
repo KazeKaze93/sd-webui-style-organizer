@@ -29,7 +29,6 @@ from stylegrid.config import (
     DATA_DIR,
     EXT_DIR,
     PRESETS_FILE,
-    THUMBNAILS_DIR,
     get_all_styles_file_paths,
     is_samples_source,
 )
@@ -53,94 +52,22 @@ from stylegrid.data_files import (
 )
 from stylegrid.lora_scan import (
     LORA_SOURCE,
-    get_cached_lora_styles,
     get_lora_model_ids,
     get_lora_preview_path,
-    invalidate_lora_cache,
     lora_scan_status,
 )
 from stylegrid.lora_titles import title_fetch_manager
 from stylegrid.safe_persistence import locked_path, write_atomic
 from stylegrid.thumbnails import (
-    _thumbnail_hash_input,
     get_thumbnail_path,
     list_thumbnails,
-    migrate_legacy_thumbnails,
     thumbnail_generation_manager,
 )
 from stylegrid.write_auth import inject_write_token_script, install_write_auth
 
 
-def detect_conflicts(style_names):
-    all_styles = get_cached_styles()
-    # Composite identity — same name from different CSVs must not collapse.
-    styles_map = {
-        (s["name"], normalize_source_path(s.get("source_file") or "")): s
-        for s in all_styles
-    }
-    # Name-only fallback for legacy bare-string request entries (last match wins).
-    styles_by_name = {s["name"]: s for s in all_styles}
-    conflicts = []
-    style_tokens = {}
-    for entry in style_names:
-        s = None
-        if isinstance(entry, str):
-            s = styles_by_name.get(entry)
-        elif isinstance(entry, dict):
-            name = entry.get("name", "")
-            if not isinstance(name, str) or not name:
-                continue
-            source_file = entry.get("source_file") or ""
-            if isinstance(source_file, str) and source_file.strip():
-                s = styles_map.get((name, normalize_source_path(source_file)))
-                if not s:
-                    s = styles_by_name.get(name)
-            else:
-                s = styles_by_name.get(name)
-        else:
-            continue
-        if not s:
-            continue
-        key = (s["name"], normalize_source_path(s.get("source_file") or ""))
-        if key in style_tokens:
-            continue
-        label = s["name"]
-        style_tokens[key] = {"positive": set(), "negative": set(), "label": label}
-        for token in (s.get("prompt") or "").split(","):
-            t = token.strip().lower()
-            if t and t != "{prompt}":
-                style_tokens[key]["positive"].add(t)
-        for token in (s.get("negative_prompt") or "").split(","):
-            t = token.strip().lower()
-            if t and t != "{prompt}":
-                style_tokens[key]["negative"].add(t)
-    keys = list(style_tokens.keys())
-    for i in range(len(keys)):
-        for j in range(i + 1, len(keys)):
-            ka, kb = keys[i], keys[j]
-            a = style_tokens[ka]["label"]
-            b = style_tokens[kb]["label"]
-            overlap1 = style_tokens[ka]["positive"] & style_tokens[kb]["negative"]
-            if overlap1:
-                conflicts.append({
-                    "styles": [a, b],
-                    "type": "positive_vs_negative",
-                    "tokens": list(overlap1)[:5],
-                    "message": f"'{a}' adds tokens that '{b}' negates: {', '.join(list(overlap1)[:3])}"
-                })
-            overlap2 = style_tokens[kb]["positive"] & style_tokens[ka]["negative"]
-            if overlap2:
-                conflicts.append({
-                    "styles": [b, a],
-                    "type": "positive_vs_negative",
-                    "tokens": list(overlap2)[:5],
-                    "message": f"'{b}' adds tokens that '{a}' negates: {', '.join(list(overlap2)[:3])}"
-                })
-    return conflicts
-
-
 def _register_style_routes(app):
-    """Register style list/reload/conflict/export/import/category-order routes."""
+    """Register style list/export/import/category-order routes."""
     @app.get("/style_grid/styles")
     async def get_styles(request: Request):
         styles = get_cached_styles()
@@ -165,24 +92,9 @@ def _register_style_routes(app):
         response.headers["ETag"] = etag
         return response
 
-    @app.post("/style_grid/reload")
-    async def reload_styles():
-        check_files_changed()
-        invalidate_styles_cache()
-        styles = get_cached_styles()
-        categories = categorize_styles(styles)
-        try:
-            return {"categories": categories, "usage": load_usage()}
-        except CorruptDataError as exc:
-            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
-
     @app.get("/style_grid/check_update")
     async def api_check_update():
         return {"changed": check_files_changed()}
-
-    @app.post("/style_grid/conflicts")
-    async def api_conflicts(data: dict):
-        return {"conflicts": detect_conflicts(data.get("styles", []))}
 
     @app.get("/style_grid/export")
     async def api_export():
@@ -400,14 +312,6 @@ def _register_preset_routes(app):
         except CorruptDataError as exc:
             return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
-
-    @app.get("/style_grid/presets/list")
-    async def api_list_presets():
-        try:
-            return load_presets()
-        except CorruptDataError as exc:
-            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
-
 
 def _register_usage_routes(app):
     """Register usage stats routes."""
@@ -792,60 +696,9 @@ def _register_thumbnail_routes(app):
         _remove_thumbnail_file(name, source)
         return {"ok": True}
 
-    @app.post("/style_grid/thumbnails/cleanup")
-    async def api_cleanup_thumbnails():
-        """Migrate safe legacy thumbs, then remove true orphans.
-
-        Preserves name-only legacy files for styles still in the catalog so
-        migration stays rollback-friendly (copy, not delete).
-        """
-        migration = migrate_legacy_thumbnails()
-        if not os.path.isdir(THUMBNAILS_DIR):
-            return {"removed": 0, **migration}
-        valid_hashes = set()
-        for s in get_cached_styles():
-            source = s.get("source_file") or ""
-            if not source:
-                continue
-            valid_hashes.add(
-                hashlib.md5(
-                    _thumbnail_hash_input(s["name"], source).encode("utf-8")
-                ).hexdigest()
-            )
-            valid_hashes.add(
-                hashlib.md5(
-                    _thumbnail_hash_input(s["name"], "").encode("utf-8")
-                ).hexdigest()
-            )
-        removed = 0
-        for fname in os.listdir(THUMBNAILS_DIR):
-            if not fname.endswith(".webp"):
-                continue
-            h = os.path.splitext(fname)[0]
-            if h not in valid_hashes:
-                try:
-                    os.remove(os.path.join(THUMBNAILS_DIR, fname))
-                    removed += 1
-                except Exception:
-                    pass
-        return {"removed": removed, **migration}
-
 
 def _register_lora_routes(app):
-    """Register LoRA directory rescan/status routes."""
-    @app.post("/style_grid/lora/rescan")
-    async def api_lora_rescan():
-        invalidate_lora_cache()
-        get_cached_lora_styles()
-        styles = get_cached_styles()
-        categories = categorize_styles(styles)
-        return {"categories": categories, "lora": lora_scan_status()}
-
-    @app.get("/style_grid/lora/status")
-    async def api_lora_status():
-        get_cached_lora_styles()
-        return lora_scan_status()
-
+    """Register LoRA title-fetch routes."""
     @app.post("/style_grid/lora/fetch_titles")
     async def api_lora_fetch_titles(data: dict = None):
         force = bool((data or {}).get("force"))

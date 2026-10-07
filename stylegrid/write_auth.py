@@ -23,18 +23,14 @@ WRITE_ROUTE_PATHS = frozenset({
     "/style_grid/thumbnail/generate",
     "/style_grid/thumbnail/upload",
     "/style_grid/thumbnail/cancel",
-    "/style_grid/thumbnails/cleanup",
     "/style_grid/presets/save",
     "/style_grid/presets/delete",
     "/style_grid/presets/rename",
     "/style_grid/presets/touch",
     "/style_grid/category_order/save",
-    "/style_grid/category_order",
     "/style_grid/backup",
     "/style_grid/usage/increment",
-    "/style_grid/lora/rescan",
     "/style_grid/lora/fetch_titles",
-    "/style_grid/reload",
 })
 
 _LOCAL_HOST_NAMES = frozenset({"localhost", "127.0.0.1", "[::1]", "::1"})

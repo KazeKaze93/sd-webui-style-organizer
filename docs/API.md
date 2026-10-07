@@ -101,30 +101,6 @@ Style object fields include:
 | Cache hit with matching ETag | Returns HTTP `304` and empty body. |
 
 
-## POST /reload
-
-**Method:** POST  
-**Description:** Forces style cache reload and returns fresh categorized data.
-
-**Parameters:**
-
-
-| name   | in   | required | type   | description          |
-| ------ | ---- | -------- | ------ | -------------------- |
-| (none) | body | No       | object | Empty body accepted. |
-
-
-**Response:**
-
-
-| field        | type   | description            |
-| ------------ | ------ | ---------------------- |
-| `categories` | object | Reloaded category map. |
-| `usage`      | object | Current usage map.     |
-
-
-**Error cases:** None explicitly returned as `{error}`.
-
 ## GET /check_update
 
 **Method:** GET  
@@ -194,40 +170,6 @@ Style object fields include:
 
 **Error cases:** None explicitly returned as `{error}`.
 
-## POST /conflicts
-
-**Method:** POST  
-**Description:** Computes prompt/negative token conflicts for selected styles. Tokens are compared with **exact-set membership** (split/trim/lower on commas), not substring `includes`.
-
-**Parameters:**
-
-
-| name     | in   | required | type                     | description |
-| -------- | ---- | -------- | ------------------------ | ----------- |
-| `styles` | body | No       | array[string \| object] | Style entries to analyze. Each entry may be a bare **name** string (legacy; first/last name match in cache) or `{ "name": "…", "source_file": "…" }` for name+source identity. Defaults to empty list. |
-
-
-**Response:**
-
-
-| field       | type          | description                |
-| ----------- | ------------- | -------------------------- |
-| `conflicts` | array[object] | Detected conflict entries. |
-
-
-Conflict item fields:
-
-
-| field     | type          | description                               |
-| --------- | ------------- | ----------------------------------------- |
-| `styles`  | array[string] | Two style **names** involved (labels; not composite keys). |
-| `type`    | string        | Currently `positive_vs_negative`.         |
-| `tokens`  | array[string] | Overlapping token sample (up to 5).       |
-| `message` | string        | Human-readable conflict summary.          |
-
-
-**Error cases:** None explicitly returned as `{error}`.
-
 ## Presets
 
 Canonical on-disk / API shape (normalized on load; legacy bare-name style entries and missing fields are upgraded):
@@ -282,10 +224,6 @@ Preset object fields:
 
 
 **Error cases:** None explicitly returned as `{error}`.
-
-## GET /presets/list
-
-Same payload as **GET /presets** (normalized map).
 
 ## POST /presets/save
 
@@ -389,7 +327,7 @@ Success:
 
 CSV thumbnail identity is **`name` + `source` (`source_file`)**. Filenames under `data/thumbnails/` are `md5(name::relative_or_basename).webp` via `thumbnail_hash_key` / `get_thumbnail_path` in `stylegrid/thumbnails.py`. Legacy name-only hashes are no longer used for GET/upload/generate/delete.
 
-On `GET /thumbnails/list` and `POST /thumbnails/cleanup`, `migrate_legacy_thumbnails()` renames a legacy name-only WebP to the source-aware path **only when that style name belongs to exactly one known CSV**. Names present in multiple packs are left unmapped (ambiguous → regenerate; cleanup may remove the leftover orphan).
+On `GET /thumbnails/list`, `migrate_legacy_thumbnails()` renames a legacy name-only WebP to the source-aware path **only when that style name belongs to exactly one known CSV**. Names present in multiple packs are left unmapped (ambiguous → regenerate).
 
 Generation is a **FIFO single-worker queue** (`ThumbnailGenerationManager`): enqueue returns a `job_id`; clients poll status and may cancel.
 
@@ -592,29 +530,6 @@ Success:
 | ---- | -------- |
 | Missing `job_id` | HTTP `400` `{ "ok": false, "error": "job_id is required" }`. |
 
-
-## POST /thumbnails/cleanup
-
-**Method:** POST  
-**Description:** Removes orphaned thumbnail files whose hash is not in the current cached style set (name + `source_file` hash keys).
-
-**Parameters:**
-
-
-| name   | in   | required | type   | description          |
-| ------ | ---- | -------- | ------ | -------------------- |
-| (none) | body | No       | object | Empty body accepted. |
-
-
-**Response:**
-
-
-| field     | type    | description                               |
-| --------- | ------- | ----------------------------------------- |
-| `removed` | integer | Number of deleted orphan thumbnail files. |
-
-
-**Error cases:** None explicitly returned as `{error}`.
 
 ## CRUD
 
@@ -831,36 +746,7 @@ Success:
 
 ## LoRA
 
-Synthetic LoRA styles are produced by `stylegrid/lora_scan.py` and merged into `/styles`. Marker string: `__style_grid_lora__`. Optional title enrichment: `stylegrid/lora_titles.py`.
-
-## POST /lora/rescan
-
-**Method:** POST  
-**Description:** Invalidates the in-memory LoRA scan cache, rescans roots, then returns categorized styles (CSV + LoRA) and LoRA status.
-
-**Response:**
-
-
-| field        | type   | description |
-| ------------ | ------ | ----------- |
-| `categories` | object | Same shape as GET `/styles` categories. |
-| `lora`       | object | `lora_scan_status()`: `count`, `roots`, `scanned_at`. |
-
-
-## GET /lora/status
-
-**Method:** GET  
-**Description:** Ensures LoRA cache is populated and returns `lora_scan_status()`.
-
-**Response:**
-
-
-| field        | type   | description |
-| ------------ | ------ | ----------- |
-| `count`      | number | Number of scanned LoRA styles in cache. |
-| `roots`      | array  | Absolute root directories used for the last scan. |
-| `scanned_at` | number | Unix timestamp of last scan (0 if never). |
-
+Synthetic LoRA styles are produced by `stylegrid/lora_scan.py` and merged into `/styles`. Marker string: `__style_grid_lora__`. Optional title enrichment: `stylegrid/lora_titles.py`. LoRA scan status is included in the `/styles` ETag inputs via `lora_scan_status()`.
 
 ## POST /lora/fetch_titles
 

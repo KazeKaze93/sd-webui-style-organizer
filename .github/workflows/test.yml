@@ -19,7 +19,8 @@ jobs:
       - name: Install test dependencies
         # pytest is not a repo dependency; fastapi/starlette/httpx are required by tests/test_routes.py.
         # ruff matches local `npm run lint:py` (ruff check scripts/ stylegrid/ tests/).
-        run: pip install pytest fastapi starlette httpx ruff
+        # python-multipart: FastAPI OAuth2PasswordRequestForm (/login) in gradio_session tests.
+        run: pip install pytest fastapi starlette httpx ruff python-multipart
       - name: Run pytest
         run: python -m pytest tests/ -v
       - name: Run ruff

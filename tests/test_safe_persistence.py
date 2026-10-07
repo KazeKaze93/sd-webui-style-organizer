@@ -78,8 +78,13 @@ def test_write_atomic_rotates_backups(tmp_path):
 
 
 def test_safe_persistence_sha256_parity():
+    """Cross-repo byte identity when sibling checkouts exist (local multi-repo); skip on CI."""
     present = [p for p in SIBLINGS if p.is_file()]
-    assert len(present) >= 2
+    if len(present) < 2:
+        pytest.skip(
+            "sibling safe_persistence copies not present "
+            f"(found {len(present)}; need local webui/comfy/csv checkouts)"
+        )
     hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in present}
     unique = set(hashes.values())
     assert len(unique) == 1, f"safe_persistence drift: {hashes}"

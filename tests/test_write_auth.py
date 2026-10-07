@@ -203,6 +203,113 @@ def test_gradio_auth_detected_when_configured(monkeypatch):
     monkeypatch.setattr(shared.cmd_opts, "gradio_auth", "user:pass", raising=False)
     monkeypatch.setattr(shared.cmd_opts, "gradio_auth_path", None, raising=False)
     assert write_auth.gradio_auth_enabled() is True
-    # Gradio BasicAuth wraps the whole ASGI app before FastAPI routes, so
-    # /style_grid/ui (token HTML) is only reachable after login when auth is set.
-    assert write_auth.token_html_inherits_gradio_auth() is True
+
+
+@pytest.fixture
+def gradio_auth_cmd(monkeypatch):
+    """--gradio-auth user:pass with public bind so token HTML would otherwise leak."""
+    import sys
+
+    shared = sys.modules["modules"].shared
+    monkeypatch.setattr(shared.cmd_opts, "gradio_auth", "alice:secret", raising=False)
+    monkeypatch.setattr(shared.cmd_opts, "gradio_auth_path", None, raising=False)
+    monkeypatch.setattr(shared.cmd_opts, "listen", True, raising=False)
+    monkeypatch.setattr(shared.cmd_opts, "share", False, raising=False)
+    monkeypatch.setattr(shared.cmd_opts, "ngrok", None, raising=False)
+    monkeypatch.setattr(shared.cmd_opts, "server_name", None, raising=False)
+    write_auth.reset_write_auth_for_tests()
+    yield
+    write_auth.reset_write_auth_for_tests()
+
+
+def test_gradio_auth_http_gates_ui_and_write(tmp_csv, monkeypatch, gradio_auth_cmd):
+    """Real HTTP: anonymous /style_grid/ui + write → 401; Gradio /login → 200."""
+    from stylegrid import cache as sg_cache
+    from stylegrid import config as sg_config
+    from stylegrid import csv_io as sg_csv_io
+    from stylegrid import routes as sg_routes
+    from stylegrid import thumbnails as sg_thumbs
+    from stylegrid.cache import invalidate_styles_cache
+    from stylegrid.gradio_session import install_gradio_compat_auth
+
+    tmp_dir = str(tmp_csv.parent)
+    monkeypatch.setattr(sg_config, "get_styles_dirs", lambda: [tmp_dir])
+    monkeypatch.setattr(sg_thumbs, "get_styles_dirs", lambda: [tmp_dir])
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    monkeypatch.setattr(sg_csv_io, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    monkeypatch.setattr(sg_cache, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
+    invalidate_styles_cache()
+
+    stub_html = (
+        "<html><head></head><body>style-grid-ui</body></html>"
+    )
+    monkeypatch.setattr(sg_routes, "_get_ui_html", lambda: write_auth.inject_write_token_script(stub_html))
+
+    app = FastAPI()
+    # Gradio 3.x (Reforge): fixed cookie names, no cookie_id suffix.
+    install_gradio_compat_auth(app, {"alice": "secret"})
+    register_api(None, app)
+
+    with TestClient(app, base_url="http://127.0.0.1:7860") as client:
+        anon_ui = client.get("/style_grid/ui")
+        assert anon_ui.status_code in (401, 302, 303, 307), (
+            f"anonymous /style_grid/ui must not be open; got {anon_ui.status_code}"
+        )
+        assert anon_ui.status_code != 200
+        body = anon_ui.text or ""
+        assert write_auth.WRITE_TOKEN_JS_GLOBAL not in body
+        assert write_auth.get_session_token() not in body
+
+        garbage = client.get(
+            "/style_grid/ui",
+            headers={"Cookie": "access-token-unsecure=garbage123"},
+        )
+        assert garbage.status_code in (401, 302, 303, 307), (
+            f"garbage Gradio cookie must not authenticate; got {garbage.status_code}"
+        )
+
+        anon_write = client.post(
+            "/style_grid/style/save",
+            json={
+                "name": "Anon",
+                "prompt": "p",
+                "negative_prompt": "",
+                "description": "",
+                "source": "styles.csv",
+            },
+            headers={write_auth.WRITE_TOKEN_HEADER: write_auth.get_session_token()},
+        )
+        assert anon_write.status_code in (401, 302, 303, 307), (
+            f"anonymous write must not succeed; got {anon_write.status_code}"
+        )
+        assert anon_write.status_code != 200
+
+        login = client.post(
+            "/login",
+            data={"username": "alice", "password": "secret"},
+        )
+        assert login.status_code == 200, login.text
+        assert "access-token" in (login.headers.get("set-cookie") or "").lower() or any(
+            "access-token" in (c or "") for c in login.cookies.keys()
+        )
+
+        authed_ui = client.get("/style_grid/ui")
+        assert authed_ui.status_code == 200
+        assert "style-grid-ui" in authed_ui.text
+        # Public bind: token is issued only inside an authenticated Gradio session.
+        assert write_auth.WRITE_TOKEN_JS_GLOBAL in authed_ui.text
+        assert write_auth.get_session_token() in authed_ui.text
+
+        authed_write = client.post(
+            "/style_grid/style/save",
+            json={
+                "name": "Authed",
+                "prompt": "p",
+                "negative_prompt": "",
+                "description": "",
+                "source": "styles.csv",
+            },
+            headers={write_auth.WRITE_TOKEN_HEADER: write_auth.get_session_token()},
+        )
+        assert authed_write.status_code == 200
+        assert authed_write.json().get("ok") is True

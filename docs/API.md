@@ -22,13 +22,15 @@ The API contract in this document reflects `stylegrid/routes.py` (registered fro
 ## GET /ui
 
 **Method:** GET  
-**Description:** Serves the V2 React shell HTML from `ui/dist/index.html`. Implementation: **`_get_ui_html()`** in `stylegrid/routes.py` transforms the file so **every** relative asset reference (`src` / `href` with a `./…` path) is rewritten to Gradio static URLs under `/file=extensions/sd-webui-style-organizer/ui/dist/…` with a **fresh** cache-busting `?v=<unix time>` on **each** response (scripts, stylesheets, favicon, etc.). The host iframe uses this route (e.g. `GET /style_grid/ui?t=<timestamp>`) instead of loading the file via `/file=…/index.html` alone, so the HTML document and **all** linked assets stay fresh after rebuilds.
+**Description:** Serves the V2 React shell HTML from `ui/dist/index.html`. Implementation: **`_get_ui_html()`** in `stylegrid/routes.py` transforms the file so **every** relative asset reference (`src` / `href` with a `./…` path) is rewritten to Gradio static URLs under `/file=extensions/sd-webui-style-organizer/ui/dist/…` with a **fresh** cache-busting `?v=<unix time>` on **each** response (scripts, stylesheets, favicon, etc.). The host iframe uses this route (e.g. `GET /style_grid/ui?t=<timestamp>`) instead of loading the file via `/file=…/index.html` alone, so the HTML document and **all** linked assets stay fresh after rebuilds. When publicly bound (`--listen` / `--share`), the HTML embeds `window.__STYLE_GRID_WRITE_TOKEN__` for mutating API calls.
+
+**Auth:** With `--gradio-auth`, anonymous requests get **401**. Style Grid re-checks Gradio session cookies (`access-token` / `access-token-unsecure` on Gradio 3.x; newer Gradio may use `access-token-<cookie_id>`). Gradio only Depends-protects its own routes, so extension paths are gated in `stylegrid/write_auth.py` + `stylegrid/gradio_session.py`. Mutating `/style_grid/*` routes use the same session gate. Without Gradio auth, this route is open to whoever can reach the server.
 
 **Parameters:** Optional query on the iframe URL (e.g. `t`) is for browser cache busting of the **document** request; the handler does not parse preset names from the query.
 
 **Response:** `text/html`
 
-**Error cases:** If `ui/dist/index.html` is missing (UI not built), the server may return an error response.
+**Error cases:** If `ui/dist/index.html` is missing (UI not built), the server may return an error response. **401** when `--gradio-auth` is set and no Gradio session cookie is present.
 
 ## Generation-time: `{sg:…}` wildcards
 

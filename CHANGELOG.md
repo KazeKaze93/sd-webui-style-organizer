@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Host `events.js` split by feature:** thin wiring in `javascript/style_grid/events.js`; handlers under `javascript/style_grid/handlers/` (wildcards, apply, panel, thumbnails, forge-tabs, iframe). Import-only move; no behavior change.
-- **Minimum host version documented:** README + this changelog note that Style Grid requires WebUI/Forge builds that load `javascript/*.mjs` as ES modules — A1111 **1.0.0+** (PR [#8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042), 2023-03-11) and Forge/reForge based on that loader.
+- **Minimum host version documented:** README + this changelog note that Style Grid requires WebUI/Forge builds that load `javascript/*.mjs` as ES modules — A1111 **≥ 1.1.0** (introduced in [`b90cad7f`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/b90cad7f3136bbe04efeee2a00e95d0cc6ce1a4a), merged [`e15c4f31`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/e15c4f31e3ec0d2d979832dede0f9b34f4631c7a) / PR [#8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042); first tag `v1.1.0`). Forge/reForge: same loader from first Forge commit (A1111 ~1.7.0 base; no separate Forge `.mjs` change). Corrects the earlier imprecise **1.0.0+** claim (`v1.0.0` was never tagged; `v1.0.0-pre` lacks `.mjs`).
 
 ### Security
 - **Persistence hardening:** wrong-shape JSON object maps (non-object values) raise `CorruptDataError` like parse failures; `load_presets` never rewrites disk (legacy normalize is in-memory only). Per-file reentrant locks wrap presets / usage / CSV load→modify→save cycles.

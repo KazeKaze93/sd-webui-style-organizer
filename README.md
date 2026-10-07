@@ -23,10 +23,17 @@ See `CHANGELOG.md` for full release history.
 
 | Host | Minimum |
 |------|---------|
-| **AUTOMATIC1111** `stable-diffusion-webui` | **1.0.0** and later |
-| **Forge / reForge** | Any build based on A1111 **≥ 1.0.0** (all current Forge/reForge trees) |
+| **AUTOMATIC1111** `stable-diffusion-webui` | **1.1.0** and later (`v1.1.0`) |
+| **Forge / reForge** | Any release (loader inherited from A1111; present from Forge’s first commit) |
 
-**Fact check (loader source):** A1111 merged `.mjs` support in [PR #8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042) (2023-03-11). That loader is present in every numbered A1111 release from **1.0.0** onward. Forge and reForge inherit the same path in `modules/ui_gradio_extensions.py`: `scripts.list_scripts("javascript", ".mjs")` injects `type="module"`. Style Grid’s host entry is `javascript/style_grid.mjs`; sibling modules under `javascript/style_grid/` are imported by that entry (only top-level `javascript/*.mjs` / `*.js` are auto-injected).
+**Fact check (loader source):** A1111 added `.mjs` as `type="module"` in commit [`b90cad7f`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/b90cad7f3136bbe04efeee2a00e95d0cc6ce1a4a) (2023-02-23), merged to master as [`e15c4f31`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/e15c4f31e3ec0d2d979832dede0f9b34f4631c7a) via [PR #8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042) (2023-03-11). Loader loop (then in `modules/ui.py`, later moved to `modules/ui_gradio_extensions.py`):
+
+```python
+for script in scripts.list_scripts("javascript", ".mjs"):
+    head += f'<script type="module" src="{webpath(script.path)}"></script>\n'
+```
+
+There is no git tag `v1.0.0`; pre-release tag `v1.0.0-pre` (2023-01-24) does **not** include this loader. The first tagged A1111 release that does is **`v1.1.0`** ([`72cd27a1`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/72cd27a13587c9579942577e9e3880778be195f6), 2023-05-01). Forge ([`lllyasviel/stable-diffusion-webui-forge`](https://github.com/lllyasviel/stable-diffusion-webui-forge), created 2024-01-14) was based on A1111 ~1.7.0-era master and already contained the same `.mjs` path at its first commit [`7ad2a5c1`](https://github.com/lllyasviel/stable-diffusion-webui-forge/commit/7ad2a5c19521d3d6d2035c6fbf8402ed527f05ec) — no separate Forge `.mjs` commit. reForge keeps the same `modules/ui_gradio_extensions.py` loader. Style Grid’s host entry is `javascript/style_grid.mjs`; sibling modules under `javascript/style_grid/` are imported by that entry (only top-level `javascript/*.mjs` / `*.js` are auto-injected).
 
 Older hosts that only inject `*.js` as classic scripts will not run this extension’s host layer.
 

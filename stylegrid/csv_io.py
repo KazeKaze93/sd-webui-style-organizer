@@ -349,13 +349,18 @@ def rename_style_in_csv(old_name, new_name, source_file=None, **fields):
         else:
             cat_cell = cell(4)
 
-        rows[idx] = [
+        # Preserve trailing columns (same contract as save_style_to_csv); only name changes.
+        base = [
             new_name,
             prompt,
             negative_prompt,
             _sanitize_csv_cell(description) if description else "",
             cat_cell,
         ]
+        extra = list(existing[5:]) if len(existing) > 5 else []
+        while len(base) + len(extra) < len(header):
+            extra.append("")
+        rows[idx] = base + extra
 
         _write_csv_atomic(target_path, header, rows)
     invalidate_styles_cache()

@@ -83,3 +83,54 @@ def test_safe_persistence_sha256_parity():
     hashes = {p: hashlib.sha256(p.read_bytes()).hexdigest() for p in present}
     unique = set(hashes.values())
     assert len(unique) == 1, f"safe_persistence drift: {hashes}"
+
+
+def test_wrong_shape_presets_raises_and_file_unchanged(presets_env):
+    """Valid JSON object with non-object values must raise CorruptDataError; load never writes."""
+    from stylegrid.safe_persistence import CorruptDataError
+
+    sg_data, presets_path = presets_env
+    wrong_shape = '{"P1": "oops", "P2": 42}'
+    presets_path.write_text(wrong_shape, encoding="utf-8")
+    before = presets_path.read_bytes()
+
+    with pytest.raises(CorruptDataError):
+        sg_data.load_presets()
+
+    assert presets_path.read_bytes() == before, "load_presets must not rewrite wrong-shape presets.json"
+
+
+def test_legacy_presets_load_does_not_rewrite_disk(presets_env):
+    """In-memory normalize of legacy style strings must not write on load."""
+    sg_data, presets_path = presets_env
+    legacy = (
+        '{"Legacy":{"styles":["Foo"],"created":"2026-01-01T00:00:00"}}'
+    )
+    presets_path.write_text(legacy, encoding="utf-8")
+    before = presets_path.read_bytes()
+
+    loaded = sg_data.load_presets()
+    assert "Legacy" in loaded
+    assert presets_path.read_bytes() == before, "load_presets must never write to disk"
+
+
+def test_concurrent_usage_increments_lose_no_updates(tmp_path, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from stylegrid import data_files as sg_data
+    from stylegrid import config as sg_config
+
+    usage_path = tmp_path / "usage.json"
+    monkeypatch.setattr(sg_data, "USAGE_FILE", str(usage_path))
+    monkeypatch.setattr(sg_config, "USAGE_FILE", str(usage_path))
+
+    n = 40
+
+    def bump(_i: int) -> None:
+        sg_data.increment_usage(["Concurrent"])
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(bump, range(n)))
+
+    usage = sg_data.load_usage()
+    assert usage["Concurrent"]["count"] == n

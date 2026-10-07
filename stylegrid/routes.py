@@ -28,6 +28,7 @@ from stylegrid.cache import (
 from stylegrid.config import (
     DATA_DIR,
     EXT_DIR,
+    PRESETS_FILE,
     THUMBNAILS_DIR,
     get_all_styles_file_paths,
     is_samples_source,
@@ -50,7 +51,7 @@ from stylegrid.data_files import (
     preset_styles_payload_ok,
     save_presets,
 )
-from stylegrid.safe_persistence import write_atomic
+from stylegrid.safe_persistence import locked_path, write_atomic
 from stylegrid.write_auth import inject_write_token_script, install_write_auth
 from stylegrid.lora_scan import (
     LORA_SOURCE,
@@ -220,9 +221,10 @@ def _register_style_routes(app):
             return {"ok": True}
         if "presets" in data:
             try:
-                p = load_presets()
-                p.update(data["presets"])
-                save_presets(p)
+                with locked_path(PRESETS_FILE):
+                    p = load_presets()
+                    p.update(data["presets"])
+                    save_presets(p)
             except CorruptDataError as exc:
                 return _corrupt_response(exc)
         if "styles" in data and data["styles"]:
@@ -308,10 +310,6 @@ def _register_preset_routes(app):
 
     @app.post("/style_grid/presets/save")
     async def api_save_preset(data: dict):
-        try:
-            presets = load_presets()
-        except CorruptDataError as exc:
-            return _corrupt_response(exc)
         name = data.get("name", "").strip()
         styles = data.get("styles", [])
         wildcards = data.get("wildcards", [])
@@ -327,44 +325,44 @@ def _register_preset_routes(app):
             return {"error": "wildcards must be a list"}
         if not isinstance(note, str):
             note = ""
-        if name in presets and not overwrite:
-            return {"error": "exists", "name": name}
-        prev = presets.get(name) if isinstance(presets.get(name), dict) else None
-        created = (
-            prev["created"]
-            if prev and isinstance(prev.get("created"), str) and prev.get("created")
-            else time.strftime("%Y-%m-%dT%H:%M:%S")
-        )
-        entry = {
-            "styles": styles,
-            "wildcards": wildcards,
-            "note": note,
-            "created": created,
-        }
-        if prev and isinstance(prev.get("last_used"), str) and prev.get("last_used"):
-            entry["last_used"] = prev["last_used"]
-        presets[name] = entry
         try:
-            saved = save_presets(presets)
+            with locked_path(PRESETS_FILE):
+                presets = load_presets()
+                if name in presets and not overwrite:
+                    return {"error": "exists", "name": name}
+                prev = presets.get(name) if isinstance(presets.get(name), dict) else None
+                created = (
+                    prev["created"]
+                    if prev and isinstance(prev.get("created"), str) and prev.get("created")
+                    else time.strftime("%Y-%m-%dT%H:%M:%S")
+                )
+                entry = {
+                    "styles": styles,
+                    "wildcards": wildcards,
+                    "note": note,
+                    "created": created,
+                }
+                if prev and isinstance(prev.get("last_used"), str) and prev.get("last_used"):
+                    entry["last_used"] = prev["last_used"]
+                presets[name] = entry
+                saved = save_presets(presets)
         except CorruptDataError as exc:
             return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
 
     @app.post("/style_grid/presets/delete")
     async def api_delete_preset(data: dict):
+        name = data.get("name", "")
         try:
-            presets = load_presets()
+            with locked_path(PRESETS_FILE):
+                presets = load_presets()
+                if name in presets:
+                    del presets[name]
+                    saved = save_presets(presets)
+                    return {"ok": True, "presets": saved}
+                return {"ok": True, "presets": presets}
         except CorruptDataError as exc:
             return _corrupt_response(exc)
-        name = data.get("name", "")
-        if name in presets:
-            del presets[name]
-            try:
-                saved = save_presets(presets)
-            except CorruptDataError as exc:
-                return _corrupt_response(exc)
-            return {"ok": True, "presets": saved}
-        return {"ok": True, "presets": presets}
 
     @app.post("/style_grid/presets/rename")
     async def api_rename_preset(data: dict):
@@ -374,17 +372,15 @@ def _register_preset_routes(app):
         if not old_name or not new_name:
             return {"error": "Name required"}
         try:
-            presets = load_presets()
-        except CorruptDataError as exc:
-            return _corrupt_response(exc)
-        if old_name not in presets:
-            return {"error": "not_found", "name": old_name}
-        if new_name != old_name and new_name in presets and not overwrite:
-            return {"error": "exists", "name": new_name}
-        entry = presets.pop(old_name)
-        presets[new_name] = entry
-        try:
-            saved = save_presets(presets)
+            with locked_path(PRESETS_FILE):
+                presets = load_presets()
+                if old_name not in presets:
+                    return {"error": "not_found", "name": old_name}
+                if new_name != old_name and new_name in presets and not overwrite:
+                    return {"error": "exists", "name": new_name}
+                entry = presets.pop(old_name)
+                presets[new_name] = entry
+                saved = save_presets(presets)
         except CorruptDataError as exc:
             return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
@@ -395,14 +391,12 @@ def _register_preset_routes(app):
         if not name:
             return {"error": "Name required"}
         try:
-            presets = load_presets()
-        except CorruptDataError as exc:
-            return _corrupt_response(exc)
-        if name not in presets:
-            return {"error": "not_found", "name": name}
-        presets[name]["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        try:
-            saved = save_presets(presets)
+            with locked_path(PRESETS_FILE):
+                presets = load_presets()
+                if name not in presets:
+                    return {"error": "not_found", "name": name}
+                presets[name]["last_used"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+                saved = save_presets(presets)
         except CorruptDataError as exc:
             return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
@@ -475,28 +469,29 @@ def _remap_presets_after_rename(old_name, new_name, resolved_path=None, source=N
     if not target_norm:
         return
 
-    presets = load_presets()
-    changed = False
-    for preset in presets.values():
-        if not isinstance(preset, dict):
-            continue
-        styles = preset.get("styles")
-        if not isinstance(styles, list):
-            continue
-        for entry in styles:
-            if not isinstance(entry, dict):
+    with locked_path(PRESETS_FILE):
+        presets = load_presets()
+        changed = False
+        for preset in presets.values():
+            if not isinstance(preset, dict):
                 continue
-            if entry.get("name") != old_name:
+            styles = preset.get("styles")
+            if not isinstance(styles, list):
                 continue
-            mem_sf = entry.get("source_file") or ""
-            if not isinstance(mem_sf, str) or not mem_sf.strip():
-                continue
-            if normalize_source_path(mem_sf) != target_norm:
-                continue
-            entry["name"] = new_name
-            changed = True
-    if changed:
-        save_presets(presets)
+            for entry in styles:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("name") != old_name:
+                    continue
+                mem_sf = entry.get("source_file") or ""
+                if not isinstance(mem_sf, str) or not mem_sf.strip():
+                    continue
+                if normalize_source_path(mem_sf) != target_norm:
+                    continue
+                entry["name"] = new_name
+                changed = True
+        if changed:
+            save_presets(presets)
 
 
 def _register_crud_routes(app):

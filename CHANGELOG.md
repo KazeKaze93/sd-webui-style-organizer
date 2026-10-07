@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Security
+- **Persistence hardening:** wrong-shape JSON object maps (non-object values) raise `CorruptDataError` like parse failures; `load_presets` never rewrites disk (legacy normalize is in-memory only). Per-file reentrant locks wrap presets / usage / CSV load→modify→save cycles.
 - **Write-route hardening:** mutating Style Grid routes always require `Content-Type: application/json` (blocks simple cross-site form CSRF on localhost). Localhost-only binds also require `Host` ∈ `localhost` / `127.0.0.1` / `[::1]` with the server port (DNS rebinding). Under `--listen` / `--share` / ngrok, requests need a per-session `X-StyleGrid-Token` (injected into Gradio/iframe HTML). With `--gradio-auth`, `GET /style_grid/ui` and mutating routes require a Gradio session cookie (`access-token` / `access-token-unsecure` on Gradio 3.x; newer builds may use `access-token-<id>`). Gradio only Depends-protects its own routes, so Style Grid re-checks the same cookies via `stylegrid/gradio_session.py` (anonymous or garbage token → **401**; login → **200**). `--share` without `--gradio-auth` logs a warning that write routes are reachable by anyone with the share link.
 
 ### Fixed

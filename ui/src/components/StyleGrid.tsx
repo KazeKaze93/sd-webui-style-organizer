@@ -19,6 +19,7 @@ import {
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
+import { ViewportFixedMenu } from './ViewportFixedMenu'
 import { WildcardMenuItems } from './WildcardMenuItems'
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
@@ -365,18 +366,16 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
         )
       })}
       {loraCatMenu && (
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setLoraCatMenu(null)} />
-          <div
-            className="fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52 w-max max-w-sm"
-            style={{ left: loraCatMenu.x, top: loraCatMenu.y }}
-          >
-            <WildcardMenuItems
-              category={loraCatMenu.cat}
-              onClose={() => setLoraCatMenu(null)}
-            />
-          </div>
-        </>
+        <ViewportFixedMenu
+          x={loraCatMenu.x}
+          y={loraCatMenu.y}
+          onDismiss={() => setLoraCatMenu(null)}
+        >
+          <WildcardMenuItems
+            category={loraCatMenu.cat}
+            onClose={() => setLoraCatMenu(null)}
+          />
+        </ViewportFixedMenu>
       )}
     </div>
   )

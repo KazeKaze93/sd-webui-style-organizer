@@ -393,10 +393,26 @@
     // API CLIENT
     // ════════════════════════════════════════════════════
     // API helpers
+    function styleGridWriteToken() {
+        try {
+            if (typeof window.__STYLE_GRID_WRITE_TOKEN__ === "string" && window.__STYLE_GRID_WRITE_TOKEN__) {
+                return window.__STYLE_GRID_WRITE_TOKEN__;
+            }
+            if (window.parent && window.parent !== window
+                && typeof window.parent.__STYLE_GRID_WRITE_TOKEN__ === "string") {
+                return window.parent.__STYLE_GRID_WRITE_TOKEN__ || "";
+            }
+        } catch (_e) { /* cross-origin parent */ }
+        return "";
+    }
+
     function apiPost(endpoint, data) {
+        var headers = { "Content-Type": "application/json" };
+        var token = styleGridWriteToken();
+        if (token) headers["X-StyleGrid-Token"] = token;
         return fetch(endpoint, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: headers,
             body: JSON.stringify(data || {}),
         }).then(function (r) {
             return r.text().then(function (text) {

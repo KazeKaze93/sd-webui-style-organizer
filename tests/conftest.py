@@ -7,6 +7,14 @@ from unittest.mock import MagicMock
 _mock_shared = MagicMock()
 _mock_shared.cmd_opts = MagicMock()
 _mock_shared.cmd_opts.data_path = None
+# Explicit bools — MagicMock attributes are truthy and would fake --listen.
+_mock_shared.cmd_opts.listen = False
+_mock_shared.cmd_opts.share = False
+_mock_shared.cmd_opts.ngrok = None
+_mock_shared.cmd_opts.server_name = None
+_mock_shared.cmd_opts.port = 7860
+_mock_shared.cmd_opts.gradio_auth = None
+_mock_shared.cmd_opts.gradio_auth_path = None
 _mod = MagicMock()
 _mod.shared = _mock_shared
 sys.modules.setdefault("modules", _mod)

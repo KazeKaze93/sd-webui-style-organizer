@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Security
+- **Write-route hardening:** mutating Style Grid routes always require `Content-Type: application/json` (blocks simple cross-site form CSRF on localhost). Localhost-only binds also require `Host` ∈ `localhost` / `127.0.0.1` / `[::1]` with the server port (DNS rebinding). Under `--listen` / `--share` / ngrok, requests need a per-session `X-StyleGrid-Token` (injected into Gradio/iframe HTML; with `--gradio-auth` that HTML is only served after login). `--share` without `--gradio-auth` logs a warning that write routes are reachable by anyone with the share link.
+
 ### Fixed
 - **Corrupt `presets.json` no longer wiped on save:** unreadable or invalid presets raise `CorruptDataError` / HTTP **409** `corrupt_data` instead of treating the file as empty and overwriting it. The UI shows a blocking banner with the file path and `.bak` location and disables preset save/rename/delete until restored. Writes use atomic tmp→bak-rotation→replace (keeps last 3 backups).
 - **Thumbnail identity:** on-disk thumbnails and host `sg_thumb_v_*` / `SG_THUMB_DONE` version maps use **`(source file, name)`**. Legacy name-only thumbnail files migrate automatically when the name is unique across loaded packs; ambiguous UNIVERSAL duplicates are left for regeneration (not guessed).

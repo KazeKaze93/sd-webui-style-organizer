@@ -18,6 +18,7 @@ import {
   TooltipTrigger,
 } from './components/ui/tooltip'
 import { cn } from './lib/utils'
+import { styleGridPost } from './lib/styleGridFetch'
 
 const WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
@@ -99,11 +100,7 @@ export default function App() {
 
   const fetchLoraTitles = async () => {
     try {
-      const res = await fetch('/style_grid/lora/fetch_titles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      })
+      const res = await styleGridPost('/style_grid/lora/fetch_titles', {})
       const data = await res.json()
       if (data.error) {
         showToast(`⚠️ ${data.error}`, 'error')

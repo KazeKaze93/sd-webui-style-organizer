@@ -96,15 +96,6 @@ def gradio_auth_enabled() -> bool:
     return False
 
 
-def token_html_inherits_gradio_auth() -> bool:
-    """True when Gradio BasicAuth wraps the ASGI app (including /style_grid/ui).
-
-    Gradio installs auth on the root app before extension routes are reachable,
-    so the HTML that embeds the write token is only served after login.
-    """
-    return gradio_auth_enabled()
-
-
 def warn_if_share_unauthenticated() -> None:
     cmd = _cmd_opts()
     if cmd is None:
@@ -196,11 +187,26 @@ def check_write_request(request: Request) -> JSONResponse | None:
     return None
 
 
+def _needs_gradio_session(path: str, method: str) -> bool:
+    """UI shell (token HTML) and mutating routes require a Gradio login when auth is on."""
+    if path == "/style_grid/ui" and method.upper() == "GET":
+        return True
+    return is_write_route(path, method)
+
+
 def install_write_auth(app) -> None:
     warn_if_share_unauthenticated()
 
     @app.middleware("http")
     async def style_grid_write_auth(request: Request, call_next):
+        # Gradio only Depends(login_check) its own routes; extension paths are open
+        # unless we re-check the same access-token-* cookies here.
+        if _needs_gradio_session(request.url.path, request.method):
+            from stylegrid.gradio_session import require_gradio_session
+
+            denied_session = require_gradio_session(request)
+            if denied_session is not None:
+                return denied_session
         denied = check_write_request(request)
         if denied is not None:
             return denied
@@ -210,9 +216,10 @@ def install_write_auth(app) -> None:
 def inject_write_token_script(html: str) -> str:
     """Embed the per-session token into served UI HTML when publicly bound.
 
-    With --gradio-auth, Gradio authenticates before this HTML is served, so the
-    token inherits Gradio login. With --share and no auth, anyone with the link
-    can read the token (same as the rest of the Gradio UI).
+    ``GET /style_grid/ui`` is gated on the Gradio cookie session when
+    ``--gradio-auth`` is set, so the token is only issued after login. With
+    ``--share`` and no auth, anyone with the link can read the token (same as
+    the rest of the Gradio UI).
     """
     token = get_session_token() if is_public_bind() else ""
     snippet = (

@@ -313,6 +313,12 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 - Development guide: `docs/DEVELOPMENT.md`
 - V2 React bundle (iframe loading, Zustand `useShallow`, `selectFilteredStyles`): `ui/README.md` (also overlaps with **GET `/style_grid/ui`** in `docs/API.md`).
 
+### Remote / share access
+
+When Forge is started with `--listen` or `--share`, mutating Style Grid API routes require a per-session `X-StyleGrid-Token` (injected into the iframe HTML). With `--gradio-auth`, `GET /style_grid/ui` and those write routes also require a Gradio login cookie (`access-token` / `access-token-unsecure` on Gradio 3.x). Prefer `--gradio-auth` whenever the UI is reachable beyond localhost. Details: `docs/DEVELOPMENT.md` § Write-route / Gradio auth.
+
+Corrupt `presets.json` (or similar data files) returns HTTP **409** and refuses overwrite; restore from the sibling `.bak` before saving again.
+
 ---
 
 ## Troubleshooting
@@ -328,6 +334,8 @@ Detailed specification: `docs/CSV_FORMAT.md`.
 | LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
 | Import fails with “names that already exist” | Rename or remove colliding styles in the export, or delete/rename the existing library entries first. LoRA synthetic names are excluded from the collision check. |
 | Cannot edit/delete a sample style | Expected: CSVs under `samples/` are **read-only**. Copy the style into your own `styles/` CSV (or another writable source) first. |
+| Preset save blocked / **409** | `presets.json` (or another data file) is corrupt — restore from `.bak` next to it; Style Grid will not overwrite bad JSON. |
+| `/style_grid/ui` returns **401** | Expected with `--gradio-auth` until you log in to Gradio (same cookies as the WebUI login). |
 
 ---
 

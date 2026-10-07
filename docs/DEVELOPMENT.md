@@ -28,6 +28,9 @@ flowchart LR
 ├─ scripts/style_grid.py              # Forge script entrypoint (imports stylegrid.*)
 ├─ stylegrid/                         # Backend package
 │  ├─ routes.py                       # FastAPI registration
+│  ├─ write_auth.py                   # JSON CSRF / Host rebinding / public write token
+│  ├─ gradio_session.py               # Gradio cookie session check for UI + writes
+│  ├─ safe_persistence.py             # Atomic JSON/CSV writes + corrupt-data refusal
 │  ├─ cache.py / csv_io.py / …
 │  ├─ wildcards.py                    # parse_sg_token / select_slice / resolve_sg_wildcards
 │  ├─ lora_scan.py                    # Disk LoRA → synthetic styles
@@ -143,11 +146,25 @@ A full-screen CSV table editor was prototyped and later removed; edit styles via
 
 Client-side localStorage keys are also used for UI state (`favorites` / `recent` as name+source composite keys, per-tab source filter, collapsed categories, etc.).
 
+## Write-route / Gradio auth
+
+`install_write_auth(app)` (from `register_api`) installs HTTP middleware:
+
+| Condition | Behavior |
+|-----------|----------|
+| Mutating POST/PUT/PATCH | `Content-Type` must include `application/json` (**403** otherwise) |
+| Localhost-only bind | `Host` must be `localhost` / `127.0.0.1` / `[::1]` with the server port (**403** on DNS-rebinding Host) |
+| `--listen` / `--share` / ngrok | Require `X-StyleGrid-Token` matching the per-session token embedded in `GET /style_grid/ui` HTML |
+| `--gradio-auth` | `GET /style_grid/ui` and mutating routes require a valid Gradio session cookie (lookup in `app.tokens`); anonymous → **401** |
+| `--share` without `--gradio-auth` | Warning logged: share link holders can read the write token |
+
+HTTP coverage: `tests/test_write_auth.py` (includes Gradio-compatible `/login` shim).
+
 ## Testing
 
 | Layer | How |
 |-------|-----|
-| **Python** | `python -m pytest tests/ -q` — CSV I/O, HTTP routes, `{sg:…}` / `select_slice`, slice-grammar parity (`tests/README.md`). Root `npm test` runs this suite. |
+| **Python** | `python -m pytest tests/ -q` — CSV I/O, HTTP routes, `{sg:…}` / `select_slice`, slice-grammar parity (`tests/README.md`). Root `npm test` runs this suite. `tests/test_write_auth.py` covers CSRF / Host / Gradio session gates. |
 | **JS prompt helpers** | Open `tests/test_js.html` in a browser (no server). Covers brace-aware `splitTopLevelCommas` on the `sg_prompt_utils.js` copy. |
 | **UI unit / parity** | `cd ui && npm test` (Vitest 5). `wildcardSlice.test.ts` + `wildcardSlice.parity.test.ts` (shared `tests/fixtures/slice_grammar.json`). Typecheck: `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.test.json`. |
 | **UI lint** | Included in root `npm run lint` via `lint:ui` (`npm --prefix ui run lint`). |

@@ -4,13 +4,13 @@
 
 The extension now uses a hybrid architecture:
 
-- Host layer: `javascript/style_grid.js` (Forge page integration, iframe lifecycle, prompt-side effects).
+- Host layer: `javascript/style_grid.mjs` + `javascript/style_grid/*` (Forge page integration, iframe lifecycle, prompt-side effects).
 - Backend API: `stylegrid/routes.py` and modules under `stylegrid/` (cache, CSV I/O, thumbnails, wildcards, **lora_scan**, **lora_titles**).
 - UI app: `ui/` (React + TypeScript + Vite + shadcn-style components), served inside iframe.
 
 ```mermaid
 flowchart LR
-  A[Forge page / Gradio DOM] --> B[javascript/style_grid.js]
+  A[Forge page / Gradio DOM] --> B[javascript/style_grid.mjs]
   B -->|iframe src GET /style_grid/ui| C[V2 React bundle]
   B -->|postMessage SG_*| C
   C -->|postMessage SG_*| B
@@ -23,7 +23,8 @@ flowchart LR
 ```text
 .
 ├─ javascript/
-│  ├─ style_grid.js                   # Host integration + iframe bridge (+ local prompt helpers)
+│  ├─ style_grid.mjs                  # Host entry (Forge loads *.mjs as type=module)
+│  ├─ style_grid/                     # Host modules: api, state, prompt-utils, render, events
 │  └─ sg_prompt_utils.js              # Forge-injected copy of shared prompt helpers (must stay in sync)
 ├─ scripts/style_grid.py              # Forge script entrypoint (imports stylegrid.*)
 ├─ stylegrid/                         # Backend package
@@ -84,7 +85,7 @@ Bridge types are declared in `ui/src/bridge.ts`.
 
 ```mermaid
 sequenceDiagram
-  participant H as Host (style_grid.js)
+  participant H as Host (style_grid.mjs)
   participant F as Frame (React UI)
   participant API as /style_grid/*
 
@@ -116,7 +117,7 @@ sequenceDiagram
 - **Rebuild membership is an intersection.** `rebuildPromptFromOrder` iterates `state[tab].selectedOrder` filtered by `applied.has(name)`, and `SG_REORDER_STYLES` replaces `selectedOrder` wholesale with the chip order from the React iframe. Any name present in `applied` but absent from that chip list is dropped from the rebuilt prompt while remaining applied host-side. Under normal operation the two stay in sync; if a style is visibly applied but missing from the prompt after a reorder, check this intersection first.
 - **Provenance:** both behaviours predate the wildcard work — they reproduce on `994084e`, before the wildcard chips/slices branches. Do not re-bisect those commits looking for the cause.
 
-**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`. **Two copies ship:** the body inside `javascript/style_grid.js` (used by Style Grid) and `javascript/sg_prompt_utils.js` (Forge auto-injects every `javascript/*.js`). Keep them byte-identical; `tests/test_js.html` loads the utils copy and asserts slice-token cases.
+**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`. **Two copies ship:** `javascript/style_grid/prompt-utils.js` (ES module used by the host) and `javascript/sg_prompt_utils.js` (Forge auto-injects every `javascript/*.js`). Keep the shared helper bodies byte-identical; `tests/test_js.html` loads the classic utils copy and asserts slice-token cases.
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
@@ -186,7 +187,7 @@ git config core.hooksPath .githooks
 
 `pre-push` runs root lint + prompt-utils drift, pytest (min count), then UI typecheck/lint/vitest. A failing gate aborts the push.
 
-Gaps worth knowing: host `javascript/style_grid.js` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
+Gaps worth knowing: host `javascript/style_grid.mjs` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 
 ## Practical Notes
 

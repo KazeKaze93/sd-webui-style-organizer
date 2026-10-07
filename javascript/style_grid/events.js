@@ -1,426 +1,55 @@
-/**
- * Style Grid - Visual grid/gallery style selector for Forge WebUI
- * v2.0 — Full-featured: dynamic apply, presets,
- * conflict detection, context menu, inline editor, etc.
- * v2.0.1 — thumb cache (localStorage), popup 253x184, no remove-preview in menu
- */
-(function () {
-    "use strict";
-    if (typeof window !== "undefined") {
-        window.__SG_THUMB_VERSION = "2.0.1";
-        window.SG = window.SG || {};
-    }
+/** Style Grid host — thumbnails, apply, iframe bridge, boot (moved from style_grid.js). */
+"use strict";
 
-    // ════════════════════════════════════════════════════
-    // STATE + INIT (per-tab runtime; see STORAGE for persistence)
-    // ════════════════════════════════════════════════════
-    function createTabState() {
-        return {
-            selected: new Set(),
-            selectedOrder: [],
-            applied: new Map(),
-            categories: {},
-            selectedSource: "All",
-            /** Normalized path (forward slashes) when known — matches V2 `source_file`; same basename can exist in multiple dirs */
-            selectedSourceFile: null,
-            usage: {},
-            presets: {},
-            userPromptBase: "",
-            userPromptBaseNeg: "",
-            appliedNestOrder: [],
-            hasThumbnail: new Set(),
-            sgFrame: null,
-            sgFrameWrapper: null,
-            sgV2HostInitSent: false,
-        };
-    }
-    const state = {};
-    ["txt2img", "img2img"].forEach(function (tab) {
-        state[tab] = createTabState();
-    });
+import {
+    apiGet,
+    apiPost,
+    thumbIdentityKey,
+} from "./api.js";
+import {
+    state,
+    styleIdentityKey,
+    parseStyleIdentityKey,
+    getStoredSource,
+    setStoredSource,
+    migrateFavoritesInMemory,
+    pushStyleIntoCategories,
+    findStyleByName,
+    findStyleByNameAndSource,
+    getUniqueSources,
+    _thumbVersions,
+    _saveThumbVersions,
+} from "./state.js";
+import {
+    removeSubstringFromPrompt,
+    stripWrapOrTagsFromText,
+    splitTopLevelCommas,
+    setPromptValue,
+} from "./prompt-utils.js";
+import {
+    qs,
+    el,
+    openStyleEditor,
+    duplicateStyle,
+    deleteStyle,
+    moveToCategory,
+    showExportImport,
+    syncSelectionChrome,
+    anySGFrameVisible,
+    setHostPageScrollLock,
+    injectButton,
+    hooks,
+} from "./render.js";
 
-    // ════════════════════════════════════════════════════
-    // STORAGE (localStorage + server-backed preferences)
-    // ════════════════════════════════════════════════════
+var WILDCARD_KIND_DICE = "sg";
+var WILDCARD_KIND_DECK = "sgd";
+var _batchState = { running: false, cancelled: false, skipped: false, jobId: null };
+let _pollInterval = null;
+var _sgForgeTabSyncInstalled = false;
+var _sgForgeTabsObserver = null;
+var _sgForgeTabsPendingRetry = null;
 
-    var _thumbVersions = (function () {
-        try { return JSON.parse(localStorage.getItem("sg_thumb_versions") || "{}"); }
-        catch (_) { return {}; }
-    })();
-    function _saveThumbVersions() {
-        try { localStorage.setItem("sg_thumb_versions", JSON.stringify(_thumbVersions)); }
-        catch (_) { }
-    }
-
-    const SOURCE_STORAGE_KEY = "sg_source";
-    function getStoredSource(t) {
-        try {
-            const d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}");
-            return d[t] || "All";
-        } catch (_) {
-            return "All";
-        }
-    }
-    function setStoredSource(t, v) {
-        try {
-            const d = JSON.parse(localStorage.getItem(SOURCE_STORAGE_KEY) || "{}");
-            d[t] = v;
-            localStorage.setItem(SOURCE_STORAGE_KEY, JSON.stringify(d));
-        } catch (_) { }
-    }
-
-    /**
-     * Canonical style identity — matches V2 styleRowKey: source_file + "\\0" + name.
-     * Used for selected / applied / favorites / nest order.
-     */
-    function styleIdentityKey(name, sourceFile) {
-        return String(sourceFile || "").replace(/\\/g, "/") + "\0" + String(name || "");
-    }
-    function parseStyleIdentityKey(key) {
-        var s = String(key || "");
-        var sep = s.indexOf("\0");
-        if (sep === -1) return { name: s, source_file: "" };
-        return { source_file: s.slice(0, sep), name: s.slice(sep + 1) };
-    }
-
-    // Favorites (legacy sg_favorites — bare names migrated in memory to identity keys)
-    function getFavorites(t) {
-        try {
-            const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
-            return new Set(d[t] || []);
-        } catch (_) {
-            return new Set();
-        }
-    }
-    function setFavorites(t, s) {
-        try {
-            const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
-            d[t] = [...s];
-            localStorage.setItem("sg_favorites", JSON.stringify(d));
-        } catch (_) { }
-    }
-    /** Upgrade bare-name favorites to identity keys when the name is unique in cache. */
-    function migrateFavoritesInMemory(tabName) {
-        var fav = getFavorites(tabName);
-        if (!fav.size) return fav;
-        var allStyles = [];
-        Object.values(state[tabName].categories || {}).forEach(function (arr) {
-            arr.forEach(function (s) { allStyles.push(s); });
-        });
-        if (!allStyles.length) return fav;
-        var next = new Set();
-        var changed = false;
-        fav.forEach(function (entry) {
-            if (String(entry).indexOf("\0") !== -1) {
-                next.add(entry);
-                return;
-            }
-            var matches = allStyles.filter(function (s) { return s.name === entry; });
-            if (matches.length === 1) {
-                next.add(styleIdentityKey(matches[0].name, matches[0].source_file || matches[0].source || ""));
-                changed = true;
-            } else {
-                changed = true; // drop ambiguous / missing bare names
-            }
-        });
-        if (changed) setFavorites(tabName, next);
-        return next;
-    }
-
-    // Recent history
-    function getRecentHistory(t) {
-        try {
-            return JSON.parse(localStorage.getItem("sg_recent_" + t) || "[]");
-        } catch (_) {
-            return [];
-        }
-    }
-
-    /** Remap a style's local identity after a CSV rename (selection, applied, fav, recent). */
-    function remapStyleNameReferences(tabName, oldName, newName, sourceFile) {
-        if (!oldName || !newName || oldName === newName) return;
-        var st = state[tabName];
-        if (!st) return;
-        var src = String(sourceFile || "").replace(/\\/g, "/");
-        var oldKey = styleIdentityKey(oldName, src);
-        var newKey = styleIdentityKey(newName, src);
-
-        if (st.selected && st.selected.has(oldKey)) {
-            st.selected.delete(oldKey);
-            st.selected.add(newKey);
-        } else if (st.selected && st.selected.has(oldName)) {
-            // Legacy bare-name selection
-            st.selected.delete(oldName);
-            st.selected.add(newKey);
-        }
-        if (st.selectedOrder && st.selectedOrder.length) {
-            st.selectedOrder = st.selectedOrder.map(function (n) {
-                if (n === oldKey || n === oldName) return newKey;
-                return n;
-            });
-        }
-        if (st.applied && st.applied.has(oldKey)) {
-            var rec = st.applied.get(oldKey);
-            st.applied.delete(oldKey);
-            st.applied.set(newKey, rec);
-        } else if (st.applied && st.applied.has(oldName)) {
-            var recLegacy = st.applied.get(oldName);
-            st.applied.delete(oldName);
-            st.applied.set(newKey, recLegacy);
-        }
-        if (st.appliedNestOrder && st.appliedNestOrder.length) {
-            st.appliedNestOrder = st.appliedNestOrder.map(function (n) {
-                if (n === oldKey || n === oldName) return newKey;
-                return n;
-            });
-        }
-
-        var fav = getFavorites(tabName);
-        if (fav.has(oldKey) || fav.has(oldName)) {
-            fav.delete(oldKey);
-            fav.delete(oldName);
-            fav.add(newKey);
-            setFavorites(tabName, fav);
-        }
-
-        var recent = getRecentHistory(tabName);
-        var recentChanged = false;
-        var remappedRecent = [];
-        var seenRecent = {};
-        recent.forEach(function (n) {
-            var next = (n === oldKey || n === oldName) ? newKey : n;
-            if (n === oldKey || n === oldName) recentChanged = true;
-            if (seenRecent[next]) return;
-            seenRecent[next] = true;
-            remappedRecent.push(next);
-        });
-        if (recentChanged) {
-            localStorage.setItem(
-                "sg_recent_" + tabName,
-                JSON.stringify(remappedRecent.slice(0, 10))
-            );
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Utility
-    // -----------------------------------------------------------------------
-    function qs(sel, root) {
-        if (root) return root.querySelector(sel);
-        var ga = (typeof gradioApp === "function") ? gradioApp() : null;
-        return (ga || document).querySelector(sel);
-    }
-    function el(tag, attrs, children) {
-        const e = document.createElement(tag);
-        if (attrs) Object.entries(attrs).forEach(function (kv) {
-            const k = kv[0], v = kv[1];
-            if (k === "className") e.className = v;
-            else if (k === "textContent") e.textContent = v;
-            else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), v);
-            else e.setAttribute(k, v);
-        });
-        if (children) (Array.isArray(children) ? children : [children]).forEach(function (c) {
-            if (typeof c === "string") e.appendChild(document.createTextNode(c));
-            else if (c) e.appendChild(c);
-        });
-        return e;
-    }
-    function getUniqueSources(t) {
-        const cats = state[t].categories || {};
-        const s = new Set();
-        Object.values(cats).forEach(function (arr) { arr.forEach(function (st) { if (st.source) s.add(st.source); }); });
-        return Array.from(s).sort();
-    }
-    function findStyleByName(t, n) {
-        for (const styles of Object.values(state[t].categories)) {
-            const f = styles.find(function (s) { return s.name === n; });
-            if (f) return f;
-        }
-        return null;
-    }
-    function styleCacheIdentity(s) {
-        return styleIdentityKey(s.name, s.source_file || s.source || "");
-    }
-    function pushStyleIntoCategories(categories, s) {
-        var cat = s.category || "OTHER";
-        if (!categories[cat]) categories[cat] = [];
-        var key = styleCacheIdentity(s);
-        var exists = categories[cat].some(function (x) {
-            return styleCacheIdentity(x) === key;
-        });
-        if (!exists) categories[cat].push(s);
-    }
-    /** Prefer name+source_file match. When source is given, never fall back to another file. */
-    function findStyleByNameAndSource(t, name, sourceFile) {
-        var want = String(sourceFile || "").replace(/\\/g, "/");
-        if (!want) return findStyleByName(t, name);
-        for (const styles of Object.values(state[t].categories)) {
-            const f = styles.find(function (s) {
-                return s.name === name && String(s.source_file || "").replace(/\\/g, "/") === want;
-            });
-            if (f) return f;
-        }
-        return null;
-    }
-
-    // ════════════════════════════════════════════════════
-    // CONFLICTS / COMBOS (description parsing & chips)
-    // ════════════════════════════════════════════════════
-
-    // ════════════════════════════════════════════════════
-    // PROMPT ENGINE
-    // ════════════════════════════════════════════════════
-    function removeSubstringFromPrompt(val, sub) {
-        if (!sub || !val) return val;
-        const idx = val.indexOf(sub);
-        if (idx === -1) return val;
-        const before = val.substring(0, idx).replace(/,\s*$/, "");
-        const after = val.substring(idx + sub.length).replace(/^,\s*/, "");
-        if (before.trim() && after.trim()) return before.trimEnd() + ", " + after.trimStart();
-        return (before + after).trim();
-    }
-
-    /** Strip one style's wrap template or tag delta from text (mirrors stripLiveApplyFromTextareas). */
-    function stripWrapOrTagsFromText(text, wrapTemplate, tagDelta) {
-        if (text === null || text === undefined) return "";
-        if (wrapTemplate) {
-            const parts = wrapTemplate.split("{prompt}");
-            const prefix = (parts[0] || "").replace(/,\s*$/, "").trim();
-            const suffix = (parts[1] || "").replace(/^,\s*/, "").trim();
-            let current = String(text).trim();
-            if (prefix && current.indexOf(prefix) === 0) {
-                current = current.slice(prefix.length).replace(/^,\s*/, "").trim();
-            }
-            if (suffix && current.length >= suffix.length &&
-                current.lastIndexOf(suffix) === current.length - suffix.length) {
-                current = current.slice(0, current.length - suffix.length).replace(/,\s*$/, "").trim();
-            }
-            return current;
-        }
-        if (tagDelta) {
-            return removeSubstringFromPrompt(text, tagDelta);
-        }
-        return text;
-    }
-
-    // Canonical copy in javascript/sg_prompt_utils.js — keep in sync (Forge loads this file only).
-    /* eslint-disable no-unused-vars */
-    function splitTopLevelCommas(s) {
-        if (!s || !String(s).trim()) return [];
-        var str = String(s);
-        var parts = [];
-        var parenDepth = 0;
-        var braceDepth = 0;
-        var cur = "";
-        for (var i = 0; i < str.length; i++) {
-            var c = str[i];
-            if (c === "(") parenDepth++;
-            else if (c === ")") parenDepth = Math.max(0, parenDepth - 1);
-            else if (c === "{") braceDepth++;
-            else if (c === "}") braceDepth = Math.max(0, braceDepth - 1);
-            if (c === "," && parenDepth === 0 && braceDepth === 0) {
-                if (cur.trim()) parts.push(cur.trim());
-                cur = "";
-            } else {
-                cur += c;
-            }
-        }
-        if (cur.trim()) parts.push(cur.trim());
-        return parts;
-    }
-
-    /** Remove outer layers of balanced parentheses, e.g. "((foo))" → "foo". */
-    function stripParenLayers(s) {
-        var t = String(s || "").trim();
-        var changed = true;
-        while (changed) {
-            changed = false;
-            if (t.length < 2 || t.charAt(0) !== "(" || t.charAt(t.length - 1) !== ")") break;
-            var depth = 0;
-            var wrapsWhole = true;
-            for (var i = 0; i < t.length; i++) {
-                var c = t.charAt(i);
-                if (c === "(") depth++;
-                else if (c === ")") {
-                    depth--;
-                    if (depth === 0 && i !== t.length - 1) {
-                        wrapsWhole = false;
-                        break;
-                    }
-                }
-            }
-            if (wrapsWhole && depth === 0) {
-                t = t.slice(1, -1).trim();
-                changed = true;
-            }
-        }
-        return t;
-    }
-
-    function parseSegmentToTagged(seg) {
-        var t = (seg || "").trim();
-        if (!t) return null;
-        var m = /^\(([\s\S]+?):([\d.]+)\)$/.exec(t);
-        if (m) return { tag: m[1].trim(), weight: parseFloat(m[2]) };
-        return { tag: t, weight: 1 };
-    }
-
-    function parseStylePromptTags(prompt) {
-        return splitTopLevelCommas(prompt)
-            .map(parseSegmentToTagged)
-            .filter(function (x) { return x !== null; });
-    }
-
-    function formatScaledWeight(w, scale) {
-        var nw = 1 + (w - 1) * scale;
-        return String(+nw.toPrecision(10));
-    }
-
-    function scalePromptWeights(text, scale) {
-        if (scale === 1) return text;
-        var parts = splitTopLevelCommas(text);
-        var out = [];
-        for (var i = 0; i < parts.length; i++) {
-            var p = parts[i].trim();
-            if (!p) continue;
-            if (p === "{prompt}") {
-                out.push(p);
-                continue;
-            }
-            var m = /^\(([\s\S]+?):([\d.]+)\)$/.exec(p);
-            if (m) {
-                if (scale === 0) continue;
-                var w = parseFloat(m[2]);
-                var nw = formatScaledWeight(w, scale);
-                out.push("(" + m[1].trim() + ":" + nw + ")");
-                continue;
-            }
-            if (scale === 0) continue;
-            out.push("(" + p + ":" + scale + ")");
-        }
-        return out.join(", ");
-    }
-    /* eslint-enable no-unused-vars */
-
-    function setPromptValue(el, value) {
-        if (!el) return;
-        // Use native setter to bypass framework interception
-        var nativeSet = Object.getOwnPropertyDescriptor(
-            window.HTMLTextAreaElement.prototype, "value"
-        );
-        if (nativeSet && nativeSet.set) {
-            nativeSet.set.call(el, value);
-        } else {
-            el.value = value;
-        }
-        el.dispatchEvent(new InputEvent("input", {
-            bubbles: true,
-            inputType: "insertText",
-            data: value
-        }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    function syncSourceInput(tab) {
+function syncSourceInput(tab) {
         var src = state[tab].selectedSourceFile || "";
         var elemId = tab === "txt2img" ? "style_grid_source_txt2img" : "style_grid_source_img2img";
         var el = gradioApp().querySelector("#" + elemId + " textarea");
@@ -430,10 +59,7 @@
         }
     }
 
-    // -----------------------------------------------------------------------
-    // Load data from Gradio hidden component
-    // -----------------------------------------------------------------------
-    function loadStyles(tabName) {
+function loadStyles(tabName) {
         const dataEl = qs("#style_grid_data_" + tabName + " textarea");
         if (!dataEl || !dataEl.value) return {};
         try {
@@ -444,75 +70,7 @@
         } catch (_) { return {}; }
     }
 
-    // ════════════════════════════════════════════════════
-    // API CLIENT
-    // ════════════════════════════════════════════════════
-    // API helpers
-    function styleGridWriteToken() {
-        try {
-            if (typeof window.__STYLE_GRID_WRITE_TOKEN__ === "string" && window.__STYLE_GRID_WRITE_TOKEN__) {
-                return window.__STYLE_GRID_WRITE_TOKEN__;
-            }
-            if (window.parent && window.parent !== window
-                && typeof window.parent.__STYLE_GRID_WRITE_TOKEN__ === "string") {
-                return window.parent.__STYLE_GRID_WRITE_TOKEN__ || "";
-            }
-        } catch (_e) { /* cross-origin parent */ }
-        return "";
-    }
-
-    function apiPost(endpoint, data) {
-        var headers = { "Content-Type": "application/json" };
-        var token = styleGridWriteToken();
-        if (token) headers["X-StyleGrid-Token"] = token;
-        return fetch(endpoint, {
-            method: "POST",
-            headers: headers,
-            body: JSON.stringify(data || {}),
-        }).then(function (r) {
-            return r.text().then(function (text) {
-                var body = {};
-                if (text) {
-                    try {
-                        body = JSON.parse(text);
-                    } catch (_e) {
-                        if (!r.ok) {
-                            return Promise.reject(new Error("HTTP " + r.status));
-                        }
-                        return Promise.reject(new Error("Invalid JSON in response"));
-                    }
-                }
-                if (!r.ok) {
-                    var msg = (body && body.error) || (typeof body.detail === "string" ? body.detail : null);
-                    if (!msg && body && Array.isArray(body.detail)) {
-                        msg = body.detail.map(function (d) { return (d && d.msg) ? d.msg : ""; }).filter(Boolean).join("; ");
-                    }
-                    return Promise.reject(new Error(msg || ("HTTP " + r.status)));
-                }
-                return body;
-            });
-        });
-    }
-
-    function assertNoApiError(result) {
-        if (result && result.error) {
-            return Promise.reject(new Error(result.error));
-        }
-        return result;
-    }
-    function apiGet(endpoint) {
-        return fetch(endpoint).then(function (r) { return r.json(); });
-    }
-
-    /** Canonical host-side thumbnail identity; must match list API name+source_file. */
-    function thumbIdentityKey(name, sourceFile) {
-        return String(name) + "::" + String(sourceFile || "");
-    }
-
-    // ════════════════════════════════════════════════════
-    // THUMBNAILS
-    // ════════════════════════════════════════════════════
-    function loadThumbnailList(tabName) {
+function loadThumbnailList(tabName) {
         apiGet("/style_grid/thumbnails/list")
             .then(function (data) {
                 var entries = data.has_thumbnail || [];
@@ -523,21 +81,13 @@
             .catch(function () {});
     }
 
-    // ════════════════════════════════════════════════════
-    // WILDCARDS
-    // ════════════════════════════════════════════════════
-    // Wildcard {sg|sgd:category} / {sg|sgd:category:spec} tracking (sync chips ↔ prompt textareas)
-    // -----------------------------------------------------------------------
-    var WILDCARD_KIND_DICE = "sg";
-    var WILDCARD_KIND_DECK = "sgd";
-
-    function normalizeWildcardKind(kind) {
+function normalizeWildcardKind(kind) {
         return String(kind || "").trim().toLowerCase() === WILDCARD_KIND_DECK
             ? WILDCARD_KIND_DECK
             : WILDCARD_KIND_DICE;
     }
 
-    function parseSgInner(inner) {
+function parseSgInner(inner) {
         var s = String(inner || "");
         var idx = s.indexOf(":");
         if (idx === -1) {
@@ -546,14 +96,14 @@
         return { category: s.slice(0, idx).trim(), spec: s.slice(idx + 1).trim() };
     }
 
-    function buildSgToken(category, spec, kind) {
+function buildSgToken(category, spec, kind) {
         var cat = String(category || "").toLowerCase();
         var sp = (spec === null || spec === undefined) ? "" : String(spec);
         var k = normalizeWildcardKind(kind);
         return "{" + k + ":" + cat + (sp ? ":" + sp : "") + "}";
     }
 
-    function extractWildcardCategories(str) {
+function extractWildcardCategories(str) {
         return [...(str || "").matchAll(/\{(sgd?):([^}]+)\}/gi)].map(function (m) {
             var parsed = parseSgInner(m[2]);
             return {
@@ -565,7 +115,7 @@
         });
     }
 
-    function activeWildcardCategories(text, negativeText) {
+function activeWildcardCategories(text, negativeText) {
         var all = extractWildcardCategories(text).concat(extractWildcardCategories(negativeText));
         var seen = new Set();
         var result = [];
@@ -582,7 +132,7 @@
         return result;
     }
 
-    function syncWildcards(tabName) {
+function syncWildcards(tabName) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
         var categories = activeWildcardCategories(
@@ -601,7 +151,7 @@
         }
     }
 
-    function removeWildcardCategory(tabName, category, spec, kind) {
+function removeWildcardCategory(tabName, category, spec, kind) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
         // Exact token from buildSgToken — slice vs whole-category and dice vs deck stay distinct
@@ -635,7 +185,7 @@
         syncWildcards(tabName);
     }
 
-    function reorderWildcardCategories(tabName, newOrder) {
+function reorderWildcardCategories(tabName, newOrder) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl = qs("#" + tabName + "_neg_prompt textarea");
         var order = Array.isArray(newOrder) ? newOrder : [];
@@ -696,10 +246,7 @@
         syncWildcards(tabName);
     }
 
-    // -----------------------------------------------------------------------
-    // Dynamic apply / unapply a single style
-    // -----------------------------------------------------------------------
-    function applyStyleImmediate(tabName, styleName, opts) {
+function applyStyleImmediate(tabName, styleName, opts) {
         opts = opts || {};
         var restoreOnly = opts.silent === true;
         var style = opts.source_file
@@ -820,11 +367,7 @@
         syncWildcards(tabName);
     }
 
-    window._sgApplyStyle = applyStyleImmediate;
-    window._sgUnapplyStyle = unapplyStyle;
-
-    /** Live-branch textarea cleanup used by unapplyStyle. */
-    function stripLiveApplyFromTextareas(tabName, styleName, record) {
+function stripLiveApplyFromTextareas(tabName, styleName, record) {
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
@@ -862,7 +405,7 @@
         }
     }
 
-    function unapplyStyle(tabName, styleName, sourceFile) {
+function unapplyStyle(tabName, styleName, sourceFile) {
         var idKey = styleIdentityKey(styleName, sourceFile || "");
         var record = state[tabName].applied.get(idKey);
         if (!record && !sourceFile) {
@@ -891,17 +434,14 @@
         syncWildcards(tabName);
     }
 
-    function postClearSelectionToIframes(tabName) {
+function postClearSelectionToIframes(tabName) {
         var fr = document.getElementById("sg-frame-" + tabName);
         if (fr && fr.contentWindow) {
             fr.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
         }
     }
 
-   // THUMBNAILS (batch / generate / upload — context menu entry points below)
-   var _batchState = { running: false, cancelled: false, skipped: false, jobId: null };
-
-   function startBatchThumbnails(tabName, catName, styles) {
+function startBatchThumbnails(tabName, catName, styles) {
        if (_batchState.running) {
            var frBusy = state[tabName] && state[tabName].sgFrame;
            if (frBusy && frBusy.contentWindow) {
@@ -1129,7 +669,7 @@
        processNext(0);
    }
 
-   function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
+function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
         var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
         if (typeof onProgress === "function") {
             onProgress("generating", 0);
@@ -1169,7 +709,7 @@
             });
     }
 
-    function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile, jobId) {
+function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, sourceFile, jobId) {
         if (attempts > 60) {
             var frTimeout = state[tabName] && state[tabName].sgFrame;
             if (frTimeout && frTimeout.contentWindow) {
@@ -1263,7 +803,7 @@
             });
     }
 
-    function uploadThumbnail(tabName, styleName, sourceFile) {
+function uploadThumbnail(tabName, styleName, sourceFile) {
         var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
         var input = document.createElement("input");
         input.type = "file";
@@ -1322,387 +862,7 @@
         input.click();
     }
 
-    // ════════════════════════════════════════════════════
-    // UI: EDITOR / CONTEXT MENU
-    // ════════════════════════════════════════════════════
-
-    // -----------------------------------------------------------------------
-    // Style editor modal
-    // -----------------------------------------------------------------------
-    function splitDescriptionAndCombos(raw) {
-        var m = /^([\s\S]*?)\s*Combos?:\s*([^.]+)\.?\s*$/i.exec(raw || "");
-        if (!m) return { text: raw || "", combos: "" };
-        return { text: m[1].trim(), combos: m[2].trim() };
-    }
-    function joinDescriptionAndCombos(text, combos) {
-        var t = (text || "").trim();
-        var c = (combos || "").trim();
-        if (!c) return t;
-        return t ? (t + (t.endsWith(".") ? " " : ". ") + "Combos: " + c + ".") : ("Combos: " + c + ".");
-    }
-    function openStyleEditor(tabName, existingStyle, sourceFile) {
-        const isNew = !existingStyle;
-        const overlay = el("div", { className: "sg-editor-overlay" });
-        const modal = el("div", { className: "sg-editor-modal" });
-
-        const title = el("h3", { textContent: isNew ? "Create New Style" : "Edit Style: " + (existingStyle ? existingStyle.name : ""), className: "sg-editor-title" });
-        modal.appendChild(title);
-
-        const nameInput = el("input", { className: "sg-editor-input", type: "text", placeholder: "Style name (e.g. BODY_Thicc)", value: existingStyle ? existingStyle.name : "" });
-        const promptInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Prompt (use {prompt} as placeholder)", rows: "4" });
-        promptInput.value = existingStyle ? (existingStyle.prompt || "") : "";
-        const negInput = el("textarea", { className: "sg-editor-textarea", placeholder: "Negative prompt", rows: "3" });
-        negInput.value = existingStyle ? (existingStyle.negative_prompt || "") : "";
-
-        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Name" }));
-        modal.appendChild(nameInput);
-        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Prompt" }));
-        modal.appendChild(promptInput);
-        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Negative Prompt" }));
-        modal.appendChild(negInput);
-
-        var parsed = splitDescriptionAndCombos(existingStyle ? existingStyle.description : "");
-        var descInput = el("textarea", {
-            className: "sg-editor-textarea",
-            placeholder: "What this style does.",
-            rows: "3"
-        });
-        descInput.value = parsed.text;
-
-        var combosInput = el("input", {
-            className: "sg-editor-input",
-            type: "text",
-            placeholder: "Combos: e.g. STYLE_X; CATEGORY_*"
-        });
-        combosInput.value = parsed.combos;
-
-        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Description" }));
-        modal.appendChild(descInput);
-        modal.appendChild(el("label", { className: "sg-editor-label", textContent: "Combos (optional)" }));
-        modal.appendChild(combosInput);
-
-        const btnRow = el("div", { className: "sg-editor-btns" });
-        btnRow.appendChild(el("button", {
-            className: "sg-btn sg-btn-primary", textContent: "💾 Save",
-            onClick: function () {
-                const name = nameInput.value.trim();
-                if (!name) { nameInput.style.borderColor = "#f87171"; return; }
-                var isRename = !!(existingStyle && name !== existingStyle.name);
-                var endpoint = isRename ? "/style_grid/style/rename" : "/style_grid/style/save";
-                var payload = isRename
-                    ? {
-                        old_name: existingStyle.name,
-                        new_name: name,
-                        source: existingStyle.source,
-                        prompt: promptInput.value,
-                        negative_prompt: negInput.value,
-                        description: joinDescriptionAndCombos(descInput.value, combosInput.value),
-                    }
-                    : {
-                        name: name,
-                        prompt: promptInput.value,
-                        negative_prompt: negInput.value,
-                        description: joinDescriptionAndCombos(descInput.value, combosInput.value),
-                        source: existingStyle ? existingStyle.source : (sourceFile || null),
-                    };
-                apiPost(endpoint, payload).then(assertNoApiError).then(function () {
-                    if (isRename) {
-                        remapStyleNameReferences(
-                            tabName,
-                            existingStyle.name,
-                            name,
-                            existingStyle.source_file || existingStyle.source || ""
-                        );
-                    }
-                    overlay.remove();
-                    refreshPanel(tabName);
-                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
-                    if (typeof notify === "function") notify();
-                }).catch(function (err) {
-                    var msg = (err && err.message) ? err.message : "Save failed";
-                    var frSave = state[tabName] && state[tabName].sgFrame;
-                    if (frSave && frSave.contentWindow) {
-                        frSave.contentWindow.postMessage({
-                            type: "SG_TOAST",
-                            message: msg,
-                            variant: "error"
-                        }, "*");
-                    }
-                });
-            }
-        }));
-        btnRow.appendChild(el("button", {
-            className: "sg-btn sg-btn-secondary", textContent: "Cancel",
-            onClick: function () { overlay.remove(); }
-        }));
-        modal.appendChild(btnRow);
-        overlay.appendChild(modal);
-        var editorOverlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) {
-            editorOverlayMouseDownTarget = e.target;
-        });
-        overlay.addEventListener("click", function (e) {
-            if (editorOverlayMouseDownTarget === overlay || editorOverlayMouseDownTarget === e.currentTarget) {
-                overlay.remove();
-            }
-            editorOverlayMouseDownTarget = null;
-        });
-        document.body.appendChild(overlay);
-        nameInput.focus();
-    }
-
-
-
-    function duplicateStyle(tabName, style, onDone) {
-        const newName = style.name + "_copy";
-        apiPost("/style_grid/style/save", {
-            name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
-        }).then(assertNoApiError).then(function () {
-            refreshPanel(tabName);
-            var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
-            if (typeof notify === "function") notify();
-            if (typeof onDone === "function") onDone();
-        }).catch(function () {});
-    }
-
-    function deleteStyle(tabName, styleName, source, onDeleted) {
-        const overlay = el("div", { className: "sg-editor-overlay" });
-        const modal = el("div", { className: "sg-editor-modal" });
-        modal.appendChild(el("h3", {
-            className: "sg-editor-title",
-            textContent: "Delete style?"
-        }));
-        modal.appendChild(el("p", {
-            textContent: "\"" + styleName + "\" will be permanently removed from the CSV.",
-            style: "font-size:13px; color: var(--body-text-color-subdued, #9ca3af);"
-        }));
-        const btns = el("div", { className: "sg-editor-btns" });
-        btns.appendChild(el("button", {
-            className: "sg-btn",
-            style: "background:#dc2626; border-color:#dc2626; color:#fff;",
-            textContent: "🗑️ Delete",
-            onClick: function () {
-                overlay.remove();
-                apiPost("/style_grid/style/delete", { name: styleName, source: source })
-                    .then(assertNoApiError)
-                    .then(function () {
-                        fetch("/style_grid/thumbnail?name=" + encodeURIComponent(styleName) + "&source=" + encodeURIComponent(source || ""), { method: "DELETE" }).catch(function () { /* best-effort, style delete already succeeded */ });
-                        refreshPanel(tabName, { quietVanishedToast: true });
-                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
-                        if (typeof notify === "function") notify();
-                        if (typeof onDeleted === "function") onDeleted();
-                    })
-                    .catch(function () {
-                        var frDel = state[tabName] && state[tabName].sgFrame;
-                        if (frDel && frDel.contentWindow) {
-                            frDel.contentWindow.postMessage({
-                                type: "SG_TOAST",
-                                message: "Delete failed",
-                                variant: "error"
-                            }, "*");
-                        }
-                    });
-            }
-        }));
-        btns.appendChild(el("button", {
-            className: "sg-btn sg-btn-secondary",
-            textContent: "Cancel",
-            onClick: function () { overlay.remove(); }
-        }));
-        modal.appendChild(btns);
-        overlay.appendChild(modal);
-        var deleteOverlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) {
-            deleteOverlayMouseDownTarget = e.target;
-        });
-        overlay.addEventListener("click", function (e) {
-            if (deleteOverlayMouseDownTarget === overlay || deleteOverlayMouseDownTarget === e.currentTarget) {
-                overlay.remove();
-            }
-            deleteOverlayMouseDownTarget = null;
-        });
-        document.body.appendChild(overlay);
-    }
-
-    function moveToCategory(tabName, style, onDone) {
-        const overlay = el("div", { className: "sg-editor-overlay" });
-        const modal = el("div", { className: "sg-editor-modal" });
-
-        modal.appendChild(el("h3", {
-            className: "sg-editor-title",
-            textContent: "Move to category"
-        }));
-        modal.appendChild(el("label", {
-            className: "sg-editor-label",
-            textContent: "New category name"
-        }));
-        const input = el("input", {
-            className: "sg-editor-input",
-            type: "text",
-            value: style.category || "",
-            placeholder: "New category name"
-        });
-        modal.appendChild(input);
-
-        const btns = el("div", { className: "sg-editor-btns" });
-        btns.appendChild(el("button", {
-            className: "sg-btn sg-btn-primary",
-            textContent: "Move",
-            onClick: function () {
-                const newCat = (input.value || "").trim();
-                if (!newCat) { input.style.borderColor = "#f87171"; return; }
-                const oldName = style.name;
-                const rest = oldName.includes("_") ? oldName.split("_").slice(1).join("_") : oldName;
-                const newName = newCat.toUpperCase() + "_" + rest;
-                apiPost("/style_grid/style/rename", {
-                    old_name: oldName,
-                    new_name: newName,
-                    source: style.source,
-                    // Align category column with the new prefix. Display prefers
-                    // category_explicit over the name prefix when the column is set.
-                    category: newCat.toUpperCase(),
-                }).then(assertNoApiError).then(function () {
-                    remapStyleNameReferences(
-                        tabName,
-                        oldName,
-                        newName,
-                        style.source_file || style.source || ""
-                    );
-                    overlay.remove();
-                    refreshPanel(tabName);
-                    var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
-                    if (typeof notify === "function") notify();
-                    if (typeof onDone === "function") onDone();
-                }).catch(function (err) {
-                    var msg = (err && err.message) ? err.message : "Move failed";
-                    var frMove = state[tabName] && state[tabName].sgFrame;
-                    if (frMove && frMove.contentWindow) {
-                        frMove.contentWindow.postMessage({
-                            type: "SG_TOAST",
-                            message: msg,
-                            variant: "error"
-                        }, "*");
-                    }
-                });
-            }
-        }));
-        btns.appendChild(el("button", {
-            className: "sg-btn sg-btn-secondary",
-            textContent: "Cancel",
-            onClick: function () { overlay.remove(); }
-        }));
-
-        modal.appendChild(btns);
-        overlay.appendChild(modal);
-        var moveOverlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) {
-            moveOverlayMouseDownTarget = e.target;
-        });
-        overlay.addEventListener("click", function (e) {
-            if (moveOverlayMouseDownTarget === overlay || moveOverlayMouseDownTarget === e.currentTarget) {
-                overlay.remove();
-            }
-            moveOverlayMouseDownTarget = null;
-        });
-        document.body.appendChild(overlay);
-    }
-
-    // -----------------------------------------------------------------------
-    // Import/Export
-    // -----------------------------------------------------------------------
-    function showExportImport(tabName) {
-        const overlay = el("div", { className: "sg-editor-overlay" });
-        const modal = el("div", { className: "sg-editor-modal" });
-        modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📥 Import / Export" }));
-
-        const btnExport = el("button", {
-            className: "sg-btn sg-btn-primary", textContent: "⬇️ Export all (JSON)",
-            onClick: function () {
-                apiGet("/style_grid/export").then(function (data) {
-                    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    a.download = "style_grid_export_" + new Date().toISOString().slice(0, 10) + ".json";
-                    a.click();
-                }).catch(function () {});
-            }
-        });
-        modal.appendChild(btnExport);
-
-        const importLabel = el("label", { className: "sg-editor-label", textContent: "Import JSON file:" });
-        const importInput = el("input", { type: "file", accept: ".json" });
-        importInput.addEventListener("change", function () {
-            const file = importInput.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function () {
-                try {
-                    const data = JSON.parse(reader.result);
-                    fetch("/style_grid/import", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(data),
-                    }).then(function (r) {
-                        return r.text().then(function (text) {
-                            var body = {};
-                            if (text) {
-                                try {
-                                    body = JSON.parse(text);
-                                } catch (_e) {
-                                    if (!r.ok) {
-                                        return Promise.reject(new Error("HTTP " + r.status));
-                                    }
-                                    return Promise.reject(new Error("Invalid JSON in response"));
-                                }
-                            }
-                            if (!r.ok || (body && body.error)) {
-                                var msg = (body && body.error) || ("HTTP " + r.status);
-                                if (body && Array.isArray(body.collisions) && body.collisions.length) {
-                                    msg += "\n\nColliding names: " + body.collisions.join(", ");
-                                }
-                                return Promise.reject(new Error(msg));
-                            }
-                            return body;
-                        });
-                    }).then(function () {
-                        overlay.remove();
-                        refreshPanel(tabName);
-                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
-                        if (typeof notify === "function") notify();
-                    }).catch(function (err) {
-                        alert((err && err.message) ? err.message : "Import failed");
-                    });
-                } catch (_e) { alert("Invalid JSON file"); }
-            };
-            reader.readAsText(file);
-        });
-        modal.appendChild(importLabel);
-        modal.appendChild(importInput);
-
-        modal.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } }));
-        overlay.appendChild(modal);
-        var importExportOverlayMouseDownTarget = null;
-        overlay.addEventListener("mousedown", function (e) {
-            importExportOverlayMouseDownTarget = e.target;
-        });
-        overlay.addEventListener("click", function (e) {
-            if (importExportOverlayMouseDownTarget === overlay || importExportOverlayMouseDownTarget === e.currentTarget) {
-                overlay.remove();
-            }
-            importExportOverlayMouseDownTarget = null;
-        });
-        document.body.appendChild(overlay);
-    }
-
-    // -----------------------------------------------------------------------
-    // Refresh panel (rebuild from API data)
-    // -----------------------------------------------------------------------
-    /**
-     * Host-state half of a panel refresh: Gradio/localStorage/network → state[tab],
-     * with no DOM construction.
-     * loadThumbnailList stays fire-and-forget (does not block paint).
-     */
-    function syncPanelHostState(tabName) {
+function syncPanelHostState(tabName) {
         var categories = loadStyles(tabName);
         state[tabName].categories = categories;
 
@@ -1716,7 +876,7 @@
         loadThumbnailList(tabName);
     }
 
-    function refreshPanel(tabName, opts) {
+function refreshPanel(tabName, opts) {
         opts = opts || {};
         var quietVanishedToast = !!opts.quietVanishedToast;
         apiGet("/style_grid/styles").then(function (data) {
@@ -1850,11 +1010,7 @@
         });
     }
 
-    // -----------------------------------------------------------------------
-    // Dynamic polling for file changes
-    // -----------------------------------------------------------------------
-    let _pollInterval = null;
-    function startPolling() {
+function startPolling() {
         if (_pollInterval) return;
         _pollInterval = setInterval(function () {
             apiGet("/style_grid/check_update").then(function (r) {
@@ -1894,25 +1050,7 @@
         }, 5000);
     }
 
-    // ════════════════════════════════════════════════════
-    // UI: PANEL
-    // ════════════════════════════════════════════════════
-    // Build the Grid Panel
-    // -----------------------------------------------------------------------
-
-    // -----------------------------------------------------------------------
-    // Build a category section
-    // -----------------------------------------------------------------------
-
-    // -----------------------------------------------------------------------
-    // Search autocomplete suggestions
-    // -----------------------------------------------------------------------
-
-    // -----------------------------------------------------------------------
-    // Interaction handlers
-    // -----------------------------------------------------------------------
-
-    function clearAll(tabName) {
+function clearAll(tabName) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
         var negEl    = qs("#" + tabName + "_neg_prompt textarea");
         var p = promptEl ? (promptEl.value || "") : "";
@@ -1951,7 +1089,7 @@
         postClearSelectionToIframes(tabName);
     }
 
-    function rebuildPromptFromOrder(tabName) {
+function rebuildPromptFromOrder(tabName) {
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
         if (!promptEl || !negEl) return;
@@ -1991,56 +1129,7 @@
         syncWildcards(tabName);
     }
 
-    /**
-     * Live selection chrome: keep selectedOrder aligned with selected, update trigger badge.
-     */
-    function syncSelectionChrome(tabName) {
-        let order = state[tabName].selectedOrder || [];
-        order = order.filter(function (n) { return state[tabName].selected.has(n); });
-        state[tabName].selected.forEach(function (n) {
-            if (order.indexOf(n) === -1) order.push(n);
-        });
-        state[tabName].selectedOrder = order;
-
-        const count = state[tabName].selected.size;
-        const badge = qs("#sg_btn_badge_" + tabName);
-        if (badge) {
-            badge.textContent = count > 0 ? count : "";
-            badge.style.display = count > 0 ? "flex" : "none";
-        }
-    }
-
-    // -----------------------------------------------------------------------
-    // Style Grid v2 iframe — push SG_INIT to frame when needed
-    // -----------------------------------------------------------------------
-    function postSGInitToFrame(tabName) {
-        var fr = state[tabName].sgFrame;
-        if (!fr || !fr.contentWindow) return;
-        fetch("/style_grid/styles")
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                var styles = Array.isArray(data)
-                    ? data
-                    : Object.values(data.categories || {}).flat();
-                fr.contentWindow.postMessage({
-                    type: "SG_INIT",
-                    tab: tabName,
-                    styles: styles,
-                }, "*");
-                state[tabName].sgV2HostInitSent = true;
-            })
-            .catch(function () {});
-    }
-
-    // -----------------------------------------------------------------------
-    // A1111 / Gradio: visible txt2img vs img2img main tab → v2 iframe header badge
-    // -----------------------------------------------------------------------
-    var _sgForgeTabSyncInstalled = false;
-    var _sgLastBroadcastForgeTab = null;
-    var _sgForgeTabsObserver = null;
-    var _sgForgeTabsPendingRetry = null;
-
-    function getForgeUiRoot() {
+function getForgeUiRoot() {
         if (typeof gradioApp === "function") {
             try {
                 var g = gradioApp();
@@ -2050,7 +1139,7 @@
         return document;
     }
 
-    function forgeTabPanelVisible(root, sel) {
+function forgeTabPanelVisible(root, sel) {
         var el = root.querySelector(sel);
         if (!el) return false;
         var st = window.getComputedStyle(el);
@@ -2064,7 +1153,7 @@
         return true;
     }
 
-    function detectActiveForgeMainTab() {
+function detectActiveForgeMainTab() {
         var root = getForgeUiRoot();
         var txtOn = forgeTabPanelVisible(root, "#tab_txt2img");
         var imgOn = forgeTabPanelVisible(root, "#tab_img2img");
@@ -2096,7 +1185,7 @@
         return "txt2img";
     }
 
-    function postForgeHostTabToV2Frames(hostTab) {
+function postForgeHostTabToV2Frames(hostTab) {
         if (hostTab !== "txt2img" && hostTab !== "img2img") return;
         ["txt2img", "img2img"].forEach(function (t) {
             var fr = state[t] && state[t].sgFrame;
@@ -2106,20 +1195,20 @@
         });
     }
 
-    function syncForgeHostTabToV2Frames() {
+function syncForgeHostTabToV2Frames() {
         var tab = detectActiveForgeMainTab();
-        if (_sgLastBroadcastForgeTab === tab) return;
-        _sgLastBroadcastForgeTab = tab;
+        if (hooks.forgeTab.lastBroadcast === tab) return;
+        hooks.forgeTab.lastBroadcast = tab;
         postForgeHostTabToV2Frames(tab);
     }
 
-    function scheduleSyncForgeHostTabToV2Frames() {
+function scheduleSyncForgeHostTabToV2Frames() {
         syncForgeHostTabToV2Frames();
         setTimeout(syncForgeHostTabToV2Frames, 0);
         setTimeout(syncForgeHostTabToV2Frames, 120);
     }
 
-    function installForgeMainTabSyncForV2() {
+function installForgeMainTabSyncForV2() {
         if (_sgForgeTabSyncInstalled) return;
         _sgForgeTabSyncInstalled = true;
 
@@ -2173,162 +1262,7 @@
         scheduleSyncForgeHostTabToV2Frames();
     }
 
-    // -----------------------------------------------------------------------
-    // Toggle panel visibility
-    // -----------------------------------------------------------------------
-    var _sgHostPrevBodyOverflow = "";
-    var _sgHostPrevDocOverflow = "";
-    var _sgHostScrollLocked = false;
-    function anySGFrameVisible() {
-        return ["txt2img", "img2img"].some(function (t) {
-            var fr = state[t] && state[t].sgFrame;
-            var wr = state[t] && state[t].sgFrameWrapper;
-            var target = wr || fr;
-            return !!(target && target.style.display === "block");
-        });
-    }
-    function setHostPageScrollLock(lock) {
-        if (lock && !_sgHostScrollLocked) {
-            _sgHostPrevBodyOverflow = document.body ? document.body.style.overflow : "";
-            _sgHostPrevDocOverflow = document.documentElement ? document.documentElement.style.overflow : "";
-            if (document.body) document.body.style.overflow = "hidden";
-            if (document.documentElement) document.documentElement.style.overflow = "hidden";
-            _sgHostScrollLocked = true;
-            return;
-        }
-        if (!lock && _sgHostScrollLocked) {
-            if (document.body) document.body.style.overflow = _sgHostPrevBodyOverflow || "";
-            if (document.documentElement) document.documentElement.style.overflow = _sgHostPrevDocOverflow || "";
-            _sgHostScrollLocked = false;
-        }
-    }
-
-    function togglePanel(tabName, show) {
-        if (!state[tabName].sgFrame) ensureSGFramesOnce();
-        var fr = state[tabName].sgFrame;
-        var wr = state[tabName].sgFrameWrapper;
-        if (!fr) {
-            return;
-        }
-        if (!wr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tabName) {
-            wr = fr.parentElement;
-            state[tabName].sgFrameWrapper = wr;
-        }
-        var target = wr || fr;
-        if (typeof show === "undefined") show = target.style.display !== "block";
-        if (!show) {
-            target.style.display = "none";
-            setHostPageScrollLock(anySGFrameVisible());
-            return;
-        }
-        target.style.display = "block";
-        setHostPageScrollLock(true);
-        syncWildcards(tabName);
-        if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
-        _sgLastBroadcastForgeTab = null;
-        scheduleSyncForgeHostTabToV2Frames();
-    }
-
-    // -----------------------------------------------------------------------
-    // Trigger button
-    // -----------------------------------------------------------------------
-    function createTriggerButton(tabName) {
-        const ns = "http://www.w3.org/2000/svg";
-        const svg = document.createElementNS(ns, "svg");
-        svg.setAttributeNS(null, "viewBox", "0 0 24 24");
-        svg.setAttributeNS(null, "fill", "none");
-        svg.setAttributeNS(null, "stroke", "currentColor");
-        svg.setAttributeNS(null, "stroke-width", "2");
-        svg.setAttributeNS(null, "stroke-linecap", "round");
-        svg.setAttributeNS(null, "stroke-linejoin", "round");
-        svg.setAttributeNS(null, "width", "16");
-        svg.setAttributeNS(null, "height", "16");
-        [[3, 3, 7, 7], [14, 3, 7, 7], [3, 14, 7, 7], [14, 14, 7, 7]].forEach(function (xywh) {
-            const rect = document.createElementNS(ns, "rect");
-            rect.setAttributeNS(null, "x", String(xywh[0]));
-            rect.setAttributeNS(null, "y", String(xywh[1]));
-            rect.setAttributeNS(null, "width", String(xywh[2]));
-            rect.setAttributeNS(null, "height", String(xywh[3]));
-            svg.appendChild(rect);
-        });
-        const btn = el("button", {
-            className: "sg-trigger-btn lg secondary gradio-button tool svelte-cmf5ev",
-            id: "sg_trigger_" + tabName, title: "Open Style Grid",
-        });
-        btn.appendChild(svg);
-        const badge = el("span", { className: "sg-btn-badge", id: "sg_btn_badge_" + tabName });
-        badge.style.display = "none";
-        btn.appendChild(badge);
-        btn.addEventListener("click", function (e) { e.preventDefault(); e.stopPropagation(); togglePanel(tabName); });
-        return btn;
-    }
-
-    function getStyleGridToolbarHost() {
-        var root = (typeof gradioApp === "function" ? gradioApp() : null) || document;
-        return root.querySelector(".forge-toolbar-container")
-            || root.querySelector("#quicksettings")
-            || root.querySelector(".gradio-container .top-row")
-            || null;
-    }
-
-    function injectButton(tabName) {
-        const selectors = [
-            "#" + tabName + "_tools",
-            "#" + tabName + "_styles_row",
-            "#" + tabName + "_actions_column .style_create_row",
-            "#" + tabName + "_actions_column",
-        ];
-        let target = null;
-        for (let i = 0; i < selectors.length; i++) { target = qs(selectors[i]); if (target) break; }
-        if (!target) {
-            const dd = qs("#" + tabName + "_styles_row") || qs("#" + tabName + "_styles");
-            if (dd) target = dd.parentElement;
-        }
-        if (!target) {
-            const tab = qs("#tab_" + tabName);
-            if (tab) { const btns = tab.querySelectorAll(".tool"); if (btns.length > 0) target = btns[btns.length - 1].parentElement; }
-        }
-        if (!target) {
-            var toolbarHost = getStyleGridToolbarHost();
-            if (!toolbarHost) return false;
-            const btnToolbar = createTriggerButton(tabName);
-            btnToolbar.classList.add("sg-trigger-btn--toolbar-host");
-            toolbarHost.appendChild(btnToolbar);
-            return true;
-        }
-        const btn = createTriggerButton(tabName);
-        if (target.id && target.id.includes("tools")) {
-            var toolsEl = target;
-            var formEl = toolsEl.querySelector(":scope > div.form, :scope > div[style*='flex']");
-            (formEl || toolsEl).appendChild(btn);
-        } else if (target.classList.contains("style_create_row")) target.appendChild(btn);
-        else target.parentNode.insertBefore(btn, target.nextSibling);
-        return true;
-    }
-
-    // -----------------------------------------------------------------------
-    // Keyboard
-    // -----------------------------------------------------------------------
-    document.addEventListener("keydown", function (e) {
-        if (e.key === "Escape") {
-            ["txt2img", "img2img"].forEach(function (t) {
-                var frEsc = state[t].sgFrame;
-                var wrEsc = state[t].sgFrameWrapper || (frEsc && frEsc.parentElement && frEsc.parentElement.id === "sg-panel-wrapper-" + t ? frEsc.parentElement : null);
-                var targetEsc = wrEsc || frEsc;
-                if (targetEsc && targetEsc.style.display === "block") {
-                    targetEsc.style.display = "none";
-                    setHostPageScrollLock(anySGFrameVisible());
-                    e.preventDefault();
-                    return;
-                }
-            });
-        }
-    });
-
-    // ════════════════════════════════════════════════════
-    // STATE + INIT (boot, triggers, MutationObserver)
-    // ════════════════════════════════════════════════════
-    function initSGFrame(tab) {
+function initSGFrame(tab) {
         var existing = document.getElementById("sg-frame-" + tab);
         if (existing) {
             return existing;
@@ -2777,13 +1711,13 @@
         return frame;
     }
 
-    function ensureSGFramesOnce() {
+function ensureSGFramesOnce() {
         if (!state.txt2img.sgFrame) state.txt2img.sgFrame = initSGFrame("txt2img");
         if (!state.img2img.sgFrame) state.img2img.sgFrame = initSGFrame("img2img");
         installForgeMainTabSyncForV2();
     }
 
-    function init() {
+function init() {
         let observer = null;
 
         function stopObserver() {
@@ -2831,17 +1765,45 @@
         }
     }
 
-    init();
+// Bind late hooks for render module
+hooks.refreshPanel = refreshPanel;
+hooks.ensureSGFramesOnce = ensureSGFramesOnce;
+hooks.syncWildcards = syncWildcards;
+hooks.scheduleSyncForgeHostTabToV2Frames = scheduleSyncForgeHostTabToV2Frames;
 
-    if (typeof onUiLoaded === "function") {
-        onUiLoaded(function () {
-            state.txt2img.sgFrame = state.txt2img.sgFrame || initSGFrame("txt2img");
-            state.img2img.sgFrame = state.img2img.sgFrame || initSGFrame("img2img");
-            installForgeMainTabSyncForV2();
-        });
-    } else if (document.body) {
-        ensureSGFramesOnce();
-    } else {
-        document.addEventListener("DOMContentLoaded", ensureSGFramesOnce);
-    }
-})();
+export {
+    syncSourceInput,
+    loadStyles,
+    loadThumbnailList,
+    normalizeWildcardKind,
+    parseSgInner,
+    buildSgToken,
+    extractWildcardCategories,
+    activeWildcardCategories,
+    syncWildcards,
+    removeWildcardCategory,
+    reorderWildcardCategories,
+    applyStyleImmediate,
+    stripLiveApplyFromTextareas,
+    unapplyStyle,
+    postClearSelectionToIframes,
+    startBatchThumbnails,
+    generateThumbnail,
+    pollGenerationStatus,
+    uploadThumbnail,
+    syncPanelHostState,
+    refreshPanel,
+    startPolling,
+    clearAll,
+    rebuildPromptFromOrder,
+    getForgeUiRoot,
+    forgeTabPanelVisible,
+    detectActiveForgeMainTab,
+    postForgeHostTabToV2Frames,
+    syncForgeHostTabToV2Frames,
+    scheduleSyncForgeHostTabToV2Frames,
+    installForgeMainTabSyncForV2,
+    initSGFrame,
+    ensureSGFramesOnce,
+    init,
+};

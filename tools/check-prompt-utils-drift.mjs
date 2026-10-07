@@ -1,6 +1,6 @@
 /**
  * Fail CI when the duplicated prompt helpers in
- * javascript/sg_prompt_utils.js and javascript/style_grid.js drift apart.
+ * javascript/sg_prompt_utils.js and javascript/style_grid/prompt-utils.js drift apart.
  *
  * Extraction: for each name, find exactly one `function <name>(...)` declaration,
  * then brace-match from its opening `{` to the matching `}` while skipping
@@ -31,7 +31,7 @@ const FUNCTION_NAMES = [
 
 function parseArgs(argv) {
     let utils = path.join(ROOT, "javascript", "sg_prompt_utils.js");
-    let grid = path.join(ROOT, "javascript", "style_grid.js");
+    let grid = path.join(ROOT, "javascript", "style_grid", "prompt-utils.js");
     for (let i = 0; i < argv.length; i++) {
         if (argv[i] === "--utils" && argv[i + 1]) {
             utils = path.resolve(argv[++i]);
@@ -278,7 +278,7 @@ function main() {
             `duplicated prompt helper(s) drifted between ` +
                 `${utilsLabel} and ${gridLabel}:\n` +
                 drifted.map((n) => `  - ${n}`).join("\n") +
-                `\nKeep both copies identical (tests load sg_prompt_utils.js; live UI uses style_grid.js).`
+                `\nKeep both copies identical (tests load sg_prompt_utils.js; live UI uses style_grid/prompt-utils.js).`
         );
     }
 

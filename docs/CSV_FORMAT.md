@@ -95,7 +95,7 @@ LoRAs are **not** stored in style CSVs. `stylegrid/lora_scan.py` builds syntheti
 
 ## Recommended Combos
 
-"Works with" chips are rendered in UI by parsing the `description` field (`javascript/style_grid.js`).
+"Works with" chips are rendered in UI by parsing the `description` field (`javascript/style_grid.mjs` / host modules).
 
 | Item | Actual behavior |
 |---|---|

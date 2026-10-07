@@ -12,7 +12,7 @@ Thumbnail **image** requests use `GET /style_grid/thumbnail?name=…&source=…`
 
 ```mermaid
 flowchart LR
-  UI[React iframe UI] -->|SG_* postMessage| HOST[javascript/style_grid.js]
+  UI[React iframe UI] -->|SG_* postMessage| HOST[javascript/style_grid.mjs]
   HOST -->|fetch /style_grid/*| API[FastAPI routes]
   API --> DATA[(CSV + data files)]
 ```
@@ -649,7 +649,7 @@ On unexpected failure while copying (exception in `backup_csv_files()`):
 | Exception during backup I/O  | `{ "error": "<message>" }` (HTTP 200). |
 
 
-The host UI (`SG_BACKUP` in `javascript/style_grid.js`) should treat `{ "error": … }`, `{ "ok": false }`, non-success HTTP status, and network/parse errors and show a toast — it does not assume JSON-only success.
+The host UI (`SG_BACKUP` in `javascript/style_grid.mjs`) should treat `{ "error": … }`, `{ "ok": false }`, non-success HTTP status, and network/parse errors and show a toast — it does not assume JSON-only success.
 
 ## GET /export
 

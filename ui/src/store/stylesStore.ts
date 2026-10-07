@@ -13,6 +13,7 @@ import {
   parseCorruptData,
   type CorruptDataInfo,
 } from '../lib/parseCorruptData'
+import { styleGridPost } from '../lib/styleGridFetch'
 
 /** Matches the backend's LORA_SOURCE marker (stylegrid/lora_scan.py). LoRA
  * cards use this as their synthetic source_file so they can be excluded
@@ -702,11 +703,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const counts = { ...get().usageCounts }
     counts[name] = (counts[name] || 0) + 1
     set({ usageCounts: counts })
-    fetch('/style_grid/usage/increment', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ styles: [name] })
-    }).catch(() => {})
+    styleGridPost('/style_grid/usage/increment', { styles: [name] }).catch(() => {})
   },
   fetchPresets: async () => {
     const parse = (raw: unknown): Record<string, PresetRecord> =>
@@ -747,16 +744,12 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       return { ok: false as const, error: 'corrupt_data' }
     }
     try {
-      const res = await fetch('/style_grid/presets/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          styles,
-          wildcards: opts?.wildcards ?? [],
-          note: opts?.note ?? '',
-          overwrite: Boolean(opts?.overwrite),
-        }),
+      const res = await styleGridPost('/style_grid/presets/save', {
+        name,
+        styles,
+        wildcards: opts?.wildcards ?? [],
+        note: opts?.note ?? '',
+        overwrite: Boolean(opts?.overwrite),
       })
       const data = await res.json().catch(() => ({}))
       const corrupt = parseCorruptData(res, data)
@@ -796,11 +789,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       return { ok: false as const, error: 'corrupt_data' }
     }
     try {
-      const res = await fetch('/style_grid/presets/delete', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
+      const res = await styleGridPost('/style_grid/presets/delete', { name })
       const data = await res.json().catch(() => ({}))
       const corrupt = parseCorruptData(res, data)
       if (corrupt) {
@@ -853,14 +842,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       return { ok: false as const, error: 'corrupt_data' }
     }
     try {
-      const res = await fetch('/style_grid/presets/rename', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          old_name: oldName,
-          new_name: newName,
-          overwrite: Boolean(opts?.overwrite),
-        }),
+      const res = await styleGridPost('/style_grid/presets/rename', {
+        old_name: oldName,
+        new_name: newName,
+        overwrite: Boolean(opts?.overwrite),
       })
       const data = await res.json().catch(() => ({}))
       const corrupt = parseCorruptData(res, data)
@@ -902,11 +887,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   touchPreset: async (name) => {
     if (get().presetsCorrupt) return
     try {
-      const res = await fetch('/style_grid/presets/touch', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      })
+      const res = await styleGridPost('/style_grid/presets/touch', { name })
       const data = await res.json().catch(() => ({}))
       const corrupt = parseCorruptData(res, data)
       if (corrupt) {
@@ -1052,11 +1033,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     localStorage.setItem('sg_v2_category_order_source', 'all')
     set({ categoryOrder: order })
     // Sync to backend same as old panel
-    fetch('/style_grid/category_order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order })
-    }).catch(() => {})
+    styleGridPost('/style_grid/category_order/save', { order }).catch(() => {})
   },
 
   categories: () => {

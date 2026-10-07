@@ -20,6 +20,7 @@ from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.prompt_ops import dedup_prompt
 from stylegrid.routes import register_api
 from stylegrid.wildcards import DeckContext, resolve_sg_wildcards
+from stylegrid.write_auth import WRITE_TOKEN_JS_GLOBAL, get_session_token, is_public_bind
 
 script_callbacks.on_app_started(register_api)
 
@@ -83,6 +84,7 @@ class StyleGridScript(scripts.Script):
                 category_order = sorted(categories.keys())
         else:
             category_order = sorted(categories.keys())
+        write_token = get_session_token() if is_public_bind() else ""
         with gr.Group(elem_id=f"style_grid_wrapper_{tab_prefix}", visible=False):
             # JS-only bridge: Gradio must construct this for elem_id; Python never reads it.
             gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
@@ -90,6 +92,12 @@ class StyleGridScript(scripts.Script):
             gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")
             source_filter = gr.Textbox(value="", visible=False, elem_id=f"style_grid_source_{tab_prefix}")
             gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")
+            # Per-session write token for --listen/--share (empty on localhost-only).
+            gr.HTML(
+                f"<script>window.{WRITE_TOKEN_JS_GLOBAL}={json.dumps(write_token)};</script>",
+                visible=False,
+                elem_id=f"style_grid_write_token_{tab_prefix}",
+            )
         with gr.Group(visible=False):
             gr.Textbox(value=json.dumps(category_order), visible=False, elem_id=f"style_grid_cat_order_{tab_prefix}")
         return [source_filter]

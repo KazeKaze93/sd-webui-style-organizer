@@ -51,6 +51,7 @@ from stylegrid.data_files import (
     save_presets,
 )
 from stylegrid.safe_persistence import write_atomic
+from stylegrid.write_auth import inject_write_token_script, install_write_auth
 from stylegrid.lora_scan import (
     LORA_SOURCE,
     get_cached_lora_styles,
@@ -884,7 +885,7 @@ def _get_ui_html() -> str:
         q = m.group("q")
         return f'{m.group("attr")}={q}{base}/{rel}?v={v}{q}'
 
-    return pattern.sub(_sub, html)
+    return inject_write_token_script(pattern.sub(_sub, html))
 
 
 def _register_ui_routes(app):
@@ -902,6 +903,7 @@ def register_api(demo, app):
     Most handlers return HTTP 200 with `{ "error": ... }` payloads on logical failures;
     notable exceptions include `/styles` ETag 304 and `/thumbnail` 404.
     """
+    install_write_auth(app)
     _register_style_routes(app)
     _register_preset_routes(app)
     _register_usage_routes(app)

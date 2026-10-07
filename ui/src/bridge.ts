@@ -31,7 +31,7 @@ export type HostMessage =
 export type FrameMessage =
   | { type: 'SG_READY' }
   | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string }
-  | { type: 'SG_UNAPPLY';       styleId: string }
+  | { type: 'SG_UNAPPLY';       styleId: string; source_file?: string }
   | { type: 'SG_EDIT_STYLE';      styleId: string; source_file?: string }
   | { type: 'SG_DUPLICATE_STYLE'; styleId: string; source_file?: string }
   | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string; source_file?: string }

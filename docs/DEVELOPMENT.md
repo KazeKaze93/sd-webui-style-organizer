@@ -80,7 +80,7 @@ The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegr
 
 Bridge types are declared in `ui/src/bridge.ts`.
 
-**Name+source identity:** Favorites / Recent use `styleRowKey(name, source_file)` in localStorage (legacy bare names migrate on style load). Presets store `{name, source_file}` (normalized on load). Host applied records remember apply-time `source_file`. V2 **`SG_APPLY`** always includes `source_file`; host resolve uses `findStyleByNameAndSource`. Thumbnail messages **`SG_GENERATE_PREVIEW` / `SG_UPLOAD_PREVIEW`** require `source`; host completion **`SG_THUMB_DONE`** includes `source_file` so duplicate-name cards cache-bust independently.
+**Name+source identity:** Favorites / Recent / host `selected` / `applied` / nest order use `styleRowKey` / `styleIdentityKey` = `source_file + "\\0" + name`. Legacy bare-name favorites migrate in memory on style load when the name is unique; ambiguous duplicates are dropped (not guessed). Presets store `{name, source_file}` (normalized on load). V2 **`SG_APPLY`** / **`SG_UNAPPLY`** carry `source_file`; host resolve uses `findStyleByNameAndSource`. Thumbnail messages **`SG_GENERATE_PREVIEW` / `SG_UPLOAD_PREVIEW`** require `source`; host completion **`SG_THUMB_DONE`** includes `source_file` so duplicate-name cards cache-bust independently.
 
 ```mermaid
 sequenceDiagram

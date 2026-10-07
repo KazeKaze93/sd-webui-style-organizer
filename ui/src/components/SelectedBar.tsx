@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Reorder } from 'framer-motion'
-import { useStylesStore } from '../store/stylesStore'
+import { styleRowKey, useStylesStore } from '../store/stylesStore'
 import { sendToHost, WILDCARD_KIND_DECK } from '../bridge'
 import { SHUFFLE_CHIP_TITLE } from '../lib/wildcardLabels'
 import { describeSpec } from '../lib/wildcardSlice'
@@ -46,7 +46,7 @@ export function SelectedBar() {
                 setSelectedStyles(newOrder)
                 sendToHost({
                   type: 'SG_REORDER_STYLES',
-                  styleIds: newOrder.map(s => s.name)
+                  styleIds: newOrder.map((s) => styleRowKey(s)),
                 })
               }}
               className="flex flex-wrap gap-2"
@@ -54,7 +54,7 @@ export function SelectedBar() {
             >
               {selectedStyles.map(s => (
                 <Reorder.Item
-                  key={s.name}
+                  key={styleRowKey(s)}
                   value={s}
                   as="span"
                   className="flex items-center gap-1 px-2 py-1 rounded-full

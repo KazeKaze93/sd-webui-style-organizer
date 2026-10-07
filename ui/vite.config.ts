@@ -5,6 +5,9 @@ import path from 'path'
 export default defineConfig({
   plugins: [react()],
   base: './',
+  test: {
+    setupFiles: ['./vitest.setup.ts'],
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

@@ -54,7 +54,8 @@ def style_grid_client(tmp_csv, monkeypatch):
 
     app = FastAPI()
     register_api(None, app)
-    with TestClient(app) as client:
+    # base_url sets Host to 127.0.0.1:7860 so localhost write-auth Host checks pass.
+    with TestClient(app, base_url="http://127.0.0.1:7860") as client:
         yield client
 
 
@@ -410,8 +411,14 @@ def test_post_rename_ok_when_thumbnail_move_fails(style_grid_client, tmp_csv, mo
     old_path = Path(sg_thumbs.get_thumbnail_path("Test Style B", source_path))
     old_path.write_bytes(b"orphan-thumb")
 
-    def boom(*_a, **_k):
-        raise OSError("simulated thumbnail move failure")
+    real_replace = sg_routes.os.replace
+
+    def boom(src, dst, *a, **k):
+        # Only fail thumbnail renames — do not break CSV write_atomic bak rotation.
+        src_s, dst_s = str(src), str(dst)
+        if str(old_path) in (src_s, dst_s) or "thumbs" in src_s or "thumbs" in dst_s:
+            raise OSError("simulated thumbnail move failure")
+        return real_replace(src, dst, *a, **k)
 
     monkeypatch.setattr(sg_routes.os, "replace", boom)
 
@@ -787,10 +794,9 @@ def test_load_presets_keeps_unresolved_bare_name(tmp_csv, tmp_path, monkeypatch)
     assert all("weight" in e for e in ghost["styles"])
     missing = next(e for e in ghost["styles"] if e["name"] == "Missing Style X")
     assert missing["source_file"] == ""
-    # First load rewrites extended shape to disk.
+    # load_presets must not rewrite disk; legacy bare names stay until an explicit save.
     disk = json.loads(path.read_text(encoding="utf-8"))
-    assert "wildcards" in disk["Ghost"]
-    assert disk["Ghost"]["styles"][1]["name"] == "Missing Style X"
+    assert disk["Ghost"]["styles"] == ["Test Style A", "Missing Style X"]
 
 
 def test_presets_save_exists_without_overwrite(style_grid_client, tmp_csv, tmp_path, monkeypatch):

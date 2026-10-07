@@ -9,7 +9,7 @@ from modules import shared
 from stylegrid.cache import invalidate_styles_cache
 from stylegrid.config import DATA_DIR, EXT_DIR, get_all_styles_file_paths, is_samples_source
 from stylegrid.lora_scan import LORA_SOURCE, get_cached_lora_styles
-from stylegrid.safe_persistence import write_atomic
+from stylegrid.safe_persistence import locked_path, write_atomic
 
 # Canonical CSV column order used when writing style rows back to disk.
 FIELDNAMES = ["name", "prompt", "negative_prompt", "description", "category"]
@@ -181,42 +181,43 @@ def save_style_to_csv(name, prompt, negative_prompt, description="", source_file
         ext_styles = os.path.join(EXT_DIR, "styles")
         os.makedirs(ext_styles, exist_ok=True)
         target_path = os.path.join(ext_styles, source_file)
-    rows = []
-    header = None
-    if os.path.isfile(target_path):
-        with open(target_path, "r", encoding="utf-8-sig") as f:
-            reader = csv.reader(f)
-            for row in reader:
-                if header is None and row and row[0].strip().lower() == "name":
-                    header = row
-                    continue
-                rows.append(row)
-    if not header:
-        header = ["name", "prompt", "negative_prompt", "description", "category"]
+    with locked_path(target_path):
+        rows = []
+        header = None
+        if os.path.isfile(target_path):
+            with open(target_path, "r", encoding="utf-8-sig") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if header is None and row and row[0].strip().lower() == "name":
+                        header = row
+                        continue
+                    rows.append(row)
+        if not header:
+            header = ["name", "prompt", "negative_prompt", "description", "category"]
 
-    def make_row(existing_row=None):
-        existing_cat = existing_row[4].strip() if (
-            existing_row and len(existing_row) > 4) else ""
-        if category is None:
-            cat_cell = existing_cat
-        else:
-            cat_cell = str(category).strip()
-            cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
-        base = [name, prompt, negative_prompt, _sanitize_csv_cell(description), cat_cell]
-        extra = list(existing_row[5:]) if existing_row and len(existing_row) > 5 else []
-        # Pad extras to the file's actual header width so every row stays rectangular.
-        while len(base) + len(extra) < len(header):
-            extra.append("")
-        return base + extra
+        def make_row(existing_row=None):
+            existing_cat = existing_row[4].strip() if (
+                existing_row and len(existing_row) > 4) else ""
+            if category is None:
+                cat_cell = existing_cat
+            else:
+                cat_cell = str(category).strip()
+                cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
+            base = [name, prompt, negative_prompt, _sanitize_csv_cell(description), cat_cell]
+            extra = list(existing_row[5:]) if existing_row and len(existing_row) > 5 else []
+            # Pad extras to the file's actual header width so every row stays rectangular.
+            while len(base) + len(extra) < len(header):
+                extra.append("")
+            return base + extra
 
-    found = False
-    for i, row in enumerate(rows):
-        if row and row[0].strip() == name:
-            rows[i] = make_row(rows[i])
-            found = True
-    if not found:
-        rows.append(make_row())
-    _write_csv_atomic(target_path, header, rows)
+        found = False
+        for i, row in enumerate(rows):
+            if row and row[0].strip() == name:
+                rows[i] = make_row(rows[i])
+                found = True
+        if not found:
+            rows.append(make_row())
+        _write_csv_atomic(target_path, header, rows)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True
@@ -243,17 +244,18 @@ def delete_style_from_csv(name, source_file=None):
     target_path = _resolve_target_csv_path(source_file)
     if not target_path:
         return False
-    rows = []
-    header = None
-    with open(target_path, "r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if header is None and row and row[0].strip().lower() == "name":
-                header = row
-                continue
-            if row and row[0].strip() != name:
-                rows.append(row)
-    _write_csv_atomic(target_path, header or FIELDNAMES, rows)
+    with locked_path(target_path):
+        rows = []
+        header = None
+        with open(target_path, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if header is None and row and row[0].strip().lower() == "name":
+                    header = row
+                    continue
+                if row and row[0].strip() != name:
+                    rows.append(row)
+        _write_csv_atomic(target_path, header or FIELDNAMES, rows)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True
@@ -297,64 +299,65 @@ def rename_style_in_csv(old_name, new_name, source_file=None, **fields):
     if not target_path or not os.path.isfile(target_path):
         raise ValueError(f"Style not found: {old_name}")
 
-    rows = []
-    header = None
-    with open(target_path, "r", encoding="utf-8-sig") as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if header is None and row and row[0].strip().lower() == "name":
-                header = row
-                continue
-            rows.append(row)
-    if not header:
-        header = list(FIELDNAMES)
+    with locked_path(target_path):
+        rows = []
+        header = None
+        with open(target_path, "r", encoding="utf-8-sig") as f:
+            reader = csv.reader(f)
+            for row in reader:
+                if header is None and row and row[0].strip().lower() == "name":
+                    header = row
+                    continue
+                rows.append(row)
+        if not header:
+            header = list(FIELDNAMES)
 
-    match_indices = [
-        i for i, row in enumerate(rows)
-        if row and row[0].strip() == old_name
-    ]
-    if not match_indices:
-        raise ValueError(f"Style not found: {old_name}")
-    if len(match_indices) > 1:
-        raise ValueError(
-            f"Ambiguous rename: {len(match_indices)} rows named {old_name!r} "
-            f"in {os.path.basename(target_path)}; refuse to rename duplicates"
-        )
+        match_indices = [
+            i for i, row in enumerate(rows)
+            if row and row[0].strip() == old_name
+        ]
+        if not match_indices:
+            raise ValueError(f"Style not found: {old_name}")
+        if len(match_indices) > 1:
+            raise ValueError(
+                f"Ambiguous rename: {len(match_indices)} rows named {old_name!r} "
+                f"in {os.path.basename(target_path)}; refuse to rename duplicates"
+            )
 
-    idx = match_indices[0]
-    if old_name != new_name:
-        for i, row in enumerate(rows):
-            if i == idx:
-                continue
-            if row and row[0].strip() == new_name:
-                raise ValueError(
-                    f"Name collision: {new_name!r} already exists in "
-                    f"{os.path.basename(target_path)}"
-                )
+        idx = match_indices[0]
+        if old_name != new_name:
+            for i, row in enumerate(rows):
+                if i == idx:
+                    continue
+                if row and row[0].strip() == new_name:
+                    raise ValueError(
+                        f"Name collision: {new_name!r} already exists in "
+                        f"{os.path.basename(target_path)}"
+                    )
 
-    existing = rows[idx]
+        existing = rows[idx]
 
-    def cell(i, default=""):
-        return existing[i].strip() if i < len(existing) and existing[i] is not None else default
+        def cell(i, default=""):
+            return existing[i].strip() if i < len(existing) and existing[i] is not None else default
 
-    prompt = fields["prompt"] if "prompt" in fields else cell(1)
-    negative_prompt = fields["negative_prompt"] if "negative_prompt" in fields else cell(2)
-    description = fields["description"] if "description" in fields else cell(3)
-    if "category" in fields:
-        cat_cell = str(fields["category"]).strip() if fields["category"] is not None else ""
-        cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
-    else:
-        cat_cell = cell(4)
+        prompt = fields["prompt"] if "prompt" in fields else cell(1)
+        negative_prompt = fields["negative_prompt"] if "negative_prompt" in fields else cell(2)
+        description = fields["description"] if "description" in fields else cell(3)
+        if "category" in fields:
+            cat_cell = str(fields["category"]).strip() if fields["category"] is not None else ""
+            cat_cell = _sanitize_csv_cell(cat_cell) if cat_cell else ""
+        else:
+            cat_cell = cell(4)
 
-    rows[idx] = [
-        new_name,
-        prompt,
-        negative_prompt,
-        _sanitize_csv_cell(description) if description else "",
-        cat_cell,
-    ]
+        rows[idx] = [
+            new_name,
+            prompt,
+            negative_prompt,
+            _sanitize_csv_cell(description) if description else "",
+            cat_cell,
+        ]
 
-    _write_csv_atomic(target_path, header, rows)
+        _write_csv_atomic(target_path, header, rows)
     invalidate_styles_cache()
     shared.prompt_styles.reload()
     return True

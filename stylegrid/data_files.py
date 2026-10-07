@@ -2,7 +2,6 @@
 
 import os
 import shutil
-import threading
 import time
 import zipfile
 
@@ -18,6 +17,7 @@ from stylegrid.safe_persistence import (
     CorruptDataError,
     cleanup_stale_tmp,
     load_json_object,
+    locked_path,
     write_json_atomic,
 )
 from stylegrid.wildcards import TOKEN_SGD
@@ -34,6 +34,7 @@ __all__ = [
     "normalize_preset_entry",
     "normalize_wildcard_entry",
     "preset_styles_payload_ok",
+    "update_presets",
     "backup_csv_files",
 ]
 
@@ -115,32 +116,11 @@ def normalize_preset_entry(entry, styles_by_name_first):
     return None
 
 
-def _presets_need_rewrite(raw):
-    """True when on-disk presets are still in a pre-extended shape."""
-    if not isinstance(raw, dict):
-        return False
-    for preset in raw.values():
-        if not isinstance(preset, dict):
-            return True
-        if "wildcards" not in preset or "note" not in preset:
-            return True
-        styles = preset.get("styles", [])
-        if not isinstance(styles, list):
-            return True
-        for entry in styles:
-            if isinstance(entry, str):
-                return True
-            if not isinstance(entry, dict):
-                return True
-            if "weight" not in entry:
-                return True
-            if "name" not in entry:
-                return True
-    return False
-
-
 def normalize_presets(presets):
-    """Upgrade presets: styles -> {name, source_file, weight}; wildcards/note defaults."""
+    """Upgrade presets in memory: styles -> {name, source_file, weight}; wildcards/note defaults.
+
+    Does not write to disk. Callers that persist must use ``save_presets``.
+    """
     if not isinstance(presets, dict):
         return {}
     styles_by_name_first = {}
@@ -192,24 +172,34 @@ def normalize_presets(presets):
 
 
 def _write_presets_file(normalized):
-    write_json_atomic(PRESETS_FILE, normalized)
+    write_json_atomic(PRESETS_FILE, normalized, require_object_values=True)
 
 
 def load_presets():
-    """Load presets.json. Missing → {}; corrupt/IO → CorruptDataError."""
-    cleanup_stale_tmp(PRESETS_FILE)
-    raw = load_json_object(PRESETS_FILE)
-    normalized = normalize_presets(raw)
-    if raw and _presets_need_rewrite(raw):
-        _write_presets_file(normalized)
-    return normalized
+    """Load presets.json. Missing → {}; corrupt/wrong-shape/IO → CorruptDataError.
+
+    Never writes to disk (legacy shapes are normalized only in memory).
+    """
+    with locked_path(PRESETS_FILE):
+        cleanup_stale_tmp(PRESETS_FILE)
+        raw = load_json_object(PRESETS_FILE, require_object_values=True)
+        return normalize_presets(raw)
 
 
 def save_presets(presets):
     """Normalize and atomically write presets. Refuses if existing file is corrupt."""
-    normalized = normalize_presets(presets)
-    _write_presets_file(normalized)
-    return normalized
+    with locked_path(PRESETS_FILE):
+        normalized = normalize_presets(presets)
+        _write_presets_file(normalized)
+        return normalized
+
+
+def update_presets(mutator):
+    """Load→mutate→save presets under one per-file lock (RMW-safe)."""
+    with locked_path(PRESETS_FILE):
+        current = load_presets()
+        updated = mutator(current)
+        return save_presets(updated)
 
 
 def preset_styles_payload_ok(styles):
@@ -231,22 +221,21 @@ def preset_styles_payload_ok(styles):
 
 
 def load_usage():
-    """Load usage.json. Missing → {}; corrupt/IO → CorruptDataError."""
-    return load_json_object(USAGE_FILE)
+    """Load usage.json. Missing → {}; corrupt/wrong-shape/IO → CorruptDataError."""
+    with locked_path(USAGE_FILE):
+        return load_json_object(USAGE_FILE, require_object_values=True)
 
 
 def save_usage(usage):
     """Atomically write usage. Refuses if existing file is corrupt."""
     if not isinstance(usage, dict):
         raise TypeError("usage must be a dict")
-    write_json_atomic(USAGE_FILE, usage)
-
-
-_usage_lock = threading.Lock()
+    with locked_path(USAGE_FILE):
+        write_json_atomic(USAGE_FILE, usage, require_object_values=True)
 
 
 def increment_usage(style_names):
-    with _usage_lock:
+    with locked_path(USAGE_FILE):
         usage = load_usage()
         ts = time.strftime("%Y-%m-%dT%H:%M:%S")
         for name in style_names:
@@ -267,7 +256,7 @@ def migrate_usage_on_rename(old_name, new_name):
     """
     if not old_name or not new_name or old_name == new_name:
         return
-    with _usage_lock:
+    with locked_path(USAGE_FILE):
         usage = load_usage()
         if old_name not in usage:
             return

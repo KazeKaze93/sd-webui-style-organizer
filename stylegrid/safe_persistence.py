@@ -9,14 +9,19 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Iterable, Iterator, Mapping, Sequence
 
 # Retention: path.bak = newest previous; path.bak.2 / path.bak.3 = older.
 BACKUP_GENERATIONS = 3
 REPLACE_RETRIES = 3
 REPLACE_BACKOFF_SEC = 0.05
+
+_file_locks_guard = threading.Lock()
+_file_locks: dict[str, threading.RLock] = {}
 
 
 class CorruptDataError(Exception):
@@ -39,11 +44,48 @@ class PersistenceLockedError(OSError):
     """File is locked (antivirus / indexer / Excel); replace failed after retries."""
 
 
-def load_json_object(path: str | os.PathLike[str]) -> dict[str, Any]:
+def file_lock(path: str | os.PathLike[str]) -> threading.RLock:
+    """Process-wide reentrant lock keyed by absolute normalized path."""
+    key = os.path.normcase(os.path.abspath(str(path)))
+    with _file_locks_guard:
+        lock = _file_locks.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _file_locks[key] = lock
+        return lock
+
+
+@contextmanager
+def locked_path(path: str | os.PathLike[str]) -> Iterator[None]:
+    """Hold the per-file lock for a load→modify→save cycle."""
+    with file_lock(path):
+        yield
+
+
+def assert_mapping_values_are_objects(
+    data: Mapping[str, Any],
+    path: str | os.PathLike[str],
+) -> None:
+    """Raise ``CorruptDataError`` when any map value is not a JSON object."""
+    path_str = str(path)
+    for key, value in data.items():
+        if not isinstance(value, dict):
+            raise CorruptDataError(
+                path_str,
+                f"JSON object value for key {key!r} must be an object",
+            )
+
+
+def load_json_object(
+    path: str | os.PathLike[str],
+    *,
+    require_object_values: bool = False,
+) -> dict[str, Any]:
     """Load a JSON object from *path*.
 
     Missing file → ``{}``.
     Exists but IO/parse failure or non-object → ``CorruptDataError`` (never ``{}``).
+    When *require_object_values* is true, every value must also be an object.
     """
     path_str = str(path)
     if not os.path.isfile(path_str):
@@ -55,13 +97,19 @@ def load_json_object(path: str | os.PathLike[str]) -> dict[str, Any]:
         raise CorruptDataError(path_str, "unreadable or invalid JSON", cause=exc) from exc
     if not isinstance(data, dict):
         raise CorruptDataError(path_str, "JSON root must be an object")
+    if require_object_values:
+        assert_mapping_values_are_objects(data, path_str)
     return data
 
 
-def ensure_json_writable(path: str | os.PathLike[str]) -> None:
-    """Refuse overwrite when an existing file is corrupt."""
+def ensure_json_writable(
+    path: str | os.PathLike[str],
+    *,
+    require_object_values: bool = False,
+) -> None:
+    """Refuse overwrite when an existing file is corrupt or wrong-shaped."""
     if os.path.isfile(path):
-        load_json_object(path)
+        load_json_object(path, require_object_values=require_object_values)
 
 
 def bak_paths(path: str | os.PathLike[str]) -> list[str]:
@@ -170,9 +218,15 @@ def write_atomic(path: str | os.PathLike[str], data: bytes | str, *, encoding: s
         raise
 
 
-def write_json_atomic(path: str | os.PathLike[str], obj: Mapping[str, Any], *, indent: int = 2) -> None:
+def write_json_atomic(
+    path: str | os.PathLike[str],
+    obj: Mapping[str, Any],
+    *,
+    indent: int = 2,
+    require_object_values: bool = False,
+) -> None:
     """Serialize *obj* as UTF-8 JSON and ``write_atomic``."""
-    ensure_json_writable(path)
+    ensure_json_writable(path, require_object_values=require_object_values)
     payload = json.dumps(obj, indent=indent, ensure_ascii=False)
     if not payload.endswith("\n"):
         payload += "\n"

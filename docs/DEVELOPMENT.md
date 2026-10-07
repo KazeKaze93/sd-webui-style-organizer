@@ -146,6 +146,13 @@ A full-screen CSV table editor was prototyped and later removed; edit styles via
 
 Client-side localStorage keys are also used for UI state (`favorites` / `recent` as name+source composite keys, per-tab source filter, collapsed categories, etc.).
 
+## Persistence (presets / usage / CSV)
+
+- `safe_persistence.load_json_object(..., require_object_values=True)` treats wrong-shape maps (non-object values) as `CorruptDataError`, same as parse failure.
+- `load_presets` / `load_usage` never write. Legacy preset shapes are normalized only in memory; persist via `save_presets`.
+- Per-file reentrant locks (`locked_path`) wrap load→modify→save for presets, usage, and CSV CRUD. Route RMW holds the presets lock across both calls.
+- Atomic writes rotate `.bak` / `.bak.2` / `.bak.3`. Keep the three repo copies of `safe_persistence.py` byte-identical.
+
 ## Write-route / Gradio auth
 
 `install_write_auth(app)` (from `register_api`) installs HTTP middleware:

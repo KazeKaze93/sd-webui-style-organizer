@@ -51,8 +51,6 @@ from stylegrid.data_files import (
     preset_styles_payload_ok,
     save_presets,
 )
-from stylegrid.safe_persistence import locked_path, write_atomic
-from stylegrid.write_auth import inject_write_token_script, install_write_auth
 from stylegrid.lora_scan import (
     LORA_SOURCE,
     get_cached_lora_styles,
@@ -62,6 +60,7 @@ from stylegrid.lora_scan import (
     lora_scan_status,
 )
 from stylegrid.lora_titles import title_fetch_manager
+from stylegrid.safe_persistence import locked_path, write_atomic
 from stylegrid.thumbnails import (
     _thumbnail_hash_input,
     get_thumbnail_path,
@@ -69,6 +68,7 @@ from stylegrid.thumbnails import (
     migrate_legacy_thumbnails,
     thumbnail_generation_manager,
 )
+from stylegrid.write_auth import inject_write_token_script, install_write_auth
 
 
 def detect_conflicts(style_names):

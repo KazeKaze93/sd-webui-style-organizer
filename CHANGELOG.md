@@ -7,7 +7,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- **Corrupt `presets.json` no longer wiped on save:** unreadable or invalid presets raise `CorruptDataError` / HTTP **409** `corrupt_data` instead of treating the file as empty and overwriting it. The UI shows a blocking banner with the file path and `.bak` location and disables preset save/rename/delete until restored. Writes use atomic tmp→bak-rotation→replace (keeps last 3 backups).
 - **Thumbnail identity:** on-disk thumbnails and host `sg_thumb_v_*` / `SG_THUMB_DONE` version maps use **`(source file, name)`**. Legacy name-only thumbnail files migrate automatically when the name is unique across loaded packs; ambiguous UNIVERSAL duplicates are left for regeneration (not guessed).
+
+### Added
+- **`stylegrid/safe_persistence.py`:** shared atomic JSON/CSV writer (`write_atomic`), corrupt-data load guards, and safe `out_dir` checks (kept in sync with the ComfyUI custom-node and csv-script copies).
 
 ### Added
 - **Vitest UI suite:** `cd ui && npm test` (Vitest 5) covers `wildcardSlice` compact/resolve/chip-count (`wildcardSlice.test.ts`) and Python parity (`wildcardSlice.parity.test.ts`). `tsconfig.test.json` typechecks test files with Node types; `tsconfig.app.json` excludes `*.test.ts`.

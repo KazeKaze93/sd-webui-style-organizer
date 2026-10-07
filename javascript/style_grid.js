@@ -69,7 +69,21 @@
         } catch (_) { }
     }
 
-    // Favorites (legacy sg_favorites — still remapped on rename)
+    /**
+     * Canonical style identity — matches V2 styleRowKey: source_file + "\\0" + name.
+     * Used for selected / applied / favorites / nest order.
+     */
+    function styleIdentityKey(name, sourceFile) {
+        return String(sourceFile || "").replace(/\\/g, "/") + "\0" + String(name || "");
+    }
+    function parseStyleIdentityKey(key) {
+        var s = String(key || "");
+        var sep = s.indexOf("\0");
+        if (sep === -1) return { name: s, source_file: "" };
+        return { source_file: s.slice(0, sep), name: s.slice(sep + 1) };
+    }
+
+    // Favorites (legacy sg_favorites — bare names migrated in memory to identity keys)
     function getFavorites(t) {
         try {
             const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
@@ -85,6 +99,33 @@
             localStorage.setItem("sg_favorites", JSON.stringify(d));
         } catch (_) { }
     }
+    /** Upgrade bare-name favorites to identity keys when the name is unique in cache. */
+    function migrateFavoritesInMemory(tabName) {
+        var fav = getFavorites(tabName);
+        if (!fav.size) return fav;
+        var allStyles = [];
+        Object.values(state[tabName].categories || {}).forEach(function (arr) {
+            arr.forEach(function (s) { allStyles.push(s); });
+        });
+        if (!allStyles.length) return fav;
+        var next = new Set();
+        var changed = false;
+        fav.forEach(function (entry) {
+            if (String(entry).indexOf("\0") !== -1) {
+                next.add(entry);
+                return;
+            }
+            var matches = allStyles.filter(function (s) { return s.name === entry; });
+            if (matches.length === 1) {
+                next.add(styleIdentityKey(matches[0].name, matches[0].source_file || matches[0].source || ""));
+                changed = true;
+            } else {
+                changed = true; // drop ambiguous / missing bare names
+            }
+        });
+        if (changed) setFavorites(tabName, next);
+        return next;
+    }
 
     // Recent history
     function getRecentHistory(t) {
@@ -96,35 +137,49 @@
     }
 
     /** Remap a style's local identity after a CSV rename (selection, applied, fav, recent). */
-    function remapStyleNameReferences(tabName, oldName, newName) {
+    function remapStyleNameReferences(tabName, oldName, newName, sourceFile) {
         if (!oldName || !newName || oldName === newName) return;
         var st = state[tabName];
         if (!st) return;
+        var src = String(sourceFile || "").replace(/\\/g, "/");
+        var oldKey = styleIdentityKey(oldName, src);
+        var newKey = styleIdentityKey(newName, src);
 
-        if (st.selected && st.selected.has(oldName)) {
+        if (st.selected && st.selected.has(oldKey)) {
+            st.selected.delete(oldKey);
+            st.selected.add(newKey);
+        } else if (st.selected && st.selected.has(oldName)) {
+            // Legacy bare-name selection
             st.selected.delete(oldName);
-            st.selected.add(newName);
+            st.selected.add(newKey);
         }
         if (st.selectedOrder && st.selectedOrder.length) {
             st.selectedOrder = st.selectedOrder.map(function (n) {
-                return n === oldName ? newName : n;
+                if (n === oldKey || n === oldName) return newKey;
+                return n;
             });
         }
-        if (st.applied && st.applied.has(oldName)) {
-            var rec = st.applied.get(oldName);
+        if (st.applied && st.applied.has(oldKey)) {
+            var rec = st.applied.get(oldKey);
+            st.applied.delete(oldKey);
+            st.applied.set(newKey, rec);
+        } else if (st.applied && st.applied.has(oldName)) {
+            var recLegacy = st.applied.get(oldName);
             st.applied.delete(oldName);
-            st.applied.set(newName, rec);
+            st.applied.set(newKey, recLegacy);
         }
         if (st.appliedNestOrder && st.appliedNestOrder.length) {
             st.appliedNestOrder = st.appliedNestOrder.map(function (n) {
-                return n === oldName ? newName : n;
+                if (n === oldKey || n === oldName) return newKey;
+                return n;
             });
         }
 
         var fav = getFavorites(tabName);
-        if (fav.has(oldName)) {
+        if (fav.has(oldKey) || fav.has(oldName)) {
+            fav.delete(oldKey);
             fav.delete(oldName);
-            fav.add(newName);
+            fav.add(newKey);
             setFavorites(tabName, fav);
         }
 
@@ -133,8 +188,8 @@
         var remappedRecent = [];
         var seenRecent = {};
         recent.forEach(function (n) {
-            var next = (n === oldName) ? newName : n;
-            if (n === oldName) recentChanged = true;
+            var next = (n === oldKey || n === oldName) ? newKey : n;
+            if (n === oldKey || n === oldName) recentChanged = true;
             if (seenRecent[next]) return;
             seenRecent[next] = true;
             remappedRecent.push(next);
@@ -184,7 +239,7 @@
         return null;
     }
     function styleCacheIdentity(s) {
-        return String(s.name) + "\0" + String(s.source_file || s.source || "").replace(/\\/g, "/");
+        return styleIdentityKey(s.name, s.source_file || s.source || "");
     }
     function pushStyleIntoCategories(categories, s) {
         var cat = s.category || "OTHER";
@@ -647,7 +702,6 @@
     function applyStyleImmediate(tabName, styleName, opts) {
         opts = opts || {};
         var restoreOnly = opts.silent === true;
-        if (!restoreOnly && state[tabName].applied.has(styleName)) return;
         var style = opts.source_file
             ? findStyleByNameAndSource(tabName, styleName, opts.source_file)
             : findStyleByName(tabName, styleName);
@@ -665,6 +719,8 @@
             });
         }
         if (!style) return;
+        var idKey = styleIdentityKey(style.name, style.source_file || opts.source_file || "");
+        if (!restoreOnly && state[tabName].applied.has(idKey)) return;
 
         const promptEl = qs("#" + tabName + "_prompt textarea");
         const negEl = qs("#" + tabName + "_neg_prompt textarea");
@@ -736,7 +792,7 @@
 
         const isPromptWrap = style.prompt && style.prompt.indexOf("{prompt}") !== -1;
         const isNegWrap = style.negative_prompt && style.negative_prompt.indexOf("{prompt}") !== -1;
-        state[tabName].applied.set(styleName, {
+        state[tabName].applied.set(idKey, {
             prompt: isPromptWrap ? null : addedPrompt,
             negative: isNegWrap ? null : addedNeg,
             wrapTemplate: isPromptWrap ? style.prompt : null,
@@ -744,13 +800,14 @@
             originalPrompt: isPromptWrap ? snapshotPrompt : null,
             originalNeg: isNegWrap ? snapshotNeg : null,
             source_file: style.source_file || "",
+            name: style.name,
         });
         if (!restoreOnly) {
             if (!state[tabName].appliedNestOrder) state[tabName].appliedNestOrder = [];
             state[tabName].appliedNestOrder = state[tabName].appliedNestOrder.filter(function (n) {
-                return n !== styleName;
+                return n !== idKey;
             });
-            state[tabName].appliedNestOrder.push(styleName);
+            state[tabName].appliedNestOrder.push(idKey);
         }
         if (restoreOnly) {
             state[tabName]._restoreSimP = prompt;
@@ -805,12 +862,21 @@
         }
     }
 
-    function unapplyStyle(tabName, styleName) {
-        const record = state[tabName].applied.get(styleName);
+    function unapplyStyle(tabName, styleName, sourceFile) {
+        var idKey = styleIdentityKey(styleName, sourceFile || "");
+        var record = state[tabName].applied.get(idKey);
+        if (!record && !sourceFile) {
+            // Legacy bare-name applied map
+            record = state[tabName].applied.get(styleName);
+            if (record) idKey = styleName;
+        }
         if (!record) {
-            if (state[tabName].selected && state[tabName].selected.has(styleName)) {
+            if (state[tabName].selected && (state[tabName].selected.has(idKey) || state[tabName].selected.has(styleName))) {
+                state[tabName].selected.delete(idKey);
                 state[tabName].selected.delete(styleName);
-                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) { return n !== styleName; });
+                state[tabName].selectedOrder = (state[tabName].selectedOrder || []).filter(function (n) {
+                    return n !== idKey && n !== styleName;
+                });
                 syncSourceInput(tabName);
             }
             return;
@@ -818,8 +884,10 @@
 
         stripLiveApplyFromTextareas(tabName, styleName, record);
 
-        state[tabName].applied.delete(styleName);
-        state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) { return n !== styleName; });
+        state[tabName].applied.delete(idKey);
+        state[tabName].appliedNestOrder = (state[tabName].appliedNestOrder || []).filter(function (n) {
+            return n !== idKey;
+        });
         syncWildcards(tabName);
     }
 
@@ -1339,7 +1407,12 @@
                     };
                 apiPost(endpoint, payload).then(assertNoApiError).then(function () {
                     if (isRename) {
-                        remapStyleNameReferences(tabName, existingStyle.name, name);
+                        remapStyleNameReferences(
+                            tabName,
+                            existingStyle.name,
+                            name,
+                            existingStyle.source_file || existingStyle.source || ""
+                        );
                     }
                     overlay.remove();
                     refreshPanel(tabName);
@@ -1489,7 +1562,12 @@
                     // category_explicit over the name prefix when the column is set.
                     category: newCat.toUpperCase(),
                 }).then(assertNoApiError).then(function () {
-                    remapStyleNameReferences(tabName, oldName, newName);
+                    remapStyleNameReferences(
+                        tabName,
+                        oldName,
+                        newName,
+                        style.source_file || style.source || ""
+                    );
                     overlay.remove();
                     refreshPanel(tabName);
                     var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
@@ -1685,11 +1763,15 @@
 
             state[tabName].applied.clear();
             restoreOrder.forEach(function (n) {
-                applyStyleImmediate(tabName, n, { silent: true });
+                var id = parseStyleIdentityKey(n);
+                applyStyleImmediate(tabName, id.name, {
+                    silent: true,
+                    source_file: id.source_file || undefined,
+                });
             });
             // Restore-only replay does not push nest; align nest to what actually restored (drops missing CSV styles).
-            state[tabName].appliedNestOrder = restoreOrder.filter(function (name) {
-                return state[tabName].applied.has(name);
+            state[tabName].appliedNestOrder = restoreOrder.filter(function (key) {
+                return state[tabName].applied.has(key);
             });
 
             // Selected names that failed replay are gone from the catalog — strip their live contribution
@@ -2380,6 +2462,7 @@
                         allStyles.forEach(function (s) {
                             pushStyleIntoCategories(state[tab].categories, s);
                         });
+                        migrateFavoritesInMemory(tab);
                         frame.contentWindow.postMessage({
                             type: "SG_INIT",
                             tab: tab,
@@ -2392,10 +2475,11 @@
 
             if (msg.type === "SG_APPLY") {
                 if (!state[tab].selected) state[tab].selected = new Set();
-                state[tab].selected.add(msg.styleId);
+                var applyKey = styleIdentityKey(msg.styleId, msg.source_file || "");
+                state[tab].selected.add(applyKey);
                 state[tab].selectedOrder = state[tab].selectedOrder || [];
-                if (state[tab].selectedOrder.indexOf(msg.styleId) === -1) {
-                    state[tab].selectedOrder.push(msg.styleId);
+                if (state[tab].selectedOrder.indexOf(applyKey) === -1) {
+                    state[tab].selectedOrder.push(applyKey);
                 }
                 window._sgApplyStyle(tab, msg.styleId, {
                     source_file: msg.source_file,
@@ -2407,11 +2491,15 @@
             }
 
             if (msg.type === "SG_UNAPPLY") {
+                var unapplyKey = styleIdentityKey(msg.styleId, msg.source_file || "");
                 if (state[tab] && state[tab].selected) {
+                    state[tab].selected.delete(unapplyKey);
                     state[tab].selected.delete(msg.styleId);
-                    state[tab].selectedOrder = (state[tab].selectedOrder || []).filter(function (n) { return n !== msg.styleId; });
+                    state[tab].selectedOrder = (state[tab].selectedOrder || []).filter(function (n) {
+                        return n !== unapplyKey && n !== msg.styleId;
+                    });
                 }
-                window._sgUnapplyStyle(tab, msg.styleId);
+                window._sgUnapplyStyle(tab, msg.styleId, msg.source_file || "");
                 syncSelectionChrome(tab);
             }
 

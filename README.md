@@ -196,7 +196,7 @@ After a successful run, the iframe is notified so the UI can refresh that style�
 
 Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…&source=…` (CSV styles **require** `source` = that row’s `source_file`). Preview URLs may also include a version for browser cache. **Generate / upload / delete** send the same source identity so duplicate names across CSVs keep separate previews. Generation is queued (`job_id`); the host polls status and can cancel.
 
-**Upgrading from older builds:** thumbnails used to be stored under a **name-only** hash. On first list/cleanup, a unique name is renamed to the new `(name, source)` file automatically. If the same style name exists in more than one loaded pack, that old file is **not** assigned to either pack — regenerate the preview for each.
+**Upgrading from older builds:** thumbnails used to be stored under a **name-only** hash. On first `GET /thumbnails/list`, a unique name is renamed to the new `(name, source)` file automatically. If the same style name exists in more than one loaded pack, that old file is **not** assigned to either pack — regenerate the preview for each.
 
 **What the card shows**
 
@@ -264,7 +264,7 @@ Style Grid can show installed LoRAs as style cards so they search, favorite, and
 | Sidebar | **🧬 LoRA** special view (shown when at least one LoRA was scanned). LoRAs are excluded from the CSV source dropdown and from normal category lists. |
 | Titles | Optional **🌐** toolbar action fetches CivitAI model names via `GET https://civitai.com/api/v1/models/{id}` (manual only; sequential + throttled; retries HTTP 429). Successful titles become `display_name` on cards/hover. |
 | Read-only | UI hides mutate actions; `save_style_to_csv` / `delete_style_from_csv` raise if `source_file` is the LoRA marker. |
-| Rescan | `POST /style_grid/lora/rescan` invalidates the LoRA scan cache (see `docs/API.md`). |
+| Refresh | Reloading styles (`GET /styles` / panel refresh) rescans LoRA roots when the scan cache is cold or invalidated. |
 
 ![🧬 LoRA view — CHARACTER folder group with titled cards](docs/screenshots/lora-view.png)
 
@@ -330,7 +330,7 @@ Corrupt `presets.json` (or similar data files) returns HTTP **409** and refuses 
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
 | Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. CSV preview URLs and generate/upload/delete **must** include `source` (`source_file`). Generation is async by `job_id` — wait for completion / check cancel. LoRA cards only show sibling preview files on disk. |
-| **🧬 LoRA** missing in sidebar | No scanned models yet — check Forge LoRA folder / `config/lora_roots.json`, then reload styles or `POST /style_grid/lora/rescan`. |
+| **🧬 LoRA** missing in sidebar | No scanned models yet — check Forge LoRA folder / `config/lora_roots.json`, then reload / reopen the Style Grid panel so `/styles` rescans. |
 | LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
 | Import fails with “names that already exist” | Rename or remove colliding styles in the export, or delete/rename the existing library entries first. LoRA synthetic names are excluded from the collision check. |
 | Cannot edit/delete a sample style | Expected: CSVs under `samples/` are **read-only**. Copy the style into your own `styles/` CSV (or another writable source) first. |

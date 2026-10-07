@@ -16,8 +16,8 @@ SIBLINGS = [
 
 @pytest.fixture
 def presets_env(tmp_path, monkeypatch):
-    from stylegrid import data_files as sg_data
     from stylegrid import config as sg_config
+    from stylegrid import data_files as sg_data
 
     presets_path = tmp_path / "presets.json"
     monkeypatch.setattr(sg_data, "PRESETS_FILE", str(presets_path))
@@ -122,8 +122,8 @@ def test_legacy_presets_load_does_not_rewrite_disk(presets_env):
 def test_concurrent_usage_increments_lose_no_updates(tmp_path, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
 
-    from stylegrid import data_files as sg_data
     from stylegrid import config as sg_config
+    from stylegrid import data_files as sg_data
 
     usage_path = tmp_path / "usage.json"
     monkeypatch.setattr(sg_data, "USAGE_FILE", str(usage_path))

@@ -177,9 +177,11 @@ function loadStringArrayFromLs(key: string): string[] {
 
 /**
  * Upgrade legacy bare-name favorites/recent entries to styleRowKey composites.
- * Entries that already contain '\0' are left as-is. Unresolvable names are dropped.
+ * Entries that already contain '\0' are left as-is.
+ * Bare names resolve only when exactly one library row matches; ambiguous
+ * duplicates (same name in multiple source_file values) are dropped.
  */
-function migrateLegacyNameKeys(entries: string[], styles: Style[]): string[] {
+export function migrateLegacyNameKeys(entries: string[], styles: Style[]): string[] {
   const out: string[] = []
   const seen = new Set<string>()
   for (const entry of entries) {
@@ -187,8 +189,8 @@ function migrateLegacyNameKeys(entries: string[], styles: Style[]): string[] {
     if (entry.includes('\0')) {
       key = entry
     } else {
-      const match = styles.find((s) => s.name === entry)
-      key = match ? styleRowKey(match) : null
+      const matches = styles.filter((s) => s.name === entry)
+      key = matches.length === 1 ? styleRowKey(matches[0]) : null
     }
     if (key && !seen.has(key)) {
       seen.add(key)
@@ -281,7 +283,7 @@ interface StylesStore {
   usageCounts: Record<string, number>
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
-  /** Saved style presets from backend (`/style_grid/presets` / list API). */
+  /** Saved style presets from backend (`GET /style_grid/presets`). */
   presets: Record<string, PresetRecord>
   /**
    * When set, presets.json is corrupt — show a blocking banner and disable
@@ -291,8 +293,9 @@ interface StylesStore {
   /** Last preset loaded via Apply; used for Save-set name/note prefill. */
   activePresetName: string | null
   /** Which sources (a preset name, or the literal 'manual') currently
-   * want each selected style present. A style with an empty/absent set
-   * has no reason to stay selected once a preset stops wanting it. */
+   * want each selected style present. Keys are styleRowKey composites.
+   * A style with an empty/absent set has no reason to stay selected once
+   * a preset stops wanting it. */
   styleContributors: Record<string, Set<string>>
 
   // Actions
@@ -515,7 +518,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         selectedStyles: selectedStyles.filter(s => !removeKeys.has(styleRowKey(s))),
       })
       catStyles.forEach((style) => {
-        sendToHost({ type: 'SG_UNAPPLY', styleId: style.name })
+        sendToHost({
+          type: 'SG_UNAPPLY',
+          styleId: style.name,
+          source_file: style.source_file,
+        })
       })
       get().detectConflicts()
       return
@@ -562,20 +569,24 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     if (isSelected) {
       const nextContributors = { ...styleContributors }
-      delete nextContributors[style.name]
+      delete nextContributors[key]
       set({
         selectedStyles: selectedStyles.filter(s => styleRowKey(s) !== key),
         styleContributors: nextContributors,
       })
-      sendToHost({ type: 'SG_UNAPPLY', styleId: style.name })
+      sendToHost({
+        type: 'SG_UNAPPLY',
+        styleId: style.name,
+        source_file: style.source_file,
+      })
       get().detectConflicts()
     } else {
-      const existing = styleContributors[style.name] ?? new Set<string>()
+      const existing = styleContributors[key] ?? new Set<string>()
       set({
         selectedStyles: [...selectedStyles, style],
         styleContributors: {
           ...styleContributors,
-          [style.name]: new Set([...existing, 'manual']),
+          [key]: new Set([...existing, 'manual']),
         },
       })
       get().addToRecent(style)
@@ -594,7 +605,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   clearAll: () => {
     const { selectedStyles } = get()
     selectedStyles.forEach(s =>
-      sendToHost({ type: 'SG_UNAPPLY', styleId: s.name })
+      sendToHost({
+        type: 'SG_UNAPPLY',
+        styleId: s.name,
+        source_file: s.source_file,
+      })
     )
     set({ selectedStyles: [], conflicts: [], activePresetName: null, styleContributors: {} })
   },
@@ -639,7 +654,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     })), 3000)
   },
   detectConflicts: () => {
-    // Exact-set match (same as routes.py detect_conflicts / V1 checkConflictsLocal):
+    // Exact-set match (aligned with former server detect_conflicts / V1 checkConflictsLocal):
     // comma-split → trim → lower → Set membership; skip empty and "{prompt}".
     const { selectedStyles } = get()
     const conflicts: Conflict[] = []
@@ -711,10 +726,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         ? raw as Record<string, PresetRecord>
         : {}
     try {
-      let r = await fetch('/style_grid/presets/list')
-      if (!r.ok) {
-        r = await fetch('/style_grid/presets')
-      }
+      const r = await fetch('/style_grid/presets')
       const body = await r.json().catch(() => ({}))
       const corrupt = parseCorruptData(r, body)
       if (corrupt) {
@@ -724,19 +736,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       if (!r.ok) return
       set({ presets: parse(body), presetsCorrupt: null })
     } catch {
-      try {
-        const r = await fetch('/style_grid/presets')
-        const body = await r.json().catch(() => ({}))
-        const corrupt = parseCorruptData(r, body)
-        if (corrupt) {
-          set({ presetsCorrupt: corrupt, presets: {} })
-          return
-        }
-        if (!r.ok) return
-        set({ presets: parse(body), presetsCorrupt: null })
-      } catch {
-        // ignore
-      }
+      // ignore
     }
   },
   savePreset: async (name, styles, opts) => {
@@ -769,8 +769,20 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         await get().fetchPresets()
       }
       const nextContributors = { ...get().styleContributors }
+      const library = get().styles
       for (const entry of styles) {
-        const key = presetEntryName(entry)
+        const resolved = resolvePresetStyleEntry(entry, library)
+        const key = resolved
+          ? styleRowKey(resolved)
+          : (() => {
+              const n = presetEntryName(entry)
+              if (!n) return null
+              const src =
+                typeof entry === 'object' && entry && typeof entry.source_file === 'string'
+                  ? entry.source_file
+                  : ''
+              return src ? styleRowKey({ name: n, source_file: src }) : null
+            })()
         if (!key) continue
         const existing = nextContributors[key] ?? new Set<string>()
         const next = new Set(existing)
@@ -804,19 +816,29 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       }
       const nextContributors = { ...get().styleContributors }
       const toRemove = new Set<string>()
-      for (const [styleName, contributors] of Object.entries(nextContributors)) {
+      for (const [rowKey, contributors] of Object.entries(nextContributors)) {
         if (!contributors.has(name)) continue
         const next = new Set(contributors)
         next.delete(name)
         if (next.size === 0) {
-          toRemove.add(styleName)
-          delete nextContributors[styleName]
+          toRemove.add(rowKey)
+          delete nextContributors[rowKey]
         } else {
-          nextContributors[styleName] = next
+          nextContributors[rowKey] = next
         }
       }
-      toRemove.forEach((n) => sendToHost({ type: 'SG_UNAPPLY', styleId: n }))
-      const nextSelected = get().selectedStyles.filter((s) => !toRemove.has(s.name))
+      const selected = get().selectedStyles
+      toRemove.forEach((rowKey) => {
+        const style = selected.find((s) => styleRowKey(s) === rowKey)
+        if (style) {
+          sendToHost({
+            type: 'SG_UNAPPLY',
+            styleId: style.name,
+            source_file: style.source_file,
+          })
+        }
+      })
+      const nextSelected = selected.filter((s) => !toRemove.has(styleRowKey(s)))
       if (data.presets) {
         set({
           presets: data.presets,
@@ -913,14 +935,15 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const missing = members.filter((m) => m.status === 'missing')
 
     const selected = [...get().selectedStyles]
-    const selectedNames = new Set(selected.map((s) => s.name))
+    const selectedKeys = new Set(selected.map((s) => styleRowKey(s)))
     const nextContributors = { ...get().styleContributors }
     for (const m of found) {
-      const existing = nextContributors[m.style.name] ?? new Set<string>()
-      nextContributors[m.style.name] = new Set([...existing, name])
+      const rowKey = styleRowKey(m.style)
+      const existing = nextContributors[rowKey] ?? new Set<string>()
+      nextContributors[rowKey] = new Set([...existing, name])
 
-      if (selectedNames.has(m.style.name)) continue
-      selectedNames.add(m.style.name)
+      if (selectedKeys.has(rowKey)) continue
+      selectedKeys.add(rowKey)
       selected.push(m.style)
       incrementUsage(m.style.name)
       addToRecent(m.style)
@@ -983,20 +1006,32 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const nextContributors = { ...styleContributors }
     const toRemove = new Set<string>()
     for (const m of found) {
-      const set_ = nextContributors[m.style.name]
+      const rowKey = styleRowKey(m.style)
+      const set_ = nextContributors[rowKey]
       if (!set_) continue
       const next = new Set(set_)
       next.delete(name)
       if (next.size === 0) {
-        toRemove.add(m.style.name)
-        delete nextContributors[m.style.name]
+        toRemove.add(rowKey)
+        delete nextContributors[rowKey]
       } else {
-        nextContributors[m.style.name] = next
+        nextContributors[rowKey] = next
       }
     }
 
-    toRemove.forEach((n) => sendToHost({ type: 'SG_UNAPPLY', styleId: n }))
-    const nextSelected = selectedStyles.filter((s) => !toRemove.has(s.name))
+    toRemove.forEach((rowKey) => {
+      const style =
+        selectedStyles.find((s) => styleRowKey(s) === rowKey) ||
+        found.find((m) => styleRowKey(m.style) === rowKey)?.style
+      if (style) {
+        sendToHost({
+          type: 'SG_UNAPPLY',
+          styleId: style.name,
+          source_file: style.source_file,
+        })
+      }
+    })
+    const nextSelected = selectedStyles.filter((s) => !toRemove.has(styleRowKey(s)))
 
     // Wildcards: simplified scope — this preset's own wildcards are
     // removed unconditionally, without cross-preset attribution.

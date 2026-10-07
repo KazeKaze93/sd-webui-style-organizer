@@ -1,6 +1,5 @@
 """Presets, usage stats, CSV backups (JSON / filesystem under data/)."""
 
-import json
 import os
 import shutil
 import threading
@@ -15,7 +14,28 @@ from stylegrid.config import (
     get_all_styles_file_paths,
 )
 from stylegrid.csv_io import load_all_styles
+from stylegrid.safe_persistence import (
+    CorruptDataError,
+    cleanup_stale_tmp,
+    load_json_object,
+    write_json_atomic,
+)
 from stylegrid.wildcards import TOKEN_SGD
+
+__all__ = [
+    "CorruptDataError",
+    "load_presets",
+    "save_presets",
+    "load_usage",
+    "save_usage",
+    "increment_usage",
+    "migrate_usage_on_rename",
+    "normalize_presets",
+    "normalize_preset_entry",
+    "normalize_wildcard_entry",
+    "preset_styles_payload_ok",
+    "backup_csv_files",
+]
 
 
 def _coerce_weight(raw):
@@ -172,28 +192,21 @@ def normalize_presets(presets):
 
 
 def _write_presets_file(normalized):
-    directory = os.path.dirname(PRESETS_FILE)
-    if directory:
-        os.makedirs(directory, exist_ok=True)
-    with open(PRESETS_FILE, "w", encoding="utf-8") as f:
-        json.dump(normalized, f, indent=2, ensure_ascii=False)
+    write_json_atomic(PRESETS_FILE, normalized)
 
 
 def load_presets():
-    if os.path.isfile(PRESETS_FILE):
-        try:
-            with open(PRESETS_FILE, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-            normalized = normalize_presets(raw)
-            if _presets_need_rewrite(raw):
-                _write_presets_file(normalized)
-            return normalized
-        except Exception:
-            pass
-    return {}
+    """Load presets.json. Missing → {}; corrupt/IO → CorruptDataError."""
+    cleanup_stale_tmp(PRESETS_FILE)
+    raw = load_json_object(PRESETS_FILE)
+    normalized = normalize_presets(raw)
+    if raw and _presets_need_rewrite(raw):
+        _write_presets_file(normalized)
+    return normalized
 
 
 def save_presets(presets):
+    """Normalize and atomically write presets. Refuses if existing file is corrupt."""
     normalized = normalize_presets(presets)
     _write_presets_file(normalized)
     return normalized
@@ -218,18 +231,15 @@ def preset_styles_payload_ok(styles):
 
 
 def load_usage():
-    if os.path.isfile(USAGE_FILE):
-        try:
-            with open(USAGE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    """Load usage.json. Missing → {}; corrupt/IO → CorruptDataError."""
+    return load_json_object(USAGE_FILE)
 
 
 def save_usage(usage):
-    with open(USAGE_FILE, "w", encoding="utf-8") as f:
-        json.dump(usage, f, indent=2, ensure_ascii=False)
+    """Atomically write usage. Refuses if existing file is corrupt."""
+    if not isinstance(usage, dict):
+        raise TypeError("usage must be a dict")
+    write_json_atomic(USAGE_FILE, usage)
 
 
 _usage_lock = threading.Lock()

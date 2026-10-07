@@ -9,6 +9,10 @@ import {
   type WildcardRef,
 } from '../bridge'
 import { wildcardKey } from '../lib/wildcardKey'
+import {
+  parseCorruptData,
+  type CorruptDataInfo,
+} from '../lib/parseCorruptData'
 
 /** Matches the backend's LORA_SOURCE marker (stylegrid/lora_scan.py). LoRA
  * cards use this as their synthetic source_file so they can be excluded
@@ -278,6 +282,11 @@ interface StylesStore {
   categoryOrder: string[]
   /** Saved style presets from backend (`/style_grid/presets` / list API). */
   presets: Record<string, PresetRecord>
+  /**
+   * When set, presets.json is corrupt — show a blocking banner and disable
+   * preset save/rename/delete/touch until the user restores from `.bak`.
+   */
+  presetsCorrupt: CorruptDataInfo | null
   /** Last preset loaded via Apply; used for Save-set name/note prefill. */
   activePresetName: string | null
   /** Which sources (a preset name, or the literal 'manual') currently
@@ -408,6 +417,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   favorites: new Set(loadStringArrayFromLs('sg_v2_favorites')),
   recentNames: loadStringArrayFromLs('sg_v2_recent'),
   presets: {},
+  presetsCorrupt: null,
   activePresetName: null,
   styleContributors: {},
 
@@ -708,21 +718,34 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       if (!r.ok) {
         r = await fetch('/style_grid/presets')
       }
+      const body = await r.json().catch(() => ({}))
+      const corrupt = parseCorruptData(r, body)
+      if (corrupt) {
+        set({ presetsCorrupt: corrupt, presets: {} })
+        return
+      }
       if (!r.ok) return
-      const data = parse(await r.json())
-      set({ presets: data })
+      set({ presets: parse(body), presetsCorrupt: null })
     } catch {
       try {
         const r = await fetch('/style_grid/presets')
+        const body = await r.json().catch(() => ({}))
+        const corrupt = parseCorruptData(r, body)
+        if (corrupt) {
+          set({ presetsCorrupt: corrupt, presets: {} })
+          return
+        }
         if (!r.ok) return
-        const data = parse(await r.json())
-        set({ presets: data })
+        set({ presets: parse(body), presetsCorrupt: null })
       } catch {
         // ignore
       }
     }
   },
   savePreset: async (name, styles, opts) => {
+    if (get().presetsCorrupt) {
+      return { ok: false as const, error: 'corrupt_data' }
+    }
     try {
       const res = await fetch('/style_grid/presets/save', {
         method: 'POST',
@@ -736,6 +759,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         }),
       })
       const data = await res.json().catch(() => ({}))
+      const corrupt = parseCorruptData(res, data)
+      if (corrupt) {
+        set({ presetsCorrupt: corrupt })
+        return { ok: false as const, error: 'corrupt_data' }
+      }
       if (!res.ok || data.ok === false || data.error) {
         return {
           ok: false as const,
@@ -764,6 +792,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   deletePreset: async (name) => {
+    if (get().presetsCorrupt) {
+      return { ok: false as const, error: 'corrupt_data' }
+    }
     try {
       const res = await fetch('/style_grid/presets/delete', {
         method: 'POST',
@@ -771,6 +802,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         body: JSON.stringify({ name }),
       })
       const data = await res.json().catch(() => ({}))
+      const corrupt = parseCorruptData(res, data)
+      if (corrupt) {
+        set({ presetsCorrupt: corrupt })
+        return { ok: false as const, error: 'corrupt_data' }
+      }
       if (!res.ok || data.ok === false || data.error) {
         return {
           ok: false as const,
@@ -813,6 +849,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   renamePreset: async (oldName, newName, opts) => {
+    if (get().presetsCorrupt) {
+      return { ok: false as const, error: 'corrupt_data' }
+    }
     try {
       const res = await fetch('/style_grid/presets/rename', {
         method: 'POST',
@@ -824,6 +863,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         }),
       })
       const data = await res.json().catch(() => ({}))
+      const corrupt = parseCorruptData(res, data)
+      if (corrupt) {
+        set({ presetsCorrupt: corrupt })
+        return { ok: false as const, error: 'corrupt_data' }
+      }
       if (!res.ok || data.ok === false || data.error) {
         return {
           ok: false as const,
@@ -856,6 +900,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   touchPreset: async (name) => {
+    if (get().presetsCorrupt) return
     try {
       const res = await fetch('/style_grid/presets/touch', {
         method: 'POST',
@@ -863,6 +908,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         body: JSON.stringify({ name }),
       })
       const data = await res.json().catch(() => ({}))
+      const corrupt = parseCorruptData(res, data)
+      if (corrupt) {
+        set({ presetsCorrupt: corrupt })
+        return
+      }
       if (data.presets) {
         set({ presets: data.presets })
       }

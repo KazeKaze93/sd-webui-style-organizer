@@ -91,6 +91,7 @@ export default function App() {
     expandAll,
     activeCategory,
     showToast,
+    presetsCorrupt,
   } = useStylesStore()
 
   const activeSourceIsReadOnly = !!activeSource &&
@@ -420,6 +421,26 @@ export default function App() {
           </div>
         </TooltipProvider>
       </div>
+
+      {presetsCorrupt && (
+        <div
+          role="alert"
+          className="shrink-0 px-4 py-3 border-b border-red-500/50 bg-red-950/90 text-red-100 text-sm"
+        >
+          <div className="font-semibold">presets.json is corrupt — preset saves are disabled</div>
+          <div className="mt-1 font-mono text-xs break-all opacity-90">
+            file: {presetsCorrupt.path}
+          </div>
+          <div className="font-mono text-xs break-all opacity-90">
+            backup: {presetsCorrupt.bakPath}
+          </div>
+          <div className="mt-1 text-xs opacity-80">
+            Restore the <code className="font-mono">.bak</code> over{' '}
+            <code className="font-mono">presets.json</code>, then reopen Style Grid.
+            Do not create new presets until this is fixed — that would overwrite history.
+          </div>
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>

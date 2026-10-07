@@ -171,10 +171,20 @@ HTTP coverage: `tests/test_write_auth.py` (includes Gradio-compatible `/login` s
 
 | Layer | How |
 |-------|-----|
-| **Python** | `python -m pytest tests/ -q` — CSV I/O, HTTP routes, `{sg:…}` / `select_slice`, slice-grammar parity (`tests/README.md`). Root `npm test` runs this suite. `tests/test_write_auth.py` covers CSRF / Host / Gradio session gates. |
+| **Python** | `python scripts/run_pytest_min.py` — CSV I/O, HTTP routes, `{sg:…}` / `select_slice`, slice-grammar parity (`tests/README.md`). Root `npm test` runs this suite (fails if pass count drops below a pinned minimum). `tests/test_write_auth.py` covers CSRF / Host / Gradio session gates. |
 | **JS prompt helpers** | Open `tests/test_js.html` in a browser (no server). Covers brace-aware `splitTopLevelCommas` on the `sg_prompt_utils.js` copy. |
-| **UI unit / parity** | `cd ui && npm test` (Vitest 5). `wildcardSlice.test.ts` + `wildcardSlice.parity.test.ts` (shared `tests/fixtures/slice_grammar.json`). Typecheck: `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.test.json`. |
+| **UI unit / parity** | `cd ui && npm test` (Vitest 5; pinned minimum pass count). `wildcardSlice.test.ts` + `wildcardSlice.parity.test.ts` (shared `tests/fixtures/slice_grammar.json`). Typecheck: `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.test.json`. |
 | **UI lint** | Included in root `npm run lint` via `lint:ui` (`npm --prefix ui run lint`). |
+
+### Quality gate (pre-push)
+
+No GitHub Actions CI. After clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`pre-push` runs root lint + prompt-utils drift, pytest (min count), then UI typecheck/lint/vitest. A failing gate aborts the push.
 
 Gaps worth knowing: host `javascript/style_grid.js` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 

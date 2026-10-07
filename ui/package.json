@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "build:watch": "vite build --watch",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest-with-min.mjs",
     "test:watch": "vitest"
   },
   "dependencies": {

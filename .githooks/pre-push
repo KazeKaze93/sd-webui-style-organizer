@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Local quality gate (replaces GitHub Actions CI). Abort push on failure.
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+echo "pre-push: root lint + prompt-utils drift"
+npm run lint
+npm run check:prompt-utils-drift
+
+echo "pre-push: pytest (min count enforced)"
+npm test
+
+echo "pre-push: UI typecheck + lint + vitest"
+(
+  cd ui
+  npx tsc --noEmit -p tsconfig.app.json
+  npx tsc --noEmit -p tsconfig.node.json
+  npx tsc --noEmit -p tsconfig.test.json
+  npm run lint
+  npm test
+)
+
+echo "pre-push: ok"

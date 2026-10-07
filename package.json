@@ -10,7 +10,7 @@
     "lint": "npm run lint:js && npm run lint:py && npm run lint:ui",
     "check:prompt-utils-drift": "node tools/check-prompt-utils-drift.mjs",
     "test:js": "start tests/test_js.html",
-    "test:py": "pytest tests/ -v",
+    "test:py": "python scripts/run_pytest_min.py",
     "test": "npm run test:py",
     "check": "npm run lint && npm run check:prompt-utils-drift && npm run test:py"
   },

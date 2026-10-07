@@ -1,6 +1,5 @@
 /**
- * Style Grid host — prompt helpers (moved from style_grid.js).
- * Canonical browser copy also lives in javascript/sg_prompt_utils.js — keep in sync.
+ * Style Grid host — prompt helpers (single source for host + tests).
  */
 "use strict";
 

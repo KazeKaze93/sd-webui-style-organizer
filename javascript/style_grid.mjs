@@ -20,6 +20,7 @@ import {
     applyStyleImmediate,
     unapplyStyle,
 } from "./style_grid/events.js";
+import "./style_grid/prompt-utils-bridge.js";
 
 "use strict";
 

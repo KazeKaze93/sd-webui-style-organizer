@@ -6,14 +6,12 @@ Implementation lives in the `stylegrid` package; this file is the Forge script e
 """
 
 import json
-import os
 
 import gradio as gr  # type: ignore[reportMissingImports]
 from modules import script_callbacks, scripts  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
 from stylegrid.cache import get_cached_styles
-from stylegrid.config import DATA_DIR
 from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
 from stylegrid.data_files import load_presets, load_usage
 from stylegrid.lora_scan import LORA_SOURCE
@@ -75,31 +73,17 @@ class StyleGridScript(scripts.Script):
             "usage": load_usage(),
             "presets": load_presets(),
         }, ensure_ascii=False)
-        order_file = os.path.join(DATA_DIR, "category_order.json")
-        if os.path.isfile(order_file):
-            try:
-                with open(order_file, "r", encoding="utf-8") as f:
-                    category_order = json.load(f)
-            except Exception:
-                category_order = sorted(categories.keys())
-        else:
-            category_order = sorted(categories.keys())
         write_token = get_session_token() if is_public_bind() else ""
         with gr.Group(elem_id=f"style_grid_wrapper_{tab_prefix}", visible=False):
             # JS-only bridge: Gradio must construct this for elem_id; Python never reads it.
             gr.Textbox(value=styles_json, visible=False, elem_id=f"style_grid_data_{tab_prefix}")
-            # JS-only bridge: Gradio must construct this for elem_id; Python never reads it.
-            gr.Textbox(value="[]", visible=False, elem_id=f"style_grid_selected_{tab_prefix}")
             source_filter = gr.Textbox(value="", visible=False, elem_id=f"style_grid_source_{tab_prefix}")
-            gr.Button(visible=False, elem_id=f"style_grid_apply_trigger_{tab_prefix}")
             # Per-session write token for --listen/--share (empty on localhost-only).
             gr.HTML(
                 f"<script>window.{WRITE_TOKEN_JS_GLOBAL}={json.dumps(write_token)};</script>",
                 visible=False,
                 elem_id=f"style_grid_write_token_{tab_prefix}",
             )
-        with gr.Group(visible=False):
-            gr.Textbox(value=json.dumps(category_order), visible=False, elem_id=f"style_grid_cat_order_{tab_prefix}")
         return [source_filter]
 
     def process(self, p: StableDiffusionProcessing, *args):

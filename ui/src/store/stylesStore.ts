@@ -281,7 +281,7 @@ interface StylesStore {
   usageCounts: Record<string, number>
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
-  /** Saved style presets from backend (`/style_grid/presets` / list API). */
+  /** Saved style presets from backend (`GET /style_grid/presets`). */
   presets: Record<string, PresetRecord>
   /**
    * When set, presets.json is corrupt — show a blocking banner and disable
@@ -639,7 +639,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     })), 3000)
   },
   detectConflicts: () => {
-    // Exact-set match (same as routes.py detect_conflicts / V1 checkConflictsLocal):
+    // Exact-set match (aligned with former server detect_conflicts / V1 checkConflictsLocal):
     // comma-split → trim → lower → Set membership; skip empty and "{prompt}".
     const { selectedStyles } = get()
     const conflicts: Conflict[] = []
@@ -711,10 +711,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         ? raw as Record<string, PresetRecord>
         : {}
     try {
-      let r = await fetch('/style_grid/presets/list')
-      if (!r.ok) {
-        r = await fetch('/style_grid/presets')
-      }
+      const r = await fetch('/style_grid/presets')
       const body = await r.json().catch(() => ({}))
       const corrupt = parseCorruptData(r, body)
       if (corrupt) {
@@ -724,19 +721,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       if (!r.ok) return
       set({ presets: parse(body), presetsCorrupt: null })
     } catch {
-      try {
-        const r = await fetch('/style_grid/presets')
-        const body = await r.json().catch(() => ({}))
-        const corrupt = parseCorruptData(r, body)
-        if (corrupt) {
-          set({ presetsCorrupt: corrupt, presets: {} })
-          return
-        }
-        if (!r.ok) return
-        set({ presets: parse(body), presetsCorrupt: null })
-      } catch {
-        // ignore
-      }
+      // ignore
     }
   },
   savePreset: async (name, styles, opts) => {

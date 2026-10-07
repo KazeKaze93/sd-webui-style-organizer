@@ -126,7 +126,7 @@ sequenceDiagram
 
 **Presets:** Sidebar **Presets** renders **`PresetList`** / **`PresetRow`** (Replace / Add / rename / delete). Save is **`SaveSetDialog`** from **`SelectedBar`** (`savePreset` / overwrite guard on the API). Load applies name+source members via the host apply path (`SG_APPLY` / selection sync); there is no host Package modal and no **`StyleCard presetName`** tile mode.
 
-**Forge script outputs:** `StyleGridScript.ui()` still creates `style_grid_data_*`, `style_grid_selected_*`, and the apply trigger, and returns **`[source_filter]`**. In `process(*args)`, `args[0]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools — paths compared via `normalize_source_path`. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
+**Forge script outputs:** `StyleGridScript.ui()` creates `style_grid_data_*` (JS bootstrap JSON) and `style_grid_source_*`, and returns **`[source_filter]`**. In `process(*args)`, `args[0]` is the active source filter (empty string = All Sources) used to scope `{sg:...}` wildcard pools — paths compared via `normalize_source_path`. Wildcard resolution still runs over `p.all_prompts` / `p.all_negative_prompts` from the pipeline, not over hidden textbox values.
 
 **CSV / samples:** `samples/` is read-only for save/delete (**403**). Basename resolve prefers writable CSVs over the demo pack (`is_samples_source`, `_resolve_target_csv_path`).
 

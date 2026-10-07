@@ -25,7 +25,7 @@ flowchart LR
 ├─ javascript/
 │  ├─ style_grid.mjs                  # Host entry (Forge loads *.mjs as type=module)
 │  ├─ style_grid/                     # Host modules: api, state, prompt-utils, render, events
-│  └─ sg_prompt_utils.js              # Forge-injected copy of shared prompt helpers (must stay in sync)
+│  └─ sg_prompt_utils.js              # Legacy ESM bridge → prompt-utils (Vitest / test_js.html)
 ├─ scripts/style_grid.py              # Forge script entrypoint (imports stylegrid.*)
 ├─ stylegrid/                         # Backend package
 │  ├─ routes.py                       # FastAPI registration
@@ -117,7 +117,7 @@ sequenceDiagram
 - **Rebuild membership is an intersection.** `rebuildPromptFromOrder` iterates `state[tab].selectedOrder` filtered by `applied.has(name)`, and `SG_REORDER_STYLES` replaces `selectedOrder` wholesale with the chip order from the React iframe. Any name present in `applied` but absent from that chip list is dropped from the rebuilt prompt while remaining applied host-side. Under normal operation the two stay in sync; if a style is visibly applied but missing from the prompt after a reorder, check this intersection first.
 - **Provenance:** both behaviours predate the wildcard work — they reproduce on `994084e`, before the wildcard chips/slices branches. Do not re-bisect those commits looking for the cause.
 
-**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`. **Two copies ship:** `javascript/style_grid/prompt-utils.js` (ES module used by the host) and `javascript/sg_prompt_utils.js` (Forge auto-injects every `javascript/*.js`). Keep the shared helper bodies byte-identical; `tests/test_js.html` loads the classic utils copy and asserts slice-token cases.
+**Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`. **Single source:** `javascript/style_grid/prompt-utils.js` (host + `prompt-utils-bridge.js` for `globalThis`).
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
@@ -173,7 +173,7 @@ HTTP coverage: `tests/test_write_auth.py` (includes Gradio-compatible `/login` s
 | Layer | How |
 |-------|-----|
 | **Python** | `python scripts/run_pytest_min.py` — CSV I/O, HTTP routes, `{sg:…}` / `select_slice`, slice-grammar parity (`tests/README.md`). Root `npm test` runs this suite (fails if pass count drops below a pinned minimum). `tests/test_write_auth.py` covers CSRF / Host / Gradio session gates. |
-| **JS prompt helpers** | Open `tests/test_js.html` in a browser (no server). Covers brace-aware `splitTopLevelCommas` on the `sg_prompt_utils.js` copy. |
+| **JS prompt helpers** | Serve `tests/test_js.html` (ES module). Covers brace-aware `splitTopLevelCommas` via `prompt-utils-bridge.js`. |
 | **UI unit / parity** | `cd ui && npm test` (Vitest 5; pinned minimum pass count). `wildcardSlice.test.ts` + `wildcardSlice.parity.test.ts` (shared `tests/fixtures/slice_grammar.json`). Typecheck: `npx tsc --noEmit -p tsconfig.app.json` and `-p tsconfig.test.json`. |
 | **UI lint** | Included in root `npm run lint` via `lint:ui` (`npm --prefix ui run lint`). |
 
@@ -185,7 +185,7 @@ No GitHub Actions CI. After clone:
 git config core.hooksPath .githooks
 ```
 
-`pre-push` runs root lint + prompt-utils drift, pytest (min count), then UI typecheck/lint/vitest. A failing gate aborts the push.
+`pre-push` runs root lint, pytest (min count), then UI typecheck/lint/vitest. A failing gate aborts the push.
 
 Gaps worth knowing: host `javascript/style_grid.mjs` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 

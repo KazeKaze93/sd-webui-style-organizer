@@ -4,9 +4,8 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-echo "pre-push: root lint + prompt-utils drift"
+echo "pre-push: root lint"
 npm run lint
-npm run check:prompt-utils-drift
 
 echo "pre-push: pytest (min count enforced)"
 npm test

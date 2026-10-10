@@ -134,6 +134,46 @@ export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
   return `${s.source_file}\0${s.name}`
 }
 
+const THUMB_VERSION_LS_PREFIX = 'sg_thumb_v_'
+const EMPTY_STYLES: readonly Style[] = []
+
+function buildSelectedKeySet(styles: Style[]): ReadonlySet<string> {
+  return new Set(styles.map((s) => styleRowKey(s)))
+}
+
+/** Names with 2+ library rows; per-name arrays keep stable refs until `styles` changes. */
+function buildDuplicatesByName(styles: Style[]): Map<string, readonly Style[]> {
+  const buckets = new Map<string, Style[]>()
+  for (const s of styles) {
+    const list = buckets.get(s.name)
+    if (list) list.push(s)
+    else buckets.set(s.name, [s])
+  }
+  const out = new Map<string, readonly Style[]>()
+  for (const [name, list] of buckets) {
+    if (list.length > 1) out.set(name, list)
+  }
+  return out
+}
+
+/** One-shot hydrate of `sg_thumb_v_<styleRowKey>` → version string. */
+function loadThumbVersionsFromLs(): Record<string, string> {
+  const out: Record<string, string> = {}
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const lsKey = localStorage.key(i)
+      if (!lsKey || !lsKey.startsWith(THUMB_VERSION_LS_PREFIX)) continue
+      const version = localStorage.getItem(lsKey)
+      if (typeof version === 'string' && version.length > 0) {
+        out[lsKey.slice(THUMB_VERSION_LS_PREFIX.length)] = version
+      }
+    }
+  } catch {
+    // ignore corrupt / unavailable localStorage
+  }
+  return out
+}
+
 /** Preset style ref: legacy bare name, or backend-normalized {name, source_file, weight?}. */
 export type PresetStyleEntry = string | { name: string; source_file?: string; weight?: number }
 
@@ -321,6 +361,13 @@ interface StylesStore {
   
   // Selection
   selectedStyles: Style[]
+  /** styleRowKey set for `selectedStyles`; rebuilt in the same set() as selection. */
+  selectedKeySet: ReadonlySet<string>
+  /** Name → rows sharing that name (length ≥ 2); rebuilt when `styles` changes. */
+  duplicatesByName: ReadonlyMap<string, readonly Style[]>
+  /** Cache-bust versions keyed by styleRowKey; hydrated once from sg_thumb_v_* LS keys. */
+  thumbVersions: Readonly<Record<string, string>>
+  bumpThumbVersion: (key: string, version: string) => void
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
   compactMode: boolean
@@ -364,6 +411,12 @@ interface StylesStore {
   toggleStyle: (style: Style) => void
   setSelectedStyles: (styles: Style[]) => void
   clearAll: () => void
+  /**
+   * Host SG_CLEAR_SELECTION chrome reset: clears selection + key set, conflicts,
+   * wildcards, active preset, and contributors. Does not send SG_UNAPPLY (host
+   * already cleared the prompt). Prefer this over raw setState.
+   */
+  clearSelectionChrome: () => void
   activeWildcards: WildcardRef[]
   setActiveWildcards: (refs: WildcardRef[]) => void
   removeWildcard: (ref: WildcardRef) => void
@@ -464,6 +517,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   activeSource: null,
   sources: [],
   selectedStyles: [],
+  selectedKeySet: new Set(),
+  duplicatesByName: new Map(),
+  thumbVersions: loadThumbVersionsFromLs(),
   conflicts: [],
   usageCounts: {},
   categoryOrder: JSON.parse(
@@ -478,6 +534,13 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   presetsCorrupt: null,
   activePresetName: null,
   styleContributors: {},
+
+  bumpThumbVersion: (key, version) => {
+    localStorage.setItem(`${THUMB_VERSION_LS_PREFIX}${key}`, version)
+    set((s) => ({
+      thumbVersions: { ...s.thumbVersions, [key]: version },
+    }))
+  },
 
   setStyles: (styles, tab) => {
     const sources = [...new Set(
@@ -514,6 +577,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       tab,
       sources,
       activeSource,
+      duplicatesByName: buildDuplicatesByName(styles),
       ...(favsChanged ? { favorites: new Set(nextFavs) } : {}),
       ...(recentChanged ? { recentNames: nextRecent } : {}),
     })
@@ -569,8 +633,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     if (allSelected) {
       const removeKeys = new Set(catStyles.map(s => styleRowKey(s)))
+      const nextSelected = selectedStyles.filter(s => !removeKeys.has(styleRowKey(s)))
       set({
-        selectedStyles: selectedStyles.filter(s => !removeKeys.has(styleRowKey(s))),
+        selectedStyles: nextSelected,
+        selectedKeySet: buildSelectedKeySet(nextSelected),
       })
       catStyles.forEach((style) => {
         sendToHost({
@@ -587,7 +653,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const toAdd = catStyles.filter(s => !selectedKeys.has(styleRowKey(s)))
     if (toAdd.length === 0) return
 
-    set({ selectedStyles: [...selectedStyles, ...toAdd] })
+    const nextSelected = [...selectedStyles, ...toAdd]
+    set({
+      selectedStyles: nextSelected,
+      selectedKeySet: buildSelectedKeySet(nextSelected),
+    })
     toAdd.forEach((style) => {
       get().addToRecent(style)
       sendToHost({
@@ -625,8 +695,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     if (isSelected) {
       const nextContributors = { ...styleContributors }
       delete nextContributors[key]
+      const nextSelected = selectedStyles.filter(s => styleRowKey(s) !== key)
       set({
-        selectedStyles: selectedStyles.filter(s => styleRowKey(s) !== key),
+        selectedStyles: nextSelected,
+        selectedKeySet: buildSelectedKeySet(nextSelected),
         styleContributors: nextContributors,
       })
       sendToHost({
@@ -637,8 +709,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       get().detectConflicts()
     } else {
       const existing = styleContributors[key] ?? new Set<string>()
+      const nextSelected = [...selectedStyles, style]
       set({
-        selectedStyles: [...selectedStyles, style],
+        selectedStyles: nextSelected,
+        selectedKeySet: buildSelectedKeySet(nextSelected),
         styleContributors: {
           ...styleContributors,
           [key]: new Set([...existing, 'manual']),
@@ -656,7 +730,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       get().detectConflicts()
     }
   },
-  setSelectedStyles: (styles: Style[]) => set({ selectedStyles: styles }),
+  setSelectedStyles: (styles: Style[]) => set({
+    selectedStyles: styles,
+    selectedKeySet: buildSelectedKeySet(styles),
+  }),
   clearAll: () => {
     const { selectedStyles } = get()
     selectedStyles.forEach(s =>
@@ -666,7 +743,23 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         source_file: s.source_file,
       })
     )
-    set({ selectedStyles: [], conflicts: [], activePresetName: null, styleContributors: {} })
+    set({
+      selectedStyles: [],
+      selectedKeySet: new Set(),
+      conflicts: [],
+      activePresetName: null,
+      styleContributors: {},
+    })
+  },
+  clearSelectionChrome: () => {
+    set({
+      selectedStyles: [],
+      selectedKeySet: new Set(),
+      conflicts: [],
+      activeWildcards: [],
+      activePresetName: null,
+      styleContributors: {},
+    })
   },
   activeWildcards: [],
   setActiveWildcards: (refs) => set({ activeWildcards: refs }),
@@ -902,11 +995,16 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         set({
           presets: data.presets,
           selectedStyles: nextSelected,
+          selectedKeySet: buildSelectedKeySet(nextSelected),
           styleContributors: nextContributors,
           ...(get().activePresetName === name ? { activePresetName: null } : {}),
         })
       } else {
-        set({ selectedStyles: nextSelected, styleContributors: nextContributors })
+        set({
+          selectedStyles: nextSelected,
+          selectedKeySet: buildSelectedKeySet(nextSelected),
+          styleContributors: nextContributors,
+        })
         if (get().activePresetName === name) {
           set({ activePresetName: null })
         }
@@ -1014,7 +1112,12 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         source_file: m.style.source_file,
       })
     }
-    set({ selectedStyles: selected, activePresetName: name, styleContributors: nextContributors })
+    set({
+      selectedStyles: selected,
+      selectedKeySet: buildSelectedKeySet(selected),
+      activePresetName: name,
+      styleContributors: nextContributors,
+    })
     detectConflicts()
 
     const activeWc = [...get().activeWildcards]
@@ -1116,6 +1219,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     set({
       selectedStyles: nextSelected,
+      selectedKeySet: buildSelectedKeySet(nextSelected),
       activeWildcards: nextActiveWildcards,
       styleContributors: nextContributors,
     })
@@ -1166,3 +1270,33 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     return [...relevantOrder, ...rest]
   }
 }))
+
+/** Rebuild selectedKeySet when selectedStyles changes (incl. raw setState bypasses). */
+useStylesStore.subscribe((state, prev) => {
+  if (state.selectedStyles === prev.selectedStyles) return
+  const next = buildSelectedKeySet(state.selectedStyles)
+  const cur = state.selectedKeySet
+  if (cur.size === next.size) {
+    let same = true
+    for (const key of next) {
+      if (!cur.has(key)) {
+        same = false
+        break
+      }
+    }
+    if (same) return
+  }
+  useStylesStore.setState({ selectedKeySet: next })
+})
+
+export function useIsSelected(key: string): boolean {
+  return useStylesStore((s) => s.selectedKeySet.has(key))
+}
+
+export function useStyleDuplicates(name: string): readonly Style[] {
+  return useStylesStore((s) => s.duplicatesByName.get(name) ?? EMPTY_STYLES)
+}
+
+export function useThumbVersion(key: string): string {
+  return useStylesStore((s) => s.thumbVersions[key] ?? '1')
+}

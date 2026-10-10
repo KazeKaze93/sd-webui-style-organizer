@@ -12,6 +12,13 @@ const localStorageMock = {
   clear: () => {
     for (const key of Object.keys(data)) delete data[key]
   },
+  get length() {
+    return Object.keys(data).length
+  },
+  key(index: number) {
+    const keys = Object.keys(data)
+    return index >= 0 && index < keys.length ? keys[index] : null
+  },
 }
 
 Object.defineProperty(globalThis, 'localStorage', {

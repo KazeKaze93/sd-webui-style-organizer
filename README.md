@@ -63,7 +63,7 @@ Restart Forge UI after cloning.
 3. Pick a source (`All Sources` or a specific CSV).
 4. Search or browse categories.
 5. Click a style card to apply/unapply.
-6. Use the **top bar** icon buttons (right of the search box) for presets, backup, import/export, etc.
+6. Use the **top bar** icon buttons (right of the search box) for backup, import/export, compact/collapse, etc. Presets live in the **left sidebar**.
 
 ## img2img support
 
@@ -88,9 +88,9 @@ The small tab badge in the panel header shows the active host context.
 ![Browse and filter styles](docs/screenshots/browse-and-filter.png)
 
 ### Search and autocomplete
-- Type in the search box to filter the grid in real time. Query tokens are **AND**-matched (whitespace-separated, case-insensitive).
-- Grid search (`matchesSearch`) looks at the style **name** (including underscore→space forms) and **description**, with `Combos:` / `Conflicts:` reference lists stripped from the description so those lists do not pollute matches.
-- Autocomplete suggestions use **name-only** matching (`matchesNameSearch`) and respect the active source filter (with All Sources, suggestions are deduped by name like the grid). Cap: top 8.
+- Type in the search box to filter the grid in real time. Query tokens are **AND**-matched (whitespace-separated, case-insensitive): every token must appear in the haystack.
+- Grid search and autocomplete both use `matchesSearch`: style **name** (including underscore→space forms and display-name forms) plus **description**, with `Combos:` / `Conflicts:` reference lists stripped from the description so those lists do not pollute matches.
+- Autocomplete suggestions respect the active source filter (with All Sources, suggestions are deduped by name like the grid). Cap: top 8.
 - **Favorites**, **Recent**, and **Presets** views also respect search and the active source filter (they previously ignored them).
 - Use arrow keys + Enter to pick a suggestion quickly, or click the item with mouse.
 
@@ -111,7 +111,7 @@ The small tab badge in the panel header shows the active host context.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
 ### 4) Favorites, recent, and LoRA
-- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites** (there is no star icon on the tile itself). Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
+- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites**. Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
 - **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
 - Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
@@ -122,7 +122,7 @@ The small tab badge in the panel header shows the active host context.
 
 ![Favorites — styles saved via context menu](docs/screenshots/favorites-view.png)
 
-![Browsing a category — tiles show names only; use sidebar or context menu for favorites](docs/screenshots/favorites-in-category.png)
+![Browsing a category — favorited tiles show a star; toggle via context menu or Favorites sidebar](docs/screenshots/favorites-in-category.png)
 
 ### 5) Category context menu: wildcards and previews
 
@@ -184,26 +184,31 @@ A **shuffle wildcard** draws styles **without repeats**. Where the random wildca
 
 **Where to open it**
 
-- **Right-click** a **style card** in the grid. *(Left-click still applies the normal select / source-picker rules.)*
+- **Right-click** a **style card** in the grid (card title hint: *Right-click for options*). *(Left-click still applies the normal select / source-picker rules.)*
+
+**On the tile (not menu items)**
+
+- **Star** (top-right) appears when the style is favorited.
+- **Check** badge (bottom-right) appears when the style is selected.
 
 **Menu actions**
 
 | Item | What it does |
 |---|---|
 | **Select** / **Deselect** | Same as a left-click on the card: applies or removes the style from the active selection (and host prompt), without opening the duplicate-source picker. |
-| **Add to Favorites** / **Remove from Favorites** | Toggles the star list for this style **row** (name + source). |
-| **Copy prompt** | Copies this style’s **`prompt`** text to the clipboard. |
+| **Add to Favorites** / **Remove from Favorites** | Toggles the star list for this style **row** (name + source); the tile star updates immediately. |
+| **Copy prompt** | Copies this style’s **`prompt`** text to the clipboard (toast on success/failure). |
 | **Edit** | Opens the host **style editor** for this style. |
 | **Duplicate** | Opens the host flow to duplicate the style (typically into the same or chosen source). |
-| **Move to category…** | Opens the host dialog to change the style’s **category** field. |
+| **Move to category...** | Opens the host dialog to change the style’s **category** field. |
 | **Generate preview (SD)** | Runs **thumbnail generation** for this style (Stable Diffusion–based preview in the host). |
 | **Upload preview image** | Opens the host **file picker** to set a custom thumbnail image. |
-| **Remove preview image** | Deletes the cached WebP for this style’s **name + source** (surfaces errors instead of silently no-oping). |
+| **Remove preview** | Shown only when the style already has a thumbnail. Deletes the cached preview for this style’s **name + source** (surfaces errors instead of silently no-oping). |
 | **Delete** | Removes the style (host confirms and updates CSV). Styles from the shipped **`samples/`** pack cannot be modified via the API (read-only). |
 
 **LoRA cards:** Edit / Duplicate / Move / Generate preview / Upload preview / Remove preview / Delete are **hidden**. Select, Favorites, and Copy prompt remain. The server also rejects CSV save/delete for LoRA-sourced rows.
 
-Click **outside** the menu, or move the pointer **off** the menu panel, to close it.
+Click **outside** the menu to close it (moving the pointer off the menu does **not** dismiss it).
 
 ![Style card context menu](docs/screenshots/style-card-context-menu.png)
 
@@ -248,27 +253,26 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 ## Top bar (icon buttons on the right)
 
-**What this means:** not a separate “toolbar” window — it is the **top header row** of the Style Grid panel: logo, `txt2img`/`img2img` tag, **source** dropdown, **search**, then a row of **small icon buttons on the right**. Hover an icon to see its tooltip.
+**What this means:** not a separate “toolbar” window — it is the **top header row** of the Style Grid panel: **Style Grid** title, `txt2img`/`img2img` tag, **source** dropdown, **search**, then a row of **small icon buttons on the right** (`ToolBtn` with lucide icons + tooltips). Hover an icon for its label. **Presets** are in the **left sidebar**, not here. There is no Random button.
 
 ![Top bar — icon buttons (right of search)](docs/screenshots/top-bar-icons.png)
 
 | Control | What it does |
 |---|---|
-| 🎲 | **Random style** — picks a random style (respects the active source filter). |
-| 📦 | **Presets** — save/load/delete style sets from the host modal. **Load** runs the same **`loadPreset`** path as choosing a preset in the sidebar **Presets** view (iframe posts **`SG_LOAD_PRESET`**). Both clear/apply on the host and sync the V2 selected bar (`SG_CLEAR_SELECTION` / `SG_STYLE_APPLIED` per style). |
-| 💾 | **Backup** — creates CSV backup snapshot(s) under `data/backups/`, keeping directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
-| 📥 | **Import / Export** — export/import styles, presets, usage. Style import is **rejected** if any imported name already exists in the library (toast/alert lists collisions); presets still merge. |
-| 🧹 | **Clear** — clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
-| ▪ | **Compact mode** — toggles a denser card layout. |
-| ↕ | **Collapse all** or **Expand all** category sections (depends on current state). |
-| ➕ | **New style** — creates a style in the **currently selected CSV** (`All Sources` must be switched to a specific file first). |
-| 🌐 | **Fetch LoRA titles** — visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under `data/lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
+| Backup CSV | Creates CSV backup snapshot(s) under `data/backups/`, keeping directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
+| Import/Export | Export/import styles, presets, usage. Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
+| Clear all selected styles | Clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
+| Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
+| Collapse all / Expand all | One control: **Collapse all** when every category is expanded; **Expand all** when any category is collapsed. |
+| New style | Creates a style in the **currently selected CSV**. Disabled until a specific (non–read-only) source is selected — tooltip explains why. |
+| Fetch LoRA titles | Visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under `data/lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
 
-![Fetch LoRA titles — 🌐 toolbar tooltip in LoRA view](docs/screenshots/lora-fetch-titles.png)
+![Fetch LoRA titles — toolbar tooltip in LoRA view](docs/screenshots/lora-fetch-titles.png)
 
-| *(number)* | Shows how many styles are selected; **⚠️** may appear if conflicts are detected (hover for details). |
-| Fullscreen | Toggles between the floating panel size and edge-to-edge layout. |
-| ✕ | **Close** — closes the Style Grid panel. |
+| *N* selected | Shown when at least one style is selected. |
+| Style conflicts | When conflicts exist, a pulsing count badge opens a **click-to-open** popover (not hover-only) listing reasons; each row can remove the conflicting style. |
+| Fullscreen / Exit fullscreen | Toggles between the floating panel size and edge-to-edge layout. |
+| Close Style Grid | Closes the Style Grid panel. |
 
 ---
 

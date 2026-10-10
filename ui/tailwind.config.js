@@ -4,13 +4,17 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Forge dark theme approximation
+        // Style Grid dark palette
         'sg-bg': '#1a1a2e',
         'sg-surface': '#16213e',
         'sg-border': '#2d2d4e',
         'sg-accent': '#6366f1',
         'sg-text': '#e2e8f0',
-        'sg-muted': '#64748b',
+        'sg-muted': '#8291a8',
+        'sg-popover': '#0f172a',
+        'sg-success': '#15803d',
+        'sg-danger': '#b91c1c',
+        'sg-info': '#4f46e5',
         // shadcn (CSS variables)
         border: 'var(--border)',
         input: 'var(--input)',

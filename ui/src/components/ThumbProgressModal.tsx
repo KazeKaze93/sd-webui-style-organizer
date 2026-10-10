@@ -38,6 +38,8 @@ export function ThumbProgressModal() {
     <AnimatePresence>
       {visible && (
         <motion.div
+          role="status"
+          aria-live="polite"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 20 }}
@@ -63,11 +65,7 @@ export function ThumbProgressModal() {
           <div className="text-xs text-sg-muted truncate">{displayName}</div>
           {status !== 'done' && status !== 'error' && (
             <div className="mt-2 h-1 bg-sg-border rounded-full overflow-hidden">
-              <motion.div
-                className="h-full bg-sg-accent rounded-full"
-                animate={{ width: ['0%', '90%'] }}
-                transition={{ duration: 8, ease: 'linear' }}
-              />
+              <div className="h-full w-1/3 bg-sg-accent rounded-full motion-safe:animate-pulse" />
             </div>
           )}
         </motion.div>

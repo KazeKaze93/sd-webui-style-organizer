@@ -11,7 +11,7 @@ type Props = {
 }
 
 const DEFAULT_MENU_CLASS =
-  'fixed z-[9999] bg-[#0f172a] border border-sg-border rounded-lg shadow-xl py-1 min-w-52 w-max max-w-sm'
+  'fixed z-[9999] bg-sg-popover border border-sg-border rounded-lg shadow-xl py-1 min-w-52 w-max max-w-sm'
 
 /**
  * Fixed context menu portaled to document.body (escapes sidebar overflow),

@@ -4,6 +4,16 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
+echo "pre-push: EOL guard"
+if git ls-files --eol | grep -E 'i/crlf|[[:space:]]w/crlf' ; then
+  echo "pre-push: CRLF found in index or text working files (see above). Fix with git add --renormalize + rewrite from index." >&2
+  exit 1
+fi
+if git grep -I -l $'\r' -- ui/dist ; then
+  echo "pre-push: CR bytes in committed ui/dist (see above). Rebuild from LF sources." >&2
+  exit 1
+fi
+
 echo "pre-push: root lint"
 npm run lint
 
@@ -19,5 +29,9 @@ echo "pre-push: UI typecheck + lint + vitest"
   npm run lint
   npm test
 )
+
+echo "pre-push: rebuild UI and require ui/dist match"
+( cd ui ; npm run build )
+git diff --exit-code -- ui/dist
 
 echo "pre-push: ok"

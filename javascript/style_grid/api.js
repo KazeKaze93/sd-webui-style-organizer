@@ -14,37 +14,50 @@ function styleGridWriteToken() {
         return "";
     }
 
-function apiPost(endpoint, data) {
+function styleGridWriteHeaders() {
         var headers = { "Content-Type": "application/json" };
         var token = styleGridWriteToken();
         if (token) headers["X-StyleGrid-Token"] = token;
+        return headers;
+    }
+
+function parseApiResponse(r) {
+        return r.text().then(function (text) {
+            var body = {};
+            if (text) {
+                try {
+                    body = JSON.parse(text);
+                } catch (_e) {
+                    if (!r.ok) {
+                        return Promise.reject(new Error("HTTP " + r.status));
+                    }
+                    return Promise.reject(new Error("Invalid JSON in response"));
+                }
+            }
+            if (!r.ok) {
+                var msg = (body && body.error) || (typeof body.detail === "string" ? body.detail : null);
+                if (!msg && body && Array.isArray(body.detail)) {
+                    msg = body.detail.map(function (d) { return (d && d.msg) ? d.msg : ""; }).filter(Boolean).join("; ");
+                }
+                return Promise.reject(new Error(msg || ("HTTP " + r.status)));
+            }
+            return body;
+        });
+    }
+
+function apiPost(endpoint, data) {
         return fetch(endpoint, {
             method: "POST",
-            headers: headers,
+            headers: styleGridWriteHeaders(),
             body: JSON.stringify(data || {}),
-        }).then(function (r) {
-            return r.text().then(function (text) {
-                var body = {};
-                if (text) {
-                    try {
-                        body = JSON.parse(text);
-                    } catch (_e) {
-                        if (!r.ok) {
-                            return Promise.reject(new Error("HTTP " + r.status));
-                        }
-                        return Promise.reject(new Error("Invalid JSON in response"));
-                    }
-                }
-                if (!r.ok) {
-                    var msg = (body && body.error) || (typeof body.detail === "string" ? body.detail : null);
-                    if (!msg && body && Array.isArray(body.detail)) {
-                        msg = body.detail.map(function (d) { return (d && d.msg) ? d.msg : ""; }).filter(Boolean).join("; ");
-                    }
-                    return Promise.reject(new Error(msg || ("HTTP " + r.status)));
-                }
-                return body;
-            });
-        });
+        }).then(parseApiResponse);
+    }
+
+function apiDelete(endpoint) {
+        return fetch(endpoint, {
+            method: "DELETE",
+            headers: styleGridWriteHeaders(),
+        }).then(parseApiResponse);
     }
 
 function assertNoApiError(result) {
@@ -64,7 +77,9 @@ function thumbIdentityKey(name, sourceFile) {
 
 export {
     styleGridWriteToken,
+    styleGridWriteHeaders,
     apiPost,
+    apiDelete,
     assertNoApiError,
     apiGet,
     thumbIdentityKey,

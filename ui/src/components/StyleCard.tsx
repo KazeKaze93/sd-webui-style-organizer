@@ -17,7 +17,7 @@ import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
 import { LORA_SOURCE, styleRowKey, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
-import { styleGridWriteHeaders } from '../lib/styleGridFetch'
+import { styleGridDelete } from '../lib/styleGridFetch'
 import { ThumbnailPreview } from './ThumbnailPreview'
 
 interface Props {
@@ -296,10 +296,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                         const source_file = style.source_file
                         const params = new URLSearchParams({ name })
                         if (source_file) params.set('source', source_file)
-                        const res = await fetch(`/style_grid/thumbnail?${params}`, {
-                          method: 'DELETE',
-                          headers: styleGridWriteHeaders(),
-                        })
+                        const res = await styleGridDelete(`/style_grid/thumbnail?${params}`)
                         const data = await res.json().catch(() => ({}))
                         if (!res.ok || data.ok === false || data.error) {
                           showToast(

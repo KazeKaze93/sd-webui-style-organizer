@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { WILDCARD_KIND_DECK } from '../bridge'
 import { PRESET_SHUFFLE_SUFFIX } from '../lib/wildcardLabels'
@@ -34,6 +34,9 @@ export function PresetRow({ name, preset }: Props) {
   const [renameExists, setRenameExists] = useState(false)
   const [busy, setBusy] = useState(false)
   const renameRef = useRef<HTMLInputElement>(null)
+  const renameTitleId = useId()
+  const renameInputId = useId()
+  const deleteTitleId = useId()
 
   const members = resolvePresetMembers(preset.styles ?? [], styles)
   const foundMembers = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
@@ -234,11 +237,17 @@ export function PresetRow({ name, preset }: Props) {
           <div className="absolute inset-0 bg-black/50" onClick={() => { if (!busy) setRenameOpen(false) }} />
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={renameTitleId}
               className="pointer-events-auto bg-sg-surface border border-sg-border rounded-lg shadow-xl p-4 w-80"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="text-sm font-medium text-sg-text mb-2">Rename set</div>
+              <label htmlFor={renameInputId} id={renameTitleId} className="block text-sm font-medium text-sg-text mb-2">
+                Rename set
+              </label>
               <input
+                id={renameInputId}
                 ref={renameRef}
                 type="text"
                 value={renameValue}
@@ -299,10 +308,13 @@ export function PresetRow({ name, preset }: Props) {
           <div className="absolute inset-0 bg-black/50" onClick={() => { if (!busy) setDeleteOpen(false) }} />
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={deleteTitleId}
               className="pointer-events-auto bg-sg-surface border border-sg-border rounded-lg shadow-xl p-4 w-80"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="text-sm font-medium text-sg-text mb-2">Delete set?</div>
+              <div id={deleteTitleId} className="text-sm font-medium text-sg-text mb-2">Delete set?</div>
               <p className="text-xs text-sg-muted leading-relaxed">
                 Delete &ldquo;{name}&rdquo; permanently? This cannot be undone.
               </p>

@@ -21,7 +21,7 @@ export function PresetList() {
     return (
       <div className="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center">
         <p className="text-sg-muted text-sm">No saved sets yet</p>
-        <p className="max-w-sm text-sg-muted/70 text-xs leading-relaxed">
+        <p className="max-w-sm text-sg-muted text-xs leading-relaxed">
           Select styles, then use <span className="text-sg-text/90">Save set</span> in the
           selection bar. Apply merges a set into your current selection.
         </p>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { wildcardKey } from '../lib/wildcardKey'
 import {
   resolvePresetMembers,
@@ -26,6 +26,10 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
   const [existsWarning, setExistsWarning] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  const titleId = useId()
+  const nameId = useId()
+  const noteId = useId()
+  const wildcardsId = useId()
 
   const hasWildcards = activeWildcards.length > 0
 
@@ -128,13 +132,17 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
       />
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
           className="pointer-events-auto bg-sg-surface border border-sg-border rounded-lg shadow-xl p-4 w-[22rem]"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="text-sm font-medium text-sg-text mb-3">Save set</div>
+          <div id={titleId} className="text-sm font-medium text-sg-text mb-3">Save set</div>
 
-          <label className="block text-xs text-sg-muted mb-1">Name</label>
+          <label htmlFor={nameId} className="block text-xs text-sg-muted mb-1">Name</label>
           <input
+            id={nameId}
             ref={inputRef}
             type="text"
             value={name}
@@ -156,8 +164,9 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
             placeholder="Set name"
           />
 
-          <label className="block text-xs text-sg-muted mb-1 mt-3">Note (optional)</label>
+          <label htmlFor={noteId} className="block text-xs text-sg-muted mb-1 mt-3">Note (optional)</label>
           <textarea
+            id={noteId}
             value={note}
             disabled={isSubmitting}
             onChange={(e) => setNote(e.target.value)}
@@ -170,8 +179,9 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
           />
 
           {hasWildcards && (
-            <label className="flex items-center gap-2 mt-3 text-sm text-sg-text cursor-pointer select-none">
+            <label htmlFor={wildcardsId} className="flex items-center gap-2 mt-3 text-sm text-sg-text cursor-pointer select-none">
               <input
+                id={wildcardsId}
                 type="checkbox"
                 checked={includeWildcards}
                 disabled={isSubmitting}

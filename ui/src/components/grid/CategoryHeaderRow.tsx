@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useRef } from 'react'
+import { memo } from 'react'
 import { useCategoryColor, useCategorySelectedCount } from '../../store/stylesStore'
 
 function CategoryName({ category }: { category: string }) {
@@ -21,7 +21,6 @@ export type CategoryHeaderRowProps = {
   enableLoraContextMenu: boolean
   onToggleCollapse: (category: string) => void
   onSelectAll: (category: string) => void
-  onScrollToHeader: (category: string) => void
   onContextMenu?: (category: string, clientX: number, clientY: number) => void
 }
 
@@ -34,24 +33,13 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
   enableLoraContextMenu,
   onToggleCollapse,
   onSelectAll,
-  onScrollToHeader,
   onContextMenu,
 }: CategoryHeaderRowProps) {
   const selectedCount = useCategorySelectedCount(category)
   const allSelected = count > 0 && selectedCount === count
-  const rootRef = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const el = rootRef.current
-    if (!el) return
-    el.scrollIntoView = () => {
-      onScrollToHeader(category)
-    }
-  }, [category, onScrollToHeader])
 
   return (
     <div
-      ref={rootRef}
       data-sg-category-header={category}
       data-sg-sticky-header={isStickyActive ? 'true' : undefined}
       className="flex items-center gap-2 mb-2 sticky top-0

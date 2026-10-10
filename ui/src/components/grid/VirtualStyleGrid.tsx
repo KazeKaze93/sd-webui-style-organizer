@@ -211,7 +211,6 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                   enableLoraContextMenu={enableLoraContextMenu}
                   onToggleCollapse={handleToggleCollapse}
                   onSelectAll={onSelectAll}
-                  onScrollToHeader={scrollToHeader}
                   onContextMenu={onHeaderContextMenu}
                 />
               ) : (

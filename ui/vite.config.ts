@@ -27,6 +27,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Allow importing host theme helpers from ../javascript for contract tests.
+    fs: {
+      allow: ['.', '..'],
+    },
     proxy: {
       '/style_grid': 'http://127.0.0.1:7860',
       '/extensions/sd-webui-style-organizer/ui/dist': {

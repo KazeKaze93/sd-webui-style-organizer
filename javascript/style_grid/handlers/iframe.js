@@ -16,6 +16,13 @@ import {
 import {
     installIframeMessageBridge,
 } from "./iframe-messages.js";
+import {
+    buildThemeMessage,
+    detectHostThemeMode,
+    watchHostThemeMode,
+} from "../theme.js";
+
+const THEME_DARK_FALLBACK = "dark";
 
 function initSGFrame(tab) {
         var existing = document.getElementById("sg-frame-" + tab);
@@ -26,7 +33,19 @@ function initSGFrame(tab) {
         frame.id = "sg-frame-" + tab;
         frame.title = "Style Grid";
         // Query string busts stale index.html / iframe document cache after ui/dist updates (bump when shipping UI changes).
-        frame.src = `/style_grid/ui?t=${Date.now()}`;
+        var initialTheme = THEME_DARK_FALLBACK;
+        try {
+            initialTheme = detectHostThemeMode();
+            watchHostThemeMode(function (mode) {
+                if (frame.contentWindow) {
+                    frame.contentWindow.postMessage(buildThemeMessage(mode), "*");
+                }
+            });
+        } catch (err) {
+            console.error("[Style Grid] theme init failed", err);
+            initialTheme = THEME_DARK_FALLBACK;
+        }
+        frame.src = `/style_grid/ui?t=${Date.now()}&theme=${initialTheme}`;
         var wrapper = document.createElement("div");
         wrapper.id = "sg-panel-wrapper-" + tab;
         wrapper.style.cssText = [
@@ -49,6 +68,7 @@ function initSGFrame(tab) {
             "resize:both",
         ].join(";");
         frame.style.cssText = "width:100%;height:100%;border:none;display:block;";
+        if (!document.body) return frame;
         document.body.appendChild(wrapper);
         wrapper.appendChild(frame);
         state[tab].sgFrameWrapper = wrapper;

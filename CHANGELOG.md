@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [5.1.0] - 2026-10-11
+
+### Changed
+- **Follows your WebUI theme (light/dark):** no flash on open.
+- **Higher contrast** for secondary text, notifications, and category colors.
+- **Clearer selection** with a check badge and favorite star on the tile.
+- **Conflicts on click:** conflict cues surface when you select a style.
+- **Honest toolbar:** Compact/Expand-Collapse state and Fullscreen/Close labels match what the controls do.
+- **Visible feedback** for copy, backup, export, duplicate, and import.
+- **Helpful empty results** with one-click resets when nothing matches.
+- **Reduced motion** respects the system preference.
+
+### Fixed
+- **Category drag-and-drop reordering** fixed.
+- **Backup button** rejected by the server.
+
+### Removed
+- **Remove preview** in the card menu.
+
+Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs unchanged, no thumbnail regeneration.
+
 ### Changed
 - **Host `events.js` split by feature:** thin wiring in `javascript/style_grid/events.js`; handlers under `javascript/style_grid/handlers/` (wildcards, apply, panel, thumbnails, forge-tabs, iframe). Import-only move; no behavior change.
 - **Minimum host version documented:** README + this changelog note that Style Grid requires WebUI/Forge builds that load `javascript/*.mjs` as ES modules — A1111 **≥ 1.1.0** (introduced in [`b90cad7f`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/b90cad7f3136bbe04efeee2a00e95d0cc6ce1a4a), merged [`e15c4f31`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/e15c4f31e3ec0d2d979832dede0f9b34f4631c7a) / PR [#8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042); first tag `v1.1.0`). Forge/reForge: same loader from first Forge commit (A1111 ~1.7.0 base; no separate Forge `.mjs` change). Corrects the earlier imprecise **1.0.0+** claim (`v1.0.0` was never tagged; `v1.0.0-pre` lacks `.mjs`).

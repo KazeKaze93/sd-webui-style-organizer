@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Reorder } from 'framer-motion'
+import { useShallow } from 'zustand/react/shallow'
 import { styleRowKey, useStylesStore } from '../store/stylesStore'
 import { sendToHost, WILDCARD_KIND_DECK } from '../bridge'
 import { SHUFFLE_CHIP_TITLE } from '../lib/wildcardLabels'
@@ -8,12 +9,27 @@ import { wildcardKey } from '../lib/wildcardKey'
 import { DeckIcon } from './DeckIcon'
 import { SaveSetDialog } from './SaveSetDialog'
 
+/**
+ * Profile (P toggle N=5000): SelectedBar on toggle stacks; bare useStylesStore()
+ * re-rendered on unrelated store writes. Narrow subscription; Reorder kept for drag.
+ */
 export function SelectedBar() {
   const {
     selectedStyles, toggleStyle, setSelectedStyles,
     activeWildcards, setActiveWildcards, removeWildcard,
     styles, activeSource,
-  } = useStylesStore()
+  } = useStylesStore(
+    useShallow(s => ({
+      selectedStyles: s.selectedStyles,
+      toggleStyle: s.toggleStyle,
+      setSelectedStyles: s.setSelectedStyles,
+      activeWildcards: s.activeWildcards,
+      setActiveWildcards: s.setActiveWildcards,
+      removeWildcard: s.removeWildcard,
+      styles: s.styles,
+      activeSource: s.activeSource,
+    })),
+  )
   const [saveOpen, setSaveOpen] = useState(false)
 
   if (selectedStyles.length === 0 && activeWildcards.length === 0) return null

@@ -1,5 +1,4 @@
-import { startTransition, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { memo, startTransition, useEffect, useMemo, useRef, useState } from 'react'
 import { Reorder } from 'framer-motion'
 import { BookMarked, Clock, Dna, Image, Star } from 'lucide-react'
 import { sendToHost } from '../bridge'
@@ -21,21 +20,25 @@ function CategoryName({ category }: { category: string }) {
   )
 }
 
-export function Sidebar() {
+/**
+ * Profile (P toggle N=5000): Sidebar 44 stack hits; `count` 2.0% self;
+ * motion/measureScroll ~28% bucket — layoutId springs + full-list recount on
+ * parent/selection churn. Cache source-scoped counts; drop layoutId motion.
+ */
+export const Sidebar = memo(function Sidebar() {
   const {
-    activeCategory, setCategory, categories, favorites, recentNames,
-    setCategoryOrder, presets, styles,
+    activeCategory, setCategory, categories, favoritesSize, recentCount,
+    setCategoryOrder, presetsCount, styles, activeSource,
   } = useStylesStore(
     useShallow(s => ({
       activeCategory: s.activeCategory,
       setCategory: s.setCategory,
       categories: s.categories,
-      favorites: s.favorites,
-      recentNames: s.recentNames,
+      favoritesSize: s.favorites.size,
+      recentCount: s.recentNames.length,
       setCategoryOrder: s.setCategoryOrder,
-      presets: s.presets,
+      presetsCount: Object.keys(s.presets).length,
       styles: s.styles,
-      // categories() deps — refresh list/order without App re-renders
       activeSource: s.activeSource,
       categoryOrder: s.categoryOrder,
     }))
@@ -61,50 +64,53 @@ export function Sidebar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
   }, [catsSig])
 
-  const loraCount = styles.reduce((n, s) => s.source_file === LORA_SOURCE ? n + 1 : n, 0)
+  // P: Sidebar.tsx `count` — was O(cats · N) filter per render on toggle.
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string | null, number>()
+    let total = 0
+    let lora = 0
+    for (const s of styles) {
+      if (s.source_file === LORA_SOURCE) {
+        lora += 1
+        continue
+      }
+      if (activeSource && s.source_file !== activeSource) continue
+      total += 1
+      const cat = s.category || 'OTHER'
+      counts.set(cat, (counts.get(cat) ?? 0) + 1)
+    }
+    counts.set(null, total)
+    counts.set(LORA_VIEW, lora)
+    return counts
+  }, [styles, activeSource])
+
   const specialCategories = [
-    { id: FAVORITES_ID, label: 'Favorites', Icon: Star, count: favorites.size },
-    { id: RECENT_ID, label: 'Recent', Icon: Clock, count: recentNames.length },
-    { id: LORA_VIEW, label: 'LoRA', Icon: Dna, count: loraCount },
+    { id: FAVORITES_ID, label: 'Favorites', Icon: Star, count: favoritesSize },
+    { id: RECENT_ID, label: 'Recent', Icon: Clock, count: recentCount },
+    { id: LORA_VIEW, label: 'LoRA', Icon: Dna, count: categoryCounts.get(LORA_VIEW) ?? 0 },
   ]
 
   useEffect(() => {
     void useStylesStore.getState().fetchPresets()
   }, [])
 
-  const count = (cat: string | null) => {
-    const { styles, activeSource } = useStylesStore.getState()
-    const src = (activeSource
-      ? styles.filter(s => s.source_file === activeSource)
-      : styles
-    ).filter(s => s.source_file !== LORA_SOURCE)
-    return cat
-      ? src.filter(s => s.category === cat).length
-      : src.length
-  }
+  const countFor = (cat: string | null) => categoryCounts.get(cat) ?? 0
 
   return (
     <div className="w-44 shrink-0 flex flex-col gap-1 pr-2">
       <button
         type="button"
         onClick={() => startTransition(() => setCategory(null))}
-        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors relative overflow-hidden
+        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors
           ${!activeCategory
-            ? 'text-white'
+            ? 'bg-sg-accent text-white'
             : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
       >
-        {!activeCategory && (
-          <motion.div
-            layoutId="active-category"
-            className="absolute inset-0 bg-sg-accent rounded-md -z-10"
-            transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
-          />
-        )}
-        <span className="relative z-10 flex items-center gap-2 min-w-0">
+        <span className="flex items-center gap-2 min-w-0">
           <span className="truncate" style={{ color: allColor }}>All</span>
         </span>
-        <span className="relative z-10 text-xs opacity-60 shrink-0">
-          {count(null)}
+        <span className="text-xs opacity-60 shrink-0">
+          {countFor(null)}
         </span>
       </button>
       {specialCategories.map(({ id, label, Icon, count }) => {
@@ -137,24 +143,17 @@ export function Sidebar() {
       <button
         type="button"
         onClick={() => startTransition(() => setCategory(activeCategory === 'presets' ? null : 'presets'))}
-        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors relative overflow-hidden
+        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors
           ${activeCategory === 'presets'
-            ? 'text-white'
+            ? 'bg-sg-accent text-white'
             : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
       >
-        {activeCategory === 'presets' && (
-          <motion.div
-            layoutId="active-category"
-            className="absolute inset-0 bg-sg-accent rounded-md -z-10"
-            transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
-          />
-        )}
-        <span className="relative z-10 flex min-w-0 items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <BookMarked className="h-4 w-4 shrink-0" aria-hidden />
           <span className="truncate">Presets</span>
         </span>
-        <span className="relative z-10 shrink-0 text-xs opacity-60 tabular-nums">
-          {Object.keys(presets).length}
+        <span className="shrink-0 text-xs opacity-60 tabular-nums">
+          {presetsCount}
         </span>
       </button>
       <div className="border-t border-sg-border my-1" />
@@ -192,21 +191,14 @@ export function Sidebar() {
                   setCatMenu({ x: e.clientX, y: e.clientY, cat })
                 }}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm 
-                    transition-colors cursor-context-menu relative overflow-hidden
+                    transition-colors cursor-context-menu
                   ${isActive
                     ? 'bg-sg-accent text-white'
                     : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
               >
-                {isActive && (
-                  <motion.div
-                    layoutId="active-category"
-                    className="absolute inset-0 bg-sg-accent rounded-md -z-10"
-                    transition={{ type: 'spring', bounce: 0.2, duration: 0.3 }}
-                  />
-                )}
-                <span className="flex items-center gap-2 relative z-10">
+                <span className="flex items-center gap-2">
                   <CategoryName category={cat} />
-                  <span className="text-xs opacity-60 shrink-0">{count(cat)}</span>
+                  <span className="text-xs opacity-60 shrink-0">{countFor(cat)}</span>
                 </span>
               </button>
             </Reorder.Item>
@@ -251,4 +243,4 @@ export function Sidebar() {
       )}
     </div>
   )
-}
+})

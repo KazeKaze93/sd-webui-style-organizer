@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Style Grid Bench Host</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        overflow: hidden;
+      }
+      iframe {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="panel" title="Style Grid panel" src="/"></iframe>
+    <script>
+      ;(() => {
+        const panel = document.getElementById('panel')
+        /** @type {{ styles?: unknown[], tab?: string } | undefined} */
+        const bench = window.__BENCH__ || {}
+
+        window.__BENCH_HOST__ = {
+          readyAt: null,
+          initSentAt: null,
+          initSentAtMs: null,
+          initAcked: false,
+        }
+
+        window.addEventListener('message', (event) => {
+          const data = event.data
+          if (!data || typeof data.type !== 'string') return
+          if (data.type !== 'SG_READY') return
+          if (window.__BENCH_HOST__.initSentAt != null) return
+
+          window.__BENCH_HOST__.readyAt = performance.now()
+          const styles = Array.isArray(bench.styles) ? bench.styles : []
+          const tab = typeof bench.tab === 'string' ? bench.tab : 'txt2img'
+          const msg = { type: 'SG_INIT', tab, styles }
+
+          window.__BENCH_HOST__.initSentAt = performance.now()
+          window.__BENCH_HOST__.initSentAtMs = Date.now()
+          panel.contentWindow.postMessage(msg, '*')
+          window.__BENCH_HOST__.initAcked = true
+        })
+      })()
+    </script>
+  </body>
+</html>

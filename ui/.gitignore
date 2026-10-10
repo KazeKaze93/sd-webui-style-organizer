@@ -12,6 +12,10 @@ dist
 dist-ssr
 *.local
 
+# Local bench metrics (never commit)
+bench/results/*.json
+!bench/results/.gitkeep
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

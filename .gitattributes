@@ -1,3 +1,5 @@
+# Normalize all text to LF in the index and on checkout; binary detection stays automatic.
+* text=auto eol=lf
 # Committed Vite build output: never apply EOL conversion.
 # core.autocrlf would otherwise smudge CRLF into index.js.
 ui/dist/** -text

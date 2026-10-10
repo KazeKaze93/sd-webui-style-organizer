@@ -101,7 +101,7 @@ export function ThumbnailPreview({ style, children }: Props) {
             transform: above ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
           }}
         >
-          <div className="bg-[#0f172a] border border-sg-border rounded-lg shadow-xl overflow-hidden">
+          <div className="bg-sg-popover border border-sg-border rounded-lg shadow-xl overflow-hidden">
             <img
               src={thumbUrl}
               alt=""

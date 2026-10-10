@@ -3,7 +3,8 @@ import {
   Save, Import, Eraser, Rows3, ChevronsUpDown, ChevronsDownUp, Plus, Globe,
   Palette, AlertTriangle, Maximize2, Minimize2, X,
 } from 'lucide-react'
-import { onHostMessage, sendToHost } from './bridge'
+import { useShallow } from 'zustand/react/shallow'
+import { onHostMessage, sendToHost, type Style } from './bridge'
 import { LORA_VIEW, styleRowKey, useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
@@ -85,20 +86,99 @@ const ToolBtn = ({
   )
 }
 
+const EMPTY_SELECTED: Style[] = []
+
+/** Profile (P toggle N=5000): App 17 stack hits — selection chrome only. */
+function SelectedCountLabel() {
+  const count = useStylesStore((s) => s.selectedStyles.length)
+  if (count <= 0) return null
+  return (
+    <span className="text-xs text-sg-muted">
+      {count} selected
+    </span>
+  )
+}
+
+/** Profile (P toggle): keep conflict UI off App so grid/sidebar do not cascade. */
+function ConflictsControl() {
+  const [conflictsOpen, setConflictsOpen] = useState(false)
+  const { conflicts, styles, toggleStyle } = useStylesStore(
+    useShallow((s) => ({
+      conflicts: s.conflicts,
+      styles: s.styles,
+      toggleStyle: s.toggleStyle,
+    })),
+  )
+  const selectedStyles = useStylesStore((s) =>
+    s.conflicts.length > 0 ? s.selectedStyles : EMPTY_SELECTED,
+  )
+
+  if (conflicts.length === 0) return null
+
+  return (
+    <Popover open={conflictsOpen} onOpenChange={setConflictsOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={`${conflicts.length} style conflicts`}
+          className="flex items-center gap-1 px-2 py-1 rounded
+             bg-red-500/20 border border-red-500/40
+             text-red-400 text-xs
+             motion-safe:animate-pulse"
+        >
+          <AlertTriangle size={14} aria-hidden />
+          {conflicts.length}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        className="w-auto min-w-64 max-w-[min(20rem,calc(100vw-2.5rem))] p-3 bg-sg-popover border border-sg-border rounded-lg shadow-xl"
+      >
+        <div className="text-xs font-semibold text-white mb-2">
+          Style Conflicts
+        </div>
+        {conflicts.map((c, i) => {
+          const conflictingStyle = selectedStyles.find(s => styleRowKey(s) === c.styleBKey)
+            ?? styles.find(s => styleRowKey(s) === c.styleBKey)
+          return (
+            <div key={i} className="flex items-start justify-between gap-2 py-0.5">
+              <span className="text-xs text-red-400 min-w-0 flex-1 break-words">
+                {c.reason}
+              </span>
+              {conflictingStyle && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleStyle(conflictingStyle)
+                    setConflictsOpen(false)
+                  }}
+                  className="text-xs px-1.5 py-0.5 rounded border
+                    border-red-500/40 text-red-400 hover:bg-red-500/20
+                    transition-colors shrink-0"
+                  title={`Remove "${c.styleB}"`}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )
+        })}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [conflictsOpen, setConflictsOpen] = useState(false)
   const [loraFetchStatus, setLoraFetchStatus] = useState<{
     status: string; done: number; total: number; errors: number
   } | null>(null)
+  // P: App 17 hits — bare useStylesStore() re-rendered whole tree on toggle.
   const {
     setStyles,
     tab,
-    selectedStyles,
     styles,
     activeSource,
-    conflicts,
-    toggleStyle,
     toggleCompact,
     compactMode,
     collapsedCategories,
@@ -108,7 +188,23 @@ export default function App() {
     showToast,
     presetsCorrupt,
     setThemeMode,
-  } = useStylesStore()
+  } = useStylesStore(
+    useShallow((s) => ({
+      setStyles: s.setStyles,
+      tab: s.tab,
+      styles: s.styles,
+      activeSource: s.activeSource,
+      toggleCompact: s.toggleCompact,
+      compactMode: s.compactMode,
+      collapsedCategories: s.collapsedCategories,
+      collapseAll: s.collapseAll,
+      expandAll: s.expandAll,
+      activeCategory: s.activeCategory,
+      showToast: s.showToast,
+      presetsCorrupt: s.presetsCorrupt,
+      setThemeMode: s.setThemeMode,
+    })),
+  )
 
   const activeSourceIsReadOnly = !!activeSource &&
     styles.some(s => s.source_file === activeSource && s.read_only)
@@ -364,60 +460,8 @@ export default function App() {
                 onClick={fetchLoraTitles}
               />
             )}
-            <span className="text-xs text-sg-muted">
-              {selectedStyles.length > 0 && `${selectedStyles.length} selected`}
-            </span>
-            {conflicts.length > 0 && (
-              <Popover open={conflictsOpen} onOpenChange={setConflictsOpen}>
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label={`${conflicts.length} style conflicts`}
-                    className="flex items-center gap-1 px-2 py-1 rounded
-                       bg-red-500/20 border border-red-500/40
-                       text-red-400 text-xs
-                       motion-safe:animate-pulse"
-                  >
-                    <AlertTriangle size={14} aria-hidden />
-                    {conflicts.length}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="end"
-                  className="w-auto min-w-64 max-w-[min(20rem,calc(100vw-2.5rem))] p-3 bg-sg-popover border border-sg-border rounded-lg shadow-xl"
-                >
-                  <div className="text-xs font-semibold text-white mb-2">
-                    Style Conflicts
-                  </div>
-                  {conflicts.map((c, i) => {
-                    const conflictingStyle = selectedStyles.find(s => styleRowKey(s) === c.styleBKey)
-                      ?? styles.find(s => styleRowKey(s) === c.styleBKey)
-                    return (
-                      <div key={i} className="flex items-start justify-between gap-2 py-0.5">
-                        <span className="text-xs text-red-400 min-w-0 flex-1 break-words">
-                          {c.reason}
-                        </span>
-                        {conflictingStyle && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              toggleStyle(conflictingStyle)
-                              setConflictsOpen(false)
-                            }}
-                            className="text-xs px-1.5 py-0.5 rounded border
-                              border-red-500/40 text-red-400 hover:bg-red-500/20
-                              transition-colors shrink-0"
-                            title={`Remove "${c.styleB}"`}
-                          >
-                            ✕
-                          </button>
-                        )}
-                      </div>
-                    )
-                  })}
-                </PopoverContent>
-              </Popover>
-            )}
+            <SelectedCountLabel />
+            <ConflictsControl />
             <ToolBtn
               icon={isFullscreen ? Minimize2 : Maximize2}
               label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}

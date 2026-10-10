@@ -65,6 +65,14 @@ Restart Forge UI after cloning.
 5. Click a style card to apply/unapply.
 6. Use the **top bar** icon buttons (right of the search box) for backup, import/export, compact/collapse, etc. Presets live in the **left sidebar**.
 
+## Theme
+
+Style Grid follows the Gradio / Forge host light or dark theme:
+
+- The host detects mode from opaque page backgrounds (skips transparent layers) and posts `{ type: 'SG_THEME', mode: 'light' | 'dark' }`.
+- The iframe URL also carries `&theme=` so the first paint matches before `SG_THEME` arrives.
+- Live host theme changes (for example Gradio **system** mode) update the panel without a full reload.
+
 ## img2img support
 
 Style Grid works in both generation tabs:

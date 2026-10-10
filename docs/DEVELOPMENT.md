@@ -84,6 +84,8 @@ The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegr
 
 Bridge types are declared in `ui/src/bridge.ts`.
 
+**Theme (`SG_THEME`):** Host module `javascript/style_grid/theme.js` picks `light` / `dark` from computed backgrounds (`gradio-app`, `.gradio-container`, `body`, `html`), skipping transparent / low-alpha candidates (`a < 0.5`) before falling back to `prefers-color-scheme`. Contract shape is `{ type: 'SG_THEME', mode }` (not `theme`). `iframe.js` appends `&theme=` on `frame.src`, posts on `SG_READY`, and watches for live changes via `watchHostThemeMode`. The iframe applies mode with `ui/src/lib/themeMode.ts` (`data-sg-theme` + Tailwind `darkMode: 'class'` channel tokens in `index.css`). Contract tests: `ui/src/lib/hostTheme.contract.test.ts`.
+
 **Name+source identity:** Favorites / Recent / host `selected` / `applied` / nest order use `styleRowKey` / `styleIdentityKey` = `source_file + "\\0" + name`. Legacy bare-name favorites migrate in memory on style load when the name is unique; ambiguous duplicates are dropped (not guessed). Presets store `{name, source_file}` (normalized on load). V2 **`SG_APPLY`** / **`SG_UNAPPLY`** carry `source_file`; host resolve uses `findStyleByNameAndSource`. Thumbnail messages **`SG_GENERATE_PREVIEW` / `SG_UPLOAD_PREVIEW`** require `source`; host completion **`SG_THUMB_DONE`** includes `source_file` so duplicate-name cards cache-bust independently.
 
 ```mermaid
@@ -124,7 +126,9 @@ sequenceDiagram
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
-**Backup (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host `fetch`es `POST /style_grid/backup`, checks `response.ok` before `json()`, and maps `{ error }`, `{ ok: false }`, and thrown errors to **`SG_TOAST`**. Backup members keep directory distinction (`styles/` vs `samples/` vs `external/…`). See `docs/API.md` § POST `/backup`.
+**Backup (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host routes through **`apiPost("/style_grid/backup", {})`** (JSON helpers + write token headers), and maps `{ error }`, `{ ok: false }`, and thrown errors to **`SG_TOAST`**. Backup members keep directory distinction (`styles/` vs `samples/` vs `external/…`). See `docs/API.md` § POST `/backup`.
+
+**Mutating host requests:** Host `POST` / `DELETE` go through `apiPost` / `apiDelete` in `javascript/style_grid/api.js` (shared headers + JSON parse). Panel thumbnail delete uses `styleGridDelete` in `ui/src/lib/styleGridFetch.ts`. Do not call raw `fetch(..., { method: "POST"|"DELETE" })` from `javascript/style_grid/` for mutating routes.
 
 **Import:** failed `POST /import` (including name **collisions**) is shown to the user (alert with error + colliding names); success path unchanged.
 

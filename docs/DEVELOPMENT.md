@@ -188,7 +188,7 @@ No GitHub Actions CI. After clone:
 git config core.hooksPath .githooks
 ```
 
-`pre-push` runs root lint, pytest (min count), then UI typecheck/lint/vitest. A failing gate aborts the push.
+`pre-push` runs an EOL guard (`git ls-files --eol` must not show `i/crlf` / `w/crlf`; no CR bytes in committed `ui/dist`), root lint, pytest (min count), UI typecheck/lint/vitest, then rebuilds the UI and requires `git diff --exit-code -- ui/dist` (committed bundle matches a clean build). A failing gate aborts the push.
 
 Gaps worth knowing: host `javascript/style_grid.mjs` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 

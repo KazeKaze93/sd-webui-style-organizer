@@ -25,6 +25,7 @@ import {
 } from './components/ui/popover'
 import { cn } from './lib/utils'
 import { styleGridPost } from './lib/styleGridFetch'
+import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
 
 const WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
@@ -106,6 +107,7 @@ export default function App() {
     activeCategory,
     showToast,
     presetsCorrupt,
+    setThemeMode,
   } = useStylesStore()
 
   const activeSourceIsReadOnly = !!activeSource &&
@@ -149,8 +151,16 @@ export default function App() {
   }, [loraFetchStatus?.status, showToast])
 
   useEffect(() => {
+    setThemeMode(appliedThemeMode())
+  }, [setThemeMode])
+
+  useEffect(() => {
     useStylesStore.getState().loadUsage()
     const unsub = onHostMessage((msg) => {
+      if (msg.type === 'SG_THEME') {
+        applyThemeMode(msg.mode)
+        setThemeMode(msg.mode)
+      }
       if (msg.type === 'SG_INIT' || msg.type === 'SG_STYLES_UPDATE') {
         const raw: unknown = (msg as { styles?: unknown }).styles
         const arr = Array.isArray(raw)
@@ -200,7 +210,7 @@ export default function App() {
     })
     sendToHost({ type: 'SG_READY' })
     return unsub
-  }, [setStyles])
+  }, [setStyles, setThemeMode])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -296,20 +306,18 @@ export default function App() {
             <ToolBtn
               icon={Save}
               label="Backup CSV"
-              colorClassName="text-blue-400/80"
               onClick={() => sendToHost({ type: 'SG_BACKUP' })}
             />
             <ToolBtn
               icon={Import}
               label="Import/Export"
-              colorClassName="text-blue-400/80"
               onClick={() => sendToHost({ type: 'SG_IMPORT_EXPORT' })}
             />
             <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
               icon={Eraser}
               label="Clear all selected styles"
-              colorClassName="text-red-400/80"
+              colorClassName="text-sg-danger-text"
               onClick={() => {
                 sendToHost({ type: 'SG_CLEAR_ALL' })
               }}
@@ -318,14 +326,12 @@ export default function App() {
             <ToolBtn
               icon={Rows3}
               label="Compact mode"
-              colorClassName="text-violet-300/80"
               active={compactMode}
               onClick={() => toggleCompact()}
             />
             <ToolBtn
               icon={collapsedCategories.size > 0 ? ChevronsUpDown : ChevronsDownUp}
               label={collapsedCategories.size > 0 ? 'Expand all' : 'Collapse all'}
-              colorClassName="text-violet-300/80"
               onClick={() =>
                 collapsedCategories.size > 0 ? expandAll() : collapseAll()
               }
@@ -340,7 +346,7 @@ export default function App() {
                     ? 'This source is read-only (bundled samples). Pick or import another CSV to add styles.'
                     : 'New style'
               }
-              colorClassName="text-emerald-400/80"
+              colorClassName="text-sg-accent-text"
               disabled={!activeSource || activeSourceIsReadOnly}
               onClick={() => {
                 sendToHost({ type: 'SG_NEW_STYLE', sourceFile: activeSource! })
@@ -354,7 +360,6 @@ export default function App() {
                     ? `Fetching titles from CivitAI… ${loraFetchStatus.done}/${loraFetchStatus.total}`
                     : 'Fetch LoRA titles from CivitAI\n(reads modelId already in each LoRA\'s local .json; nothing sent to CivitAI beyond the request itself)'
                 }
-                colorClassName="text-amber-400/80"
                 disabled={loraFetchStatus?.status === 'running'}
                 onClick={fetchLoraTitles}
               />

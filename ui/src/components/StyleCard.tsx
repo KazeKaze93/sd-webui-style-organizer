@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { motion } from 'framer-motion'
 import {
   Check,
   Copy,
@@ -15,7 +14,14 @@ import {
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
-import { LORA_SOURCE, styleRowKey, useCategoryColor, useStylesStore } from '../store/stylesStore'
+import {
+  LORA_SOURCE,
+  styleRowKey,
+  useCategoryColor,
+  useIsSelected,
+  useStyleDuplicates,
+  useStylesStore,
+} from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { styleGridDelete } from '../lib/styleGridFetch'
 import { ThumbnailPreview } from './ThumbnailPreview'
@@ -32,13 +38,12 @@ const READ_ONLY_PREVIEW_TOAST =
   'This style is from the protected samples pack (read-only). Duplicate it into a data source to manage your own preview.'
 
 export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
-  const isSelected = useStylesStore(
-    s => s.selectedStyles.some(sel => styleRowKey(sel) === styleRowKey(style))
-  )
-  const fav = useStylesStore(s => s.favorites.has(styleRowKey(style)))
+  const key = useMemo(() => styleRowKey(style), [style])
+  const isSelected = useIsSelected(key)
+  const duplicates = useStyleDuplicates(style.name)
+  const fav = useStylesStore(s => s.favorites.has(key))
   const usageCount = useStylesStore(s => s.usageCounts[style.name] || 0)
   const activeSource = useStylesStore(s => s.activeSource)
-  const styles = useStylesStore(s => s.styles)
   const showToast = useStylesStore(s => s.showToast)
   const { toggleStyle, toggleFavorite } = useStylesStore(
     useShallow(s => ({ toggleStyle: s.toggleStyle, toggleFavorite: s.toggleFavorite }))
@@ -46,17 +51,19 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
   const isLora = style.source_file === LORA_SOURCE
-  const duplicates = useMemo(
-    () => styles.filter(s => s.name === style.name),
-    [styles, style.name],
-  )
   const hasMultipleSources = duplicates.length > 1
-  const sourceLabels = duplicates.map((dup) =>
-    ((dup.source_file || 'Unknown').split(/[\\/]/).pop() || 'Unknown')
-      .replace(/\.csv$/i, '')
+  const sourceLabels = useMemo(
+    () =>
+      duplicates.map((dup) =>
+        ((dup.source_file || 'Unknown').split(/[\\/]/).pop() || 'Unknown')
+          .replace(/\.csv$/i, '')
+      ),
+    [duplicates],
   )
-  const maxSourceLabelLen = sourceLabels.reduce((max, label) => Math.max(max, label.length), 0)
-  const pickerWidthCh = Math.min(48, Math.max(18, maxSourceLabelLen + 4))
+  const pickerWidthCh = useMemo(() => {
+    const maxSourceLabelLen = sourceLabels.reduce((max, label) => Math.max(max, label.length), 0)
+    return Math.min(48, Math.max(18, maxSourceLabelLen + 4))
+  }, [sourceLabels])
 
   const displayName = style.display_name || (style.name.includes('_')
     ? style.name.split('_').slice(1).join(' ')
@@ -96,15 +103,9 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
   return (
     <>
       <ThumbnailPreview style={style}>
-        <motion.div
+        <div
           data-sg-card="true"
           title={`${style.name}\nRight-click for options`}
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ duration: 0.1 }}
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
           onContextMenu={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -122,7 +123,9 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
           }}
           className={`
             relative cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
-            transition-colors duration-150 select-none
+            select-none transition-colors
+            transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]
+            motion-reduce:transition-none motion-reduce:transform-none
             ${isSelected
               ? 'border-sg-accent bg-sg-accent/10'
               : 'border-sg-border bg-sg-surface hover:border-sg-accent/50'}
@@ -163,7 +166,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               {usageCount > 99 ? '99+' : usageCount}
             </span>
           )}
-        </motion.div>
+        </div>
       </ThumbnailPreview>
 
       {menuPos && (
@@ -307,7 +310,8 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                           )
                           return
                         }
-                        const version = Date.now()
+                        const version = String(Date.now())
+                        useStylesStore.getState().bumpThumbVersion(key, version)
                         window.postMessage(
                           {
                             type: 'SG_THUMB_DONE',
@@ -319,7 +323,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                         )
                         useStylesStore.setState((s) => ({
                           styles: s.styles.map((row) =>
-                            styleRowKey(row) === styleRowKey(style)
+                            styleRowKey(row) === key
                               ? { ...row, has_thumbnail: false }
                               : row
                           ),

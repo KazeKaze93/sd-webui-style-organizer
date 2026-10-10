@@ -35,3 +35,10 @@ export function styleGridPost(url: string, body: unknown): Promise<Response> {
     body: JSON.stringify(body ?? {}),
   })
 }
+
+export function styleGridDelete(url: string): Promise<Response> {
+  return fetch(url, {
+    method: 'DELETE',
+    headers: styleGridWriteHeaders(),
+  })
+}

@@ -3,6 +3,7 @@
 
 import {
     apiPost,
+    apiDelete,
     apiGet,
     assertNoApiError,
 } from "./api.js";
@@ -250,7 +251,7 @@ function deleteStyle(tabName, styleName, source, onDeleted) {
                 apiPost("/style_grid/style/delete", { name: styleName, source: source })
                     .then(assertNoApiError)
                     .then(function () {
-                        fetch("/style_grid/thumbnail?name=" + encodeURIComponent(styleName) + "&source=" + encodeURIComponent(source || ""), { method: "DELETE" }).catch(function () { /* best-effort, style delete already succeeded */ });
+                        apiDelete("/style_grid/thumbnail?name=" + encodeURIComponent(styleName) + "&source=" + encodeURIComponent(source || "")).catch(function () { /* best-effort, style delete already succeeded */ });
                         hooks.refreshPanel(tabName, { quietVanishedToast: true });
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
@@ -421,40 +422,25 @@ function showExportImport(tabName) {
             reader.onload = function () {
                 try {
                     const data = JSON.parse(reader.result);
-                    fetch("/style_grid/import", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(data),
-                    }).then(function (r) {
-                        return r.text().then(function (text) {
-                            var body = {};
-                            if (text) {
-                                try {
-                                    body = JSON.parse(text);
-                                } catch (_e) {
-                                    if (!r.ok) {
-                                        return Promise.reject(new Error("HTTP " + r.status));
-                                    }
-                                    return Promise.reject(new Error("Invalid JSON in response"));
-                                }
-                            }
-                            if (!r.ok || (body && body.error)) {
-                                var msg = (body && body.error) || ("HTTP " + r.status);
-                                if (body && Array.isArray(body.collisions) && body.collisions.length) {
+                    apiPost("/style_grid/import", data)
+                        .then(function (body) {
+                            if (body && body.error) {
+                                var msg = body.error;
+                                if (Array.isArray(body.collisions) && body.collisions.length) {
                                     msg += "\n\nColliding names: " + body.collisions.join(", ");
                                 }
                                 return Promise.reject(new Error(msg));
                             }
                             return body;
+                        })
+                        .then(function () {
+                            overlay.remove();
+                            hooks.refreshPanel(tabName);
+                            var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                            if (typeof notify === "function") notify();
+                        }).catch(function (err) {
+                            showImportError((err && err.message) ? err.message : "Import failed");
                         });
-                    }).then(function () {
-                        overlay.remove();
-                        hooks.refreshPanel(tabName);
-                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
-                        if (typeof notify === "function") notify();
-                    }).catch(function (err) {
-                        showImportError((err && err.message) ? err.message : "Import failed");
-                    });
                 } catch (_e) { showImportError("Invalid JSON file"); }
             };
             reader.readAsText(file);

@@ -48,6 +48,9 @@ import {
     buildThemeMessage,
     detectHostThemeMode,
 } from "../theme.js";
+import {
+    apiPost,
+} from "../api.js";
 
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
@@ -168,11 +171,7 @@ function installIframeMessageBridge(tab, frame) {
             }
 
             if (msg.type === "SG_BACKUP") {
-                fetch("/style_grid/backup", { method: "POST" })
-                    .then(function (r) {
-                        if (!r.ok) { return r.text().then(function (t) { throw new Error("HTTP " + r.status + ": " + t.slice(0, 120)); }); }
-                        return r.json();
-                    })
+                apiPost("/style_grid/backup", {})
                     .then(function (data) {
                         if (frame.contentWindow) {
                             var failed = data.error || data.ok === false;

@@ -1,10 +1,23 @@
 import { memo, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { motion } from 'framer-motion'
+import {
+  Check,
+  Copy,
+  CopyPlus,
+  FolderInput,
+  ImageMinus,
+  ImagePlus,
+  Pencil,
+  Sparkles,
+  Star,
+  Trash2,
+} from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
 import { getCategoryColor, LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
+import { styleGridWriteHeaders } from '../lib/styleGridFetch'
 import { ThumbnailPreview } from './ThumbnailPreview'
 
 interface Props {
@@ -15,6 +28,9 @@ interface Props {
 const Portal = ({ children }: { children: React.ReactNode }) =>
   createPortal(children, document.body)
 
+const READ_ONLY_PREVIEW_TOAST =
+  'This style is from the protected samples pack (read-only). Duplicate it into a data source to manage your own preview.'
+
 export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
   const isSelected = useStylesStore(
     s => s.selectedStyles.some(sel => styleRowKey(sel) === styleRowKey(style))
@@ -23,6 +39,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
   const usageCount = useStylesStore(s => s.usageCounts[style.name] || 0)
   const activeSource = useStylesStore(s => s.activeSource)
   const styles = useStylesStore(s => s.styles)
+  const showToast = useStylesStore(s => s.showToast)
   const { toggleStyle, toggleFavorite } = useStylesStore(
     useShallow(s => ({ toggleStyle: s.toggleStyle, toggleFavorite: s.toggleFavorite }))
   )
@@ -46,6 +63,9 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
     : style.name)
 
   const borderColor = getCategoryColor(style.category || 'OTHER')
+  const previewReadOnlyClass = style.read_only
+    ? 'opacity-45 cursor-not-allowed text-sg-muted hover:bg-transparent'
+    : 'text-sg-text hover:bg-sg-accent/20'
 
   useEffect(() => {
     if (!menuPos) return
@@ -78,7 +98,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
       <ThumbnailPreview style={style}>
         <motion.div
           data-sg-card="true"
-          title={style.name}
+          title={`${style.name}\nRight-click for options`}
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
@@ -116,14 +136,30 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             {displayName}
           </div>
 
+          {fav && (
+            <>
+              <Star
+                size={12}
+                fill="currentColor"
+                className="absolute top-1.5 right-1.5 text-amber-300"
+                aria-hidden="true"
+              />
+              <span className="sr-only">Favorite</span>
+            </>
+          )}
+
           {/* Selected indicator */}
           {isSelected && (
-            <div className="absolute bottom-2 right-2 w-2 h-2
-                            rounded-full bg-sg-accent" />
+            <span
+              aria-hidden="true"
+              className="absolute bottom-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-sg-accent text-white"
+            >
+              <Check size={12} strokeWidth={3} />
+            </span>
           )}
           {usageCount > 0 && (
             <span className="absolute bottom-1.5 left-2 text-[10px] 
-                     text-sg-muted/60 font-mono">
+                     text-sg-muted font-mono">
               {usageCount > 99 ? '99+' : usageCount}
             </span>
           )}
@@ -135,7 +171,6 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
           <div
             className="fixed z-[9999] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1 min-w-48"
             style={{ left: menuPos.x, top: menuPos.y }}
-            onMouseLeave={() => setMenuPos(null)}
             onContextMenu={(e) => e.preventDefault()}
           >
             <button
@@ -145,22 +180,32 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               {isSelected ? '✕ Deselect' : '✓ Select'}
             </button>
             <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
               onClick={() => { toggleFavorite(style); setMenuPos(null) }}
             >
-              {fav ? '★ Remove from Favorites' : '☆ Add to Favorites'}
+              <Star size={14} aria-hidden="true" />
+              {fav ? 'Remove from Favorites' : 'Add to Favorites'}
             </button>
             <div className="h-px my-1 bg-sg-border" />
             <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { navigator.clipboard.writeText(style.prompt); setMenuPos(null) }}
+              className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+              onClick={async () => {
+                setMenuPos(null)
+                try {
+                  await navigator.clipboard.writeText(style.prompt)
+                  showToast('Prompt copied', 'success')
+                } catch {
+                  showToast('Copy failed', 'error')
+                }
+              }}
             >
-              📋 Copy prompt
+              <Copy size={14} aria-hidden="true" />
+              Copy prompt
             </button>
             {!isLora && (
               <>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
                   onClick={() => {
                     sendToHost({
                       type: 'SG_EDIT_STYLE',
@@ -170,10 +215,11 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                     setMenuPos(null)
                   }}
                 >
-                  ✏️ Edit
+                  <Pencil size={14} aria-hidden="true" />
+                  Edit
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
                   onClick={() => {
                     sendToHost({
                       type: 'SG_DUPLICATE_STYLE',
@@ -183,10 +229,11 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                     setMenuPos(null)
                   }}
                 >
-                  📄 Duplicate
+                  <CopyPlus size={14} aria-hidden="true" />
+                  Duplicate
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
                   onClick={() => {
                     sendToHost({
                       type: 'SG_MOVE_TO_CATEGORY',
@@ -196,7 +243,8 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                     setMenuPos(null)
                   }}
                 >
-                  📂 Move to category...
+                  <FolderInput size={14} aria-hidden="true" />
+                  Move to category...
                 </button>
               </>
             )}
@@ -204,24 +252,98 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               <>
                 <div className="h-px my-1 bg-sg-border" />
                 <button
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => { sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name, source: style.source_file }); setMenuPos(null) }}
+                  className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
+                  onClick={() => {
+                    if (style.read_only) {
+                      setMenuPos(null)
+                      showToast(READ_ONLY_PREVIEW_TOAST, 'info')
+                      return
+                    }
+                    sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name, source: style.source_file })
+                    setMenuPos(null)
+                  }}
                 >
-                  🎨 Generate preview (SD)
+                  <Sparkles size={14} aria-hidden="true" />
+                  Generate preview (SD)
                 </button>
                 <button
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => { sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name, source: style.source_file }); setMenuPos(null) }}
+                  className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
+                  onClick={() => {
+                    if (style.read_only) {
+                      setMenuPos(null)
+                      showToast(READ_ONLY_PREVIEW_TOAST, 'info')
+                      return
+                    }
+                    sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name, source: style.source_file })
+                    setMenuPos(null)
+                  }}
                 >
-                  🖼️ Upload preview image
+                  <ImagePlus size={14} aria-hidden="true" />
+                  Upload preview image
                 </button>
+                {style.has_thumbnail && (
+                  <button
+                    className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
+                    onClick={async () => {
+                      if (style.read_only) {
+                        setMenuPos(null)
+                        showToast(READ_ONLY_PREVIEW_TOAST, 'info')
+                        return
+                      }
+                      setMenuPos(null)
+                      try {
+                        const name = style.name
+                        const source_file = style.source_file
+                        const params = new URLSearchParams({ name })
+                        if (source_file) params.set('source', source_file)
+                        const res = await fetch(`/style_grid/thumbnail?${params}`, {
+                          method: 'DELETE',
+                          headers: styleGridWriteHeaders(),
+                        })
+                        const data = await res.json().catch(() => ({}))
+                        if (!res.ok || data.ok === false || data.error) {
+                          showToast(
+                            typeof data.error === 'string' && data.error
+                              ? data.error
+                              : 'Remove preview failed',
+                            'error',
+                          )
+                          return
+                        }
+                        const version = Date.now()
+                        window.postMessage(
+                          {
+                            type: 'SG_THUMB_DONE',
+                            styleId: name,
+                            version,
+                            source_file: source_file || '',
+                          },
+                          '*',
+                        )
+                        useStylesStore.setState((s) => ({
+                          styles: s.styles.map((row) =>
+                            styleRowKey(row) === styleRowKey(style)
+                              ? { ...row, has_thumbnail: false }
+                              : row
+                          ),
+                        }))
+                        showToast('Preview removed', 'success')
+                      } catch {
+                        showToast('Remove preview failed', 'error')
+                      }
+                    }}
+                  >
+                    <ImageMinus size={14} aria-hidden="true" />
+                    Remove preview
+                  </button>
+                )}
               </>
             )}
             {!isLora && (
               <>
                 <div className="h-px my-1 bg-sg-border" />
                 <button
-                  className="w-full text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
                   onClick={() => {
                     sendToHost({
                       type: 'SG_DELETE_STYLE',
@@ -231,7 +353,8 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
                     setMenuPos(null)
                   }}
                 >
-                  🗑️ Delete
+                  <Trash2 size={14} aria-hidden="true" />
+                  Delete
                 </button>
               </>
             )}

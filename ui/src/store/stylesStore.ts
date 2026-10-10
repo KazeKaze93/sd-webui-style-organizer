@@ -27,8 +27,13 @@ export const LORA_VIEW = '🧬 LoRA'
 interface Conflict {
   styleA: string
   styleB: string
+  styleAKey: string
+  styleBKey: string
   reason: string
 }
+
+const TOAST_TTL_MS = 3000
+const TOAST_ERROR_TTL_MS = 6000
 
 /** Maps category text to a stable palette index for repeatable colors. */
 export function getCategoryColor(category: string): string {
@@ -649,9 +654,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   showToast: (message, variant = 'info') => {
     const id = Date.now()
     set((s) => ({ toasts: [...s.toasts, { id, message, variant }] }))
+    const ttl = variant === 'error' ? TOAST_ERROR_TTL_MS : TOAST_TTL_MS
     setTimeout(() => set((s) => ({
       toasts: s.toasts.filter(t => t.id !== id)
-    })), 3000)
+    })), ttl)
   },
   detectConflicts: () => {
     // Exact-set match (aligned with former server detect_conflicts / V1 checkConflictsLocal):
@@ -670,6 +676,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     const tokenMap = selectedStyles.map((s) => ({
       name: s.name,
+      key: styleRowKey(s),
       pos: tokenize(s.prompt || ''),
       neg: tokenize(s.negative_prompt || ''),
     }))
@@ -684,10 +691,12 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
         if (aKillsB) conflicts.push({
           styleA: a.name, styleB: b.name,
+          styleAKey: a.key, styleBKey: b.key,
           reason: `${a.name} negates tags from ${b.name}`
         })
         if (bKillsA) conflicts.push({
           styleA: b.name, styleB: a.name,
+          styleAKey: b.key, styleBKey: a.key,
           reason: `${b.name} negates tags from ${a.name}`
         })
       }

@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../bridge'
 import {
+  matchesSearch,
+  matchesSearchKey,
   styleRowKey,
+  useCategorySelectedCount,
   useIsSelected,
   useStyleDuplicates,
   useStylesStore,
@@ -47,6 +50,8 @@ function resetDerivedStore() {
     sources: [],
     selectedStyles: [],
     selectedKeySet: new Set(),
+    selectedCountByCategory: new Map(),
+    searchTextByKey: new Map(),
     duplicatesByName: new Map(),
     thumbVersions: {},
     conflicts: [],
@@ -242,5 +247,140 @@ describe('derived: thumbVersions hydration', () => {
     localStorage.setItem(`sg_thumb_v_${FILE_B}\0Other`, '9')
     expect(mod.useStylesStore.getState().thumbVersions[rowKey]).toBe('42')
     expect(mod.useStylesStore.getState().thumbVersions[`${FILE_B}\0Other`]).toBeUndefined()
+  })
+})
+
+describe('derived: searchTextByKey / matchesSearchKey', () => {
+  beforeEach(() => {
+    resetDerivedStore()
+  })
+
+  it('matchesSearchKey matches matchesSearch for AND tokens and description', () => {
+    const fixtures: Style[] = [
+      row('BODY_Pointy_Ears', FILE_A, { description: 'fox ears fluffy Combos: OTHER.' }),
+      row('BODY_Tail', FILE_A, { description: 'fluffy fox' }),
+      row('HAIR_Long', FILE_B, { category: 'HAIR', description: '' }),
+      row('STYLE_Oil', FILE_A, { category: 'STYLE', description: 'painterly brush strokes' }),
+    ]
+    useStylesStore.getState().setStyles(fixtures, 'txt2img')
+
+    const queries = [
+      '',
+      '   ',
+      'pointy',
+      'pointy ears',
+      'fox fluffy',
+      'ears fox',
+      'painterly',
+      'brush strokes',
+      'nope',
+      'pointy nope',
+      'HAIR',
+      'long',
+    ]
+
+    for (const style of fixtures) {
+      const key = styleRowKey(style)
+      expect(useStylesStore.getState().searchTextByKey.has(key)).toBe(true)
+      for (const q of queries) {
+        expect(matchesSearchKey(key, q)).toBe(matchesSearch(style, q))
+      }
+    }
+  })
+
+  it('rebuilds searchTextByKey only when styles change', () => {
+    const a = row('BODY_Ears', FILE_A, { description: 'soft fur' })
+    useStylesStore.getState().setStyles([a], 'txt2img')
+    const mapBefore = useStylesStore.getState().searchTextByKey
+
+    useStylesStore.getState().setSearch('ears')
+    useStylesStore.getState().toggleStyle(a)
+    expect(useStylesStore.getState().searchTextByKey).toBe(mapBefore)
+
+    const b = row('HAIR_Long', FILE_B, { category: 'HAIR' })
+    useStylesStore.getState().setStyles([a, b], 'txt2img')
+    const mapAfter = useStylesStore.getState().searchTextByKey
+    expect(mapAfter).not.toBe(mapBefore)
+    expect(mapAfter.size).toBe(2)
+  })
+})
+
+describe('derived: addToRecent coalesce', () => {
+  beforeEach(() => {
+    resetDerivedStore()
+  })
+
+  it('keeps recentNames ref when head key is already the style', () => {
+    const a = row('BODY_Ears', FILE_A)
+    const b = row('HAIR_Long', FILE_B, { category: 'HAIR' })
+    useStylesStore.getState().setStyles([a, b], 'txt2img')
+
+    useStylesStore.getState().toggleStyle(a)
+    const afterFirst = useStylesStore.getState().recentNames
+    expect(afterFirst[0]).toBe(styleRowKey(a))
+
+    useStylesStore.getState().toggleStyle(a) // deselect — must not touch recent
+    expect(useStylesStore.getState().recentNames).toBe(afterFirst)
+
+    useStylesStore.getState().toggleStyle(a) // re-select — already head → no-op
+    expect(useStylesStore.getState().recentNames).toBe(afterFirst)
+
+    useStylesStore.getState().toggleStyle(b)
+    const afterB = useStylesStore.getState().recentNames
+    expect(afterB).not.toBe(afterFirst)
+    expect(afterB[0]).toBe(styleRowKey(b))
+    expect(afterB[1]).toBe(styleRowKey(a))
+  })
+})
+
+describe('derived: selectedCountByCategory', () => {
+  beforeEach(() => {
+    resetDerivedStore()
+  })
+
+  it('tracks add, remove, clearAll, and selectAllInCategory', () => {
+    const a = row('BODY_Ears', FILE_A)
+    const b = row('BODY_Tail', FILE_A)
+    const c = row('HAIR_Long', FILE_B, { category: 'HAIR' })
+    useStylesStore.getState().setStyles([a, b, c], 'txt2img')
+    expect(typeof useCategorySelectedCount).toBe('function')
+
+    useStylesStore.getState().toggleStyle(a)
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBe(1)
+    expect(useStylesStore.getState().selectedCountByCategory.get('HAIR')).toBeUndefined()
+
+    useStylesStore.getState().toggleStyle(c)
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBe(1)
+    expect(useStylesStore.getState().selectedCountByCategory.get('HAIR')).toBe(1)
+
+    useStylesStore.getState().toggleStyle(a)
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBeUndefined()
+    expect(useStylesStore.getState().selectedCountByCategory.get('HAIR')).toBe(1)
+
+    useStylesStore.getState().selectAllInCategory('BODY')
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBe(2)
+    expect(useStylesStore.getState().selectedCountByCategory.get('HAIR')).toBe(1)
+
+    useStylesStore.getState().selectAllInCategory('BODY')
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBeUndefined()
+    expect(useStylesStore.getState().selectedCountByCategory.get('HAIR')).toBe(1)
+
+    useStylesStore.getState().clearAll()
+    expect(useStylesStore.getState().selectedCountByCategory.size).toBe(0)
+  })
+
+  it('setState({ selectedStyles }) rebuilds selectedCountByCategory', () => {
+    const a = row('BODY_Ears', FILE_A)
+    const c = row('HAIR_Long', FILE_B, { category: 'HAIR' })
+    useStylesStore.getState().setStyles([a, c], 'txt2img')
+    useStylesStore.getState().toggleStyle(a)
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBe(1)
+
+    useStylesStore.setState({ selectedStyles: [a, c] })
+    expect(useStylesStore.getState().selectedCountByCategory.get('BODY')).toBe(1)
+    expect(useStylesStore.getState().selectedCountByCategory.get('HAIR')).toBe(1)
+
+    useStylesStore.setState({ selectedStyles: [] })
+    expect(useStylesStore.getState().selectedCountByCategory.size).toBe(0)
   })
 })

@@ -141,6 +141,53 @@ function buildSelectedKeySet(styles: Style[]): ReadonlySet<string> {
   return new Set(styles.map((s) => styleRowKey(s)))
 }
 
+function buildSelectedCountByCategory(styles: Style[]): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>()
+  for (const s of styles) {
+    const cat = s.category
+    counts.set(cat, (counts.get(cat) ?? 0) + 1)
+  }
+  return counts
+}
+
+/** selectedKeySet + selectedCountByCategory — always rebuilt together. */
+function selectionDerived(styles: Style[]): {
+  selectedKeySet: ReadonlySet<string>
+  selectedCountByCategory: ReadonlyMap<string, number>
+} {
+  return {
+    selectedKeySet: buildSelectedKeySet(styles),
+    selectedCountByCategory: buildSelectedCountByCategory(styles),
+  }
+}
+
+function buildSearchTextByKey(styles: Style[]): ReadonlyMap<string, string> {
+  const out = new Map<string, string>()
+  for (const s of styles) {
+    out.set(styleRowKey(s), buildStyleSearchText(s))
+  }
+  return out
+}
+
+function keySetsEqual(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
+  if (a.size !== b.size) return false
+  for (const key of b) {
+    if (!a.has(key)) return false
+  }
+  return true
+}
+
+function countMapsEqual(
+  a: ReadonlyMap<string, number>,
+  b: ReadonlyMap<string, number>,
+): boolean {
+  if (a.size !== b.size) return false
+  for (const [cat, n] of b) {
+    if (a.get(cat) !== n) return false
+  }
+  return true
+}
+
 /** Names with 2+ library rows; per-name arrays keep stable refs until `styles` changes. */
 function buildDuplicatesByName(styles: Style[]): Map<string, readonly Style[]> {
   const buckets = new Map<string, Style[]>()
@@ -320,11 +367,23 @@ function buildStyleSearchText(style: Style): string {
   return [nameSearchText(style), cleanDescription].filter(Boolean).join(' ').toLowerCase()
 }
 
-export function matchesSearch(style: Style, rawQuery: string): boolean {
+function tokensMatchHaystack(haystack: string, rawQuery: string): boolean {
   const query = rawQuery.trim().toLowerCase()
   if (!query) return true
-  const haystack = buildStyleSearchText(style)
-  return query.split(/\s+/).filter(Boolean).every(token => haystack.includes(token))
+  return query.split(/\s+/).filter(Boolean).every((token) => haystack.includes(token))
+}
+
+/** AND-token match against name/description haystack (uses searchTextByKey when present). */
+export function matchesSearch(style: Style, rawQuery: string): boolean {
+  const key = styleRowKey(style)
+  const cached = useStylesStore.getState().searchTextByKey.get(key)
+  return tokensMatchHaystack(cached ?? buildStyleSearchText(style), rawQuery)
+}
+
+/** Same AND-token semantics as matchesSearch, keyed via searchTextByKey. */
+export function matchesSearchKey(key: string, rawQuery: string): boolean {
+  const haystack = useStylesStore.getState().searchTextByKey.get(key) ?? ''
+  return tokensMatchHaystack(haystack, rawQuery)
 }
 
 /** Map persisted or UI source string to an entry in `sources` (exact match, else basename). */
@@ -363,6 +422,10 @@ interface StylesStore {
   selectedStyles: Style[]
   /** styleRowKey set for `selectedStyles`; rebuilt in the same set() as selection. */
   selectedKeySet: ReadonlySet<string>
+  /** category → selected count; rebuilt in the same set() as selectedKeySet. */
+  selectedCountByCategory: ReadonlyMap<string, number>
+  /** styleRowKey → lowercased search haystack; rebuilt only when `styles` change. */
+  searchTextByKey: ReadonlyMap<string, string>
   /** Name → rows sharing that name (length ≥ 2); rebuilt when `styles` changes. */
   duplicatesByName: ReadonlyMap<string, readonly Style[]>
   /** Cache-bust versions keyed by styleRowKey; hydrated once from sg_thumb_v_* LS keys. */
@@ -481,7 +544,7 @@ export function selectFilteredStyles(
 
   if (activeCategory === '★ Favorites') {
     return styles.filter(
-      (s) => favorites.has(styleRowKey(s)) && bySource(s) && matchesSearch(s, search),
+      (s) => favorites.has(styleRowKey(s)) && bySource(s) && matchesSearchKey(styleRowKey(s), search),
     )
   }
 
@@ -489,16 +552,23 @@ export function selectFilteredStyles(
     return recentNames
       .map((key) => styles.find((s) => styleRowKey(s) === key && bySource(s)))
       .filter(Boolean)
-      .filter(s => matchesSearch(s as Style, search)) as Style[]
+      .filter((s) => matchesSearchKey(styleRowKey(s as Style), search)) as Style[]
   }
 
   if (activeCategory === LORA_VIEW) {
-    return styles.filter(s => s.source_file === LORA_SOURCE && matchesSearch(s, search))
+    return styles.filter(
+      (s) => s.source_file === LORA_SOURCE && matchesSearchKey(styleRowKey(s), search),
+    )
   }
 
-  let filtered = styles.filter(s => {
+  let filtered = styles.filter((s) => {
     const matchCat = !activeCategory || s.category === activeCategory
-    return s.source_file !== LORA_SOURCE && bySource(s) && matchCat && matchesSearch(s, search)
+    return (
+      s.source_file !== LORA_SOURCE &&
+      bySource(s) &&
+      matchCat &&
+      matchesSearchKey(styleRowKey(s), search)
+    )
   })
 
   if (!activeSource) {
@@ -518,6 +588,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   sources: [],
   selectedStyles: [],
   selectedKeySet: new Set(),
+  selectedCountByCategory: new Map(),
+  searchTextByKey: new Map(),
   duplicatesByName: new Map(),
   thumbVersions: loadThumbVersionsFromLs(),
   conflicts: [],
@@ -578,6 +650,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       sources,
       activeSource,
       duplicatesByName: buildDuplicatesByName(styles),
+      searchTextByKey: buildSearchTextByKey(styles),
       ...(favsChanged ? { favorites: new Set(nextFavs) } : {}),
       ...(recentChanged ? { recentNames: nextRecent } : {}),
     })
@@ -636,7 +709,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       const nextSelected = selectedStyles.filter(s => !removeKeys.has(styleRowKey(s)))
       set({
         selectedStyles: nextSelected,
-        selectedKeySet: buildSelectedKeySet(nextSelected),
+        ...selectionDerived(nextSelected),
       })
       catStyles.forEach((style) => {
         sendToHost({
@@ -656,7 +729,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const nextSelected = [...selectedStyles, ...toAdd]
     set({
       selectedStyles: nextSelected,
-      selectedKeySet: buildSelectedKeySet(nextSelected),
+      ...selectionDerived(nextSelected),
     })
     toAdd.forEach((style) => {
       get().addToRecent(style)
@@ -681,8 +754,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   isFavorite: (style) => get().favorites.has(styleRowKey(style)),
   addToRecent: (style) => {
     const key = styleRowKey(style)
-    const recent = [key, ...get().recentNames.filter((n) => n !== key)]
-      .slice(0, 10)
+    const prev = get().recentNames
+    // Already at head — keep the same array ref (Sidebar Recent badge skips no-op).
+    if (prev[0] === key) return
+    const recent = [key, ...prev.filter((n) => n !== key)].slice(0, 10)
     localStorage.setItem('sg_v2_recent', JSON.stringify(recent))
     set({ recentNames: recent })
   },
@@ -698,7 +773,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       const nextSelected = selectedStyles.filter(s => styleRowKey(s) !== key)
       set({
         selectedStyles: nextSelected,
-        selectedKeySet: buildSelectedKeySet(nextSelected),
+        ...selectionDerived(nextSelected),
         styleContributors: nextContributors,
       })
       sendToHost({
@@ -712,7 +787,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       const nextSelected = [...selectedStyles, style]
       set({
         selectedStyles: nextSelected,
-        selectedKeySet: buildSelectedKeySet(nextSelected),
+        ...selectionDerived(nextSelected),
         styleContributors: {
           ...styleContributors,
           [key]: new Set([...existing, 'manual']),
@@ -732,7 +807,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   },
   setSelectedStyles: (styles: Style[]) => set({
     selectedStyles: styles,
-    selectedKeySet: buildSelectedKeySet(styles),
+    ...selectionDerived(styles),
   }),
   clearAll: () => {
     const { selectedStyles } = get()
@@ -746,6 +821,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({
       selectedStyles: [],
       selectedKeySet: new Set(),
+      selectedCountByCategory: new Map(),
       conflicts: [],
       activePresetName: null,
       styleContributors: {},
@@ -755,6 +831,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({
       selectedStyles: [],
       selectedKeySet: new Set(),
+      selectedCountByCategory: new Map(),
       conflicts: [],
       activeWildcards: [],
       activePresetName: null,
@@ -995,14 +1072,14 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         set({
           presets: data.presets,
           selectedStyles: nextSelected,
-          selectedKeySet: buildSelectedKeySet(nextSelected),
+          ...selectionDerived(nextSelected),
           styleContributors: nextContributors,
           ...(get().activePresetName === name ? { activePresetName: null } : {}),
         })
       } else {
         set({
           selectedStyles: nextSelected,
-          selectedKeySet: buildSelectedKeySet(nextSelected),
+          ...selectionDerived(nextSelected),
           styleContributors: nextContributors,
         })
         if (get().activePresetName === name) {
@@ -1114,7 +1191,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
     set({
       selectedStyles: selected,
-      selectedKeySet: buildSelectedKeySet(selected),
+      ...selectionDerived(selected),
       activePresetName: name,
       styleContributors: nextContributors,
     })
@@ -1219,7 +1296,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     set({
       selectedStyles: nextSelected,
-      selectedKeySet: buildSelectedKeySet(nextSelected),
+      ...selectionDerived(nextSelected),
       activeWildcards: nextActiveWildcards,
       styleContributors: nextContributors,
     })
@@ -1271,26 +1348,25 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   }
 }))
 
-/** Rebuild selectedKeySet when selectedStyles changes (incl. raw setState bypasses). */
+/** Rebuild selectedKeySet + selectedCountByCategory when selectedStyles changes. */
 useStylesStore.subscribe((state, prev) => {
   if (state.selectedStyles === prev.selectedStyles) return
-  const next = buildSelectedKeySet(state.selectedStyles)
-  const cur = state.selectedKeySet
-  if (cur.size === next.size) {
-    let same = true
-    for (const key of next) {
-      if (!cur.has(key)) {
-        same = false
-        break
-      }
-    }
-    if (same) return
+  const derived = selectionDerived(state.selectedStyles)
+  if (
+    keySetsEqual(state.selectedKeySet, derived.selectedKeySet) &&
+    countMapsEqual(state.selectedCountByCategory, derived.selectedCountByCategory)
+  ) {
+    return
   }
-  useStylesStore.setState({ selectedKeySet: next })
+  useStylesStore.setState(derived)
 })
 
 export function useIsSelected(key: string): boolean {
   return useStylesStore((s) => s.selectedKeySet.has(key))
+}
+
+export function useCategorySelectedCount(category: string): number {
+  return useStylesStore((s) => s.selectedCountByCategory.get(category) ?? 0)
 }
 
 export function useStyleDuplicates(name: string): readonly Style[] {

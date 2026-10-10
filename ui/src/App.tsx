@@ -187,13 +187,7 @@ export default function App() {
         sendToHost({ type: 'SG_CLOSE_REQUEST' })
       }
       if (msg.type === 'SG_CLEAR_SELECTION') {
-        useStylesStore.setState({
-          selectedStyles: [],
-          conflicts: [],
-          activeWildcards: [],
-          activePresetName: null,
-          styleContributors: {},
-        })
+        useStylesStore.getState().clearSelectionChrome()
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
         const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
@@ -206,6 +200,12 @@ export default function App() {
       }
       if (msg.type === 'SG_WILDCARDS_ACTIVE') {
         useStylesStore.getState().setActiveWildcards(msg.categories)
+      }
+      if (msg.type === 'SG_THUMB_DONE') {
+        useStylesStore.getState().bumpThumbVersion(
+          styleRowKey({ name: msg.styleId, source_file: msg.source_file }),
+          String(msg.version),
+        )
       }
     })
     sendToHost({ type: 'SG_READY' })

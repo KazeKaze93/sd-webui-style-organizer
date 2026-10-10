@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { memo, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, WILDCARD_KIND_DECK, type Style } from '../bridge'
 import {
@@ -14,60 +13,63 @@ import {
   matchesSearch,
   selectFilteredStyles,
   styleRowKey,
-  useCategoryColor,
   useStylesStore,
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
 import { WildcardMenuItems } from './WildcardMenuItems'
+import { autoFillGridClass, VirtualStyleGrid } from './grid'
 
-function CategoryName({ category }: { category: string }) {
-  const color = useCategoryColor(category)
-  return (
-    <span
-      className="text-xs font-bold tracking-wider uppercase"
-      style={{ color }}
-    >
-      {category}
-    </span>
-  )
-}
+const FAVORITES_VIEW = '★ Favorites'
+const RECENT_VIEW = '🕑 Recent'
+/** Stable stubs so Favorites/Recent store churn does not invalidate All/category memos. */
+const EMPTY_FAVORITES = new Set<string>()
+const EMPTY_RECENT: string[] = []
 
-export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
+/**
+ * Profile (P toggle N=5000): StyleGrid 18 hits; `selectFilteredStyles` 2.9% —
+ * toggle → addToRecent rebuilds recentNames and was subscribed always, so the
+ * catalog filter memo re-ran even though selection does not change the list.
+ * Subscribe to favorites/recent only in those views; memoize group arrays.
+ */
+export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const [loraCatMenu, setLoraCatMenu] = useState<{ x: number; y: number; cat: string } | null>(null)
   const {
     styles, search, activeCategory, activeSource,
     favorites, recentNames,
     compactMode, collapsedCategories, toggleCollapse,
-    selectedStyles, selectAllInCategory,
+    selectAllInCategory,
     sliceMode, sliceSelection,
     exitSliceMode, toggleSliceSelection,
     selectAllSlice, clearSliceSelection,
     setSearch, setCategory, setActiveSource,
   } = useStylesStore(
-    useShallow(s => ({
-      styles: s.styles,
-      search: s.search,
-      activeCategory: s.activeCategory,
-      activeSource: s.activeSource,
-      favorites: s.favorites,
-      recentNames: s.recentNames,
-      compactMode: s.compactMode,
-      collapsedCategories: s.collapsedCategories,
-      toggleCollapse: s.toggleCollapse,
-      selectedStyles: s.selectedStyles,
-      selectAllInCategory: s.selectAllInCategory,
-      sliceMode: s.sliceMode,
-      sliceSelection: s.sliceSelection,
-      exitSliceMode: s.exitSliceMode,
-      toggleSliceSelection: s.toggleSliceSelection,
-      selectAllSlice: s.selectAllSlice,
-      clearSliceSelection: s.clearSliceSelection,
-      setSearch: s.setSearch,
-      setCategory: s.setCategory,
-      setActiveSource: s.setActiveSource,
-    }))
+    useShallow(s => {
+      const cat = s.activeCategory
+      return {
+        styles: s.styles,
+        search: s.search,
+        activeCategory: cat,
+        activeSource: s.activeSource,
+        // P: selectFilteredStyles on toggle — avoid recent/favorites deps off those views
+        favorites: cat === FAVORITES_VIEW ? s.favorites : EMPTY_FAVORITES,
+        recentNames: cat === RECENT_VIEW ? s.recentNames : EMPTY_RECENT,
+        compactMode: s.compactMode,
+        collapsedCategories: s.collapsedCategories,
+        toggleCollapse: s.toggleCollapse,
+        selectAllInCategory: s.selectAllInCategory,
+        sliceMode: s.sliceMode,
+        sliceSelection: s.sliceSelection,
+        exitSliceMode: s.exitSliceMode,
+        toggleSliceSelection: s.toggleSliceSelection,
+        selectAllSlice: s.selectAllSlice,
+        clearSliceSelection: s.clearSliceSelection,
+        setSearch: s.setSearch,
+        setCategory: s.setCategory,
+        setActiveSource: s.setActiveSource,
+      }
+    })
   )
 
   const renderEmptyState = (opts?: { sliceCategory?: string | null }) => {
@@ -178,15 +180,33 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       .map((s) => s.name)
   }, [styles, sliceCategory, activeSource])
 
-  const gridClass = `grid content-start ${
-    compactMode
-      ? (windowed
-          ? 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-1'
-          : 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1')
-      : (windowed
-          ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
-          : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
-  }`
+  const gridClass = autoFillGridClass(compactMode, windowed)
+
+  const isFlatCategory = Boolean(
+    activeCategory &&
+      activeCategory !== FAVORITES_VIEW &&
+      activeCategory !== RECENT_VIEW &&
+      activeCategory !== LORA_VIEW,
+  )
+
+  // P: CardsRow/VirtualStyleGrid stack hits — new group arrays every parent render
+  // forced virtualizer row rebuilds even when `filtered` was referentially stable.
+  const flatGroups = useMemo(
+    (): Array<[string, Style[]]> =>
+      isFlatCategory && activeCategory ? [[activeCategory, filtered]] : [],
+    [isFlatCategory, activeCategory, filtered],
+  )
+
+  const sortedGroups = useMemo((): Array<[string, Style[]]> => {
+    if (isFlatCategory) return []
+    const groups = filtered.reduce((acc, style) => {
+      const cat = style.category || 'OTHER'
+      if (!acc[cat]) acc[cat] = []
+      acc[cat].push(style)
+      return acc
+    }, {} as Record<string, Style[]>)
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
+  }, [isFlatCategory, filtered])
 
   const renderSliceCard = (style: Style) => {
     const checked = sliceSelection.includes(style.name)
@@ -301,6 +321,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   }
 
   // Slice-selection mode: hide other categories; search still drives `filtered` → visibleSliceStyles.
+  // Slice mode is NOT virtualized (contract).
   if (sliceMode) {
     return (
       <div className="space-y-2">
@@ -308,7 +329,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
         {visibleSliceStyles.length === 0 ? (
           renderEmptyState({ sliceCategory: sliceCategory })
         ) : (
-          <div className={gridClass} style={{ contentVisibility: 'auto' }}>
+          <div className={gridClass}>
             {visibleSliceStyles.map(renderSliceCard)}
           </div>
         )}
@@ -324,107 +345,33 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     return renderEmptyState()
   }
 
-  // If specific category selected - flat grid, no headers
-  if (activeCategory &&
-      activeCategory !== '★ Favorites' &&
-      activeCategory !== '🕑 Recent' &&
-      activeCategory !== LORA_VIEW) {
+  // Specific category — flat virtualized grid, no headers
+  if (isFlatCategory) {
     return (
-      <div className={gridClass} style={{ contentVisibility: 'auto' }}>
-        {filtered.map(style => (
-          <StyleCard key={styleRowKey(style)} style={style} windowed={windowed} />
-        ))}
-      </div>
+      <VirtualStyleGrid
+        groups={flatGroups}
+        collapsedCategories={collapsedCategories}
+        compactMode={compactMode}
+        windowed={windowed}
+        includeHeaders={false}
+        onToggleCollapse={toggleCollapse}
+        onSelectAll={selectAllInCategory}
+      />
     )
   }
 
-  // Group by category for All view
-  const groups = filtered.reduce((acc, style) => {
-    const cat = style.category || 'OTHER'
-    if (!acc[cat]) acc[cat] = []
-    acc[cat].push(style)
-    return acc
-  }, {} as Record<string, typeof filtered>)
-
-  const sortedGroups = Object.entries(groups).sort(([a], [b]) =>
-    a.localeCompare(b)
-  )
-
   return (
-    <div className="space-y-4">
-      {sortedGroups.map(([cat, catStyles]) => {
-        const isCollapsed = collapsedCategories.has(cat)
-        const allSelected = catStyles.every(s =>
-          selectedStyles.some(sel => styleRowKey(sel) === styleRowKey(s))
-        )
-
-        return (
-          <div key={cat}>
-            {/* Category header */}
-            <div
-              className="flex items-center gap-2 mb-2 sticky top-0 
-                            bg-sg-bg/95 backdrop-blur-sm py-1 z-10 cursor-pointer hover:bg-sg-surface/30 rounded-md transition-colors -mx-1 px-1"
-              onClick={() => toggleCollapse(cat)}
-              onContextMenu={
-                activeCategory === LORA_VIEW
-                  ? (e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      setLoraCatMenu({ x: e.clientX, y: e.clientY, cat })
-                    }
-                  : undefined
-              }
-            >
-              <span className="text-sg-muted">
-                {isCollapsed ? '▶' : '▼'}
-              </span>
-              <CategoryName category={cat} />
-              <span className="text-xs text-sg-muted">
-                ({catStyles.length})
-              </span>
-              <div className="flex-1" />
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  selectAllInCategory(cat)
-                }}
-                className="text-xs text-sg-muted hover:text-sg-accent 
-                           transition-colors px-2 py-0.5 rounded
-                           hover:bg-sg-accent/10"
-              >
-                {allSelected ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
-
-            {/* Cards */}
-            <AnimatePresence>
-              {!isCollapsed && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="overflow-hidden"
-                >
-                  <div className={`grid ${
-                    compactMode
-                      ? (windowed
-                          ? 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))] gap-1'
-                          : 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1')
-                      : (windowed
-                          ? 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-1'
-                          : 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
-                  }`} style={{ contentVisibility: 'auto' }}>
-                    {catStyles.map(style => (
-                      <StyleCard key={styleRowKey(style)} style={style} windowed={windowed} />
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        )
-      })}
+    <VirtualStyleGrid
+      groups={sortedGroups}
+      collapsedCategories={collapsedCategories}
+      compactMode={compactMode}
+      windowed={windowed}
+      includeHeaders
+      enableLoraContextMenu={activeCategory === LORA_VIEW}
+      onToggleCollapse={toggleCollapse}
+      onSelectAll={selectAllInCategory}
+      onHeaderContextMenu={(cat, x, y) => setLoraCatMenu({ x, y, cat })}
+    >
       {loraCatMenu && (
         <ViewportFixedMenu
           x={loraCatMenu.x}
@@ -437,6 +384,6 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
           />
         </ViewportFixedMenu>
       )}
-    </div>
+    </VirtualStyleGrid>
   )
-}
+})

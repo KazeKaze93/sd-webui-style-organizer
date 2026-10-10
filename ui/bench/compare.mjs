@@ -1,9 +1,9 @@
 /**
- * Compare baseline vs phase-a bench JSON; print table + PHASE B GATE at N=5000.
+ * Compare baseline / phase-a / phase-b bench JSON; print table + PERFORMANCE GATE at N=5000.
  *
  * Usage:
  *   node bench/compare.mjs
- *   node bench/compare.mjs --baseline results/baseline.json --phase results/phase-a.json
+ *   node bench/compare.mjs --baseline results/baseline.json --phase-a results/phase-a.json --phase-b results/phase-b.json
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -31,12 +31,14 @@ const METRICS = Object.freeze([
 function parseArgs(argv) {
   const out = {
     baseline: path.join(RESULTS_DIR, 'baseline.json'),
-    phase: path.join(RESULTS_DIR, 'phase-a.json'),
+    phaseA: path.join(RESULTS_DIR, 'phase-a.json'),
+    phaseB: path.join(RESULTS_DIR, 'phase-b.json'),
   }
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i]
     if (a === '--baseline') out.baseline = path.resolve(argv[++i])
-    else if (a === '--phase') out.phase = path.resolve(argv[++i])
+    else if (a === '--phase-a' || a === '--phase') out.phaseA = path.resolve(argv[++i])
+    else if (a === '--phase-b') out.phaseB = path.resolve(argv[++i])
   }
   return out
 }
@@ -46,6 +48,14 @@ function loadJson(filePath) {
     throw new Error(`Missing results file: ${filePath}`)
   }
   return JSON.parse(fs.readFileSync(filePath, 'utf8'))
+}
+
+function tryLoadJson(filePath) {
+  try {
+    return loadJson(filePath)
+  } catch {
+    return null
+  }
 }
 
 function medianOf(values) {
@@ -74,29 +84,27 @@ function fmt(v) {
 }
 
 function evaluateGate(doc) {
-  const reasons = []
+  const results = []
   for (const [key, limit] of Object.entries(GATE)) {
     const v = metricAt(doc, GATE_N, key)
-    if (v != null && v > limit) {
-      reasons.push(`${key}=${fmt(v)}>${limit}`)
-    }
+    const pass = v != null && v <= limit
+    results.push({
+      key,
+      value: v,
+      limit,
+      pass: v == null ? null : pass,
+    })
   }
-  return {
-    n: GATE_N,
-    virtualization: reasons.length > 0 ? 'VIRTUALIZATION NEEDED' : 'NOT NEEDED',
-    reasons,
-  }
+  const known = results.filter((r) => r.pass != null)
+  const allPass = known.length > 0 && known.every((r) => r.pass)
+  return { n: GATE_N, results, allPass }
 }
 
 function main() {
   const args = parseArgs(process.argv.slice(2))
   const baseline = loadJson(args.baseline)
-  let phase = null
-  try {
-    phase = loadJson(args.phase)
-  } catch {
-    phase = null
-  }
+  const phaseA = tryLoadJson(args.phaseA)
+  const phaseB = tryLoadJson(args.phaseB)
 
   const sizes = [500, 2000, 5000]
   const rows = []
@@ -104,16 +112,17 @@ function main() {
   for (const n of sizes) {
     for (const key of METRICS) {
       const b = metricAt(baseline, n, key)
-      const p = phase ? metricAt(phase, n, key) : null
-      const delta = b != null && p != null ? p - b : null
-      rows.push({ n, key, baseline: b, phase: p, delta })
+      const a = phaseA ? metricAt(phaseA, n, key) : null
+      const p = phaseB ? metricAt(phaseB, n, key) : null
+      rows.push({ n, key, baseline: b, phaseA: a, phaseB: p })
     }
   }
 
   console.log('')
-  console.log('Style Grid bench compare')
+  console.log('Style Grid bench compare (3-way)')
   console.log(`baseline: ${args.baseline}`)
-  console.log(`phase-a:  ${phase ? args.phase : '(missing — baseline only)'}`)
+  console.log(`phase-a:  ${phaseA ? args.phaseA : '(missing)'}`)
+  console.log(`phase-b:  ${phaseB ? args.phaseB : '(missing)'}`)
   console.log('')
   console.log(
     [
@@ -121,40 +130,41 @@ function main() {
       'metric'.padEnd(16),
       'baseline'.padStart(10),
       'phase-a'.padStart(10),
-      'delta'.padStart(10),
+      'phase-b'.padStart(10),
+      'Δa-base'.padStart(10),
+      'Δb-a'.padStart(10),
     ].join('  '),
   )
-  console.log('-'.repeat(60))
+  console.log('-'.repeat(88))
   for (const row of rows) {
+    const dAB = row.baseline != null && row.phaseA != null ? row.phaseA - row.baseline : null
+    const dBA = row.phaseA != null && row.phaseB != null ? row.phaseB - row.phaseA : null
     console.log(
       [
         String(row.n).padStart(6),
         row.key.padEnd(16),
         fmt(row.baseline).padStart(10),
-        fmt(row.phase).padStart(10),
-        fmt(row.delta).padStart(10),
+        fmt(row.phaseA).padStart(10),
+        fmt(row.phaseB).padStart(10),
+        fmt(dAB).padStart(10),
+        fmt(dBA).padStart(10),
       ].join('  '),
     )
   }
 
-  const gateTarget = phase ?? baseline
-  const gateLabel = phase ? 'phase-a' : 'baseline'
+  const gateTarget = phaseB ?? phaseA ?? baseline
+  const gateLabel = phaseB ? 'phase-b' : phaseA ? 'phase-a' : 'baseline'
   const gate = evaluateGate(gateTarget)
   console.log('')
-  console.log(`PHASE B GATE (N=${GATE_N}, ${gateLabel}): ${gate.virtualization}`)
-  if (gate.reasons.length) {
-    console.log(`  breaches: ${gate.reasons.join(', ')}`)
-  } else {
-    console.log(
-      `  thresholds: initMs<=${GATE.initMs}, toggleP50Ms<=${GATE.toggleP50Ms}, ` +
-        `searchKeyP50Ms<=${GATE.searchKeyP50Ms}, scrollTbtMs<=${GATE.scrollTbtMs}`,
-    )
+  console.log(`PERFORMANCE GATE (N=${GATE_N}, 4x CPU, ${gateLabel}): ${gate.allPass ? 'PASS' : 'FAIL'}`)
+  for (const r of gate.results) {
+    const status = r.pass == null ? 'MISSING' : r.pass ? 'PASS' : 'FAIL'
+    console.log(`  ${r.key}: ${fmt(r.value)} (limit <=${r.limit}) → ${status}`)
   }
   console.log('')
 
-  if (!phase) {
-    process.exitCode = 0
-    return
+  if (!gate.allPass) {
+    process.exitCode = 1
   }
 }
 

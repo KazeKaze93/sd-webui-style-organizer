@@ -14,6 +14,9 @@ import {
   type CorruptDataInfo,
 } from '../lib/parseCorruptData'
 import { styleGridPost } from '../lib/styleGridFetch'
+import type { ThemeMode } from '../lib/themeMode'
+
+export type { ThemeMode }
 
 /** Matches the backend's LORA_SOURCE marker (stylegrid/lora_scan.py). LoRA
  * cards use this as their synthetic source_file so they can be excluded
@@ -35,41 +38,80 @@ interface Conflict {
 const TOAST_TTL_MS = 3000
 const TOAST_ERROR_TTL_MS = 6000
 
+// Fixed palettes of visually distinct colors — no duplicates. Both palettes
+// share hue order so a category keeps its hue when the theme flips.
+// DARK: >= 4.5:1 on #1a1a2e / #16213e / #0f172a. LIGHT: >= 4.5:1 on #fff / #f8fafc.
+export const DARK_CATEGORY_PALETTE: readonly string[] = [
+  '#f472b6', // pink
+  '#fb923c', // orange
+  '#facc15', // yellow
+  '#4ade80', // green
+  '#34d399', // emerald
+  '#22d3ee', // cyan
+  '#60a5fa', // blue
+  '#818cf8', // indigo
+  '#a78bfa', // violet
+  '#e879f9', // fuchsia
+  '#f87171', // red
+  '#a3e635', // lime
+  '#2dd4bf', // teal
+  '#38bdf8', // sky
+  '#c084fc', // purple
+  '#fb7185', // rose
+  '#fdba74', // amber
+  '#86efac', // light green
+  '#93c5fd', // light blue
+  '#fda4af', // light pink
+  '#6ee7b7', // light teal
+  '#fcd34d', // light yellow
+  '#d8b4fe', // light purple
+  '#67e8f9', // light cyan
+  '#bbf7d0', // mint
+  '#fecaca', // salmon
+  '#bfdbfe', // powder blue
+  '#ddd6fe', // lavender
+  '#fed7aa', // peach
+  '#fbbf24', // gold
+]
+
+// Tailwind 700 for the base hues; the lighter dark-mode variants use 800 so
+// they stay distinct from their 700 siblings.
+export const LIGHT_CATEGORY_PALETTE: readonly string[] = [
+  '#be185d', // pink-700
+  '#c2410c', // orange-700
+  '#a16207', // yellow-700
+  '#15803d', // green-700
+  '#047857', // emerald-700
+  '#0e7490', // cyan-700
+  '#1d4ed8', // blue-700
+  '#4338ca', // indigo-700
+  '#6d28d9', // violet-700
+  '#a21caf', // fuchsia-700
+  '#b91c1c', // red-700
+  '#4d7c0f', // lime-700
+  '#0f766e', // teal-700
+  '#0369a1', // sky-700
+  '#7e22ce', // purple-700
+  '#be123c', // rose-700
+  '#b45309', // amber-700
+  '#166534', // green-800
+  '#1e40af', // blue-800
+  '#9d174d', // pink-800
+  '#065f46', // emerald-800
+  '#854d0e', // yellow-800
+  '#6b21a8', // purple-800
+  '#155e75', // cyan-800
+  '#115e59', // teal-800
+  '#991b1b', // red-800
+  '#075985', // sky-800
+  '#5b21b6', // violet-800
+  '#9a3412', // orange-800
+  '#92400e', // amber-800
+]
+
 /** Maps category text to a stable palette index for repeatable colors. */
-export function getCategoryColor(category: string): string {
-  // Fixed palette of visually distinct colors — no duplicates
-  const PALETTE = [
-    '#f472b6', // pink
-    '#fb923c', // orange
-    '#facc15', // yellow
-    '#4ade80', // green
-    '#34d399', // emerald
-    '#22d3ee', // cyan
-    '#60a5fa', // blue
-    '#818cf8', // indigo
-    '#a78bfa', // violet
-    '#e879f9', // fuchsia
-    '#f87171', // red
-    '#a3e635', // lime
-    '#2dd4bf', // teal
-    '#38bdf8', // sky
-    '#c084fc', // purple
-    '#fb7185', // rose
-    '#fdba74', // amber
-    '#86efac', // light green
-    '#93c5fd', // light blue
-    '#fda4af', // light pink
-    '#6ee7b7', // light teal
-    '#fcd34d', // light yellow
-    '#d8b4fe', // light purple
-    '#67e8f9', // light cyan
-    '#bbf7d0', // mint
-    '#fecaca', // salmon
-    '#bfdbfe', // powder blue
-    '#ddd6fe', // lavender
-    '#fed7aa', // peach
-    '#fbbf24', // gold
-  ]
+export function getCategoryColor(category: string, mode: ThemeMode = 'dark'): string {
+  const palette = mode === 'light' ? LIGHT_CATEGORY_PALETTE : DARK_CATEGORY_PALETTE
 
   // Deterministic index based on category name hash
   let hash = 0
@@ -79,8 +121,12 @@ export function getCategoryColor(category: string): string {
   }
 
   // Spread across palette using prime multiplication to avoid clustering
-  const index = Math.abs(hash * 2654435761) % PALETTE.length
-  return PALETTE[index]
+  const index = Math.abs(hash * 2654435761) % palette.length
+  return palette[index]
+}
+
+export function useCategoryColor(category: string): string {
+  return useStylesStore((s) => getCategoryColor(category, s.themeMode))
 }
 
 /** Stable React key when the same name can appear from different CSV rows. */
@@ -278,6 +324,7 @@ interface StylesStore {
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
   compactMode: boolean
+  themeMode: ThemeMode
   /** Favorite style row keys (styleRowKey) persisted in localStorage. */
   favorites: Set<string>
   /** Most recently applied style row keys (styleRowKey, max 10). */
@@ -309,6 +356,7 @@ interface StylesStore {
   setCategory: (cat: string | null) => void
   setActiveSource: (src: string | null) => void
   toggleCompact: () => void
+  setThemeMode: (mode: ThemeMode) => void
   toggleCollapse: (cat: string) => void
   collapseAll: () => void
   expandAll: () => void
@@ -423,6 +471,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   ) as string[],
   collapsedCategories: new Set(),
   compactMode: false,
+  themeMode: 'dark',
   favorites: new Set(loadStringArrayFromLs('sg_v2_favorites')),
   recentNames: loadStringArrayFromLs('sg_v2_recent'),
   presets: {},
@@ -492,6 +541,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
   toggleCompact: () => set((s) => ({ compactMode: !s.compactMode })),
+  setThemeMode: (themeMode) => set({ themeMode }),
   toggleCollapse: (cat) => set((s) => {
     const next = new Set(s.collapsedCategories)
     if (next.has(cat)) next.delete(cat)

@@ -76,6 +76,8 @@
 .sg-btn-primary:hover { background: #4f46e5; }
 .sg-btn-secondary { background: var(--button-secondary-background-fill, #1f2937); color: var(--body-text-color, #d1d5db); }
 .sg-btn-secondary:hover { background: var(--button-secondary-background-fill-hover, #374151); }
+.sg-btn-danger { background: #dc2626; border-color: #dc2626; color: #fff; }
+.sg-btn-danger:hover { background: #b91c1c; border-color: #b91c1c; color: #fff; }
 
 @keyframes sg-fade-in { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
@@ -144,6 +146,15 @@
 }
 .sg-editor-textarea:focus { border-color: var(--color-accent, #6366f1); }
 .sg-editor-btns { display: flex; gap: 8px; margin-top: 6px; }
+.sg-editor-text-subdued {
+    font-size: 13px;
+    color: var(--body-text-color-subdued, #9ca3af);
+}
+.sg-editor-error {
+    margin: 0;
+    font-size: 13px;
+    color: var(--error-text-color, #f87171);
+}
 
 /* ---- Presets ---- */
 .sg-presets-save-row { display: flex; gap: 8px; align-items: center; }

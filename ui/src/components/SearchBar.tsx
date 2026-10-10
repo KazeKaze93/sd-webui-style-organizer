@@ -92,17 +92,17 @@ export function SearchBar() {
                   value={style.name}
                   onSelect={() => handleSelect(style)}
                   className="cursor-pointer flex items-center justify-between
-                             !text-white hover:!bg-sg-accent/20
-                             aria-selected:!bg-sg-accent/20
+                             text-sg-text hover:bg-sg-accent/20
+                             aria-selected:bg-sg-accent/15
                              px-3 py-2"
                 >
                   <div className="flex flex-col min-w-0">
-                    <span className="text-sm truncate !text-white font-medium">
+                    <span className="text-sm truncate text-sg-text font-medium">
                       {style.name.includes('_')
                         ? style.name.split('_').slice(1).join(' ')
                         : style.name}
                     </span>
-                    <span className="text-xs !text-slate-400">{style.category}</span>
+                    <span className="text-xs text-sg-muted">{style.category}</span>
                   </div>
                   {selectedStyles.some(s => styleRowKey(s) === styleRowKey(style)) && (
                     <span className="text-sg-accent text-xs ml-2 shrink-0">✓</span>

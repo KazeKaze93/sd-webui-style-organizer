@@ -44,6 +44,10 @@ import {
     generateThumbnail,
     uploadThumbnail,
 } from "./thumbnails.js";
+import {
+    buildThemeMessage,
+    detectHostThemeMode,
+} from "../theme.js";
 
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
@@ -92,6 +96,8 @@ function installIframeMessageBridge(tab, frame) {
                 return findStyleByName(styleName);
             }
             if (msg.type === "SG_READY") {
+                // Fresh detect at READY time - do not reuse a mode cached at iframe creation.
+                frame.contentWindow.postMessage(buildThemeMessage(detectHostThemeMode()), "*");
                 if (state[tab].sgV2HostInitSent) return;
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })

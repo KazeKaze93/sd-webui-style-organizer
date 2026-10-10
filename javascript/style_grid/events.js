@@ -82,6 +82,7 @@ function init() {
                 }
             });
             const root = qs("#gradio-app") || qs(".gradio-container") || document.body;
+            if (!root) return;
             observer.observe(root, { childList: true, subtree: true });
         }
 

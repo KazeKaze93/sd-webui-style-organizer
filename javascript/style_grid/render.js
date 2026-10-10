@@ -639,7 +639,14 @@ function injectButton(tabName) {
             var formEl = toolsEl.querySelector(":scope > div.form, :scope > div[style*='flex']");
             (formEl || toolsEl).appendChild(btn);
         } else if (target.classList.contains("style_create_row")) target.appendChild(btn);
-        else target.parentNode.insertBefore(btn, target.nextSibling);
+        else if (target.parentNode) {
+            target.parentNode.insertBefore(btn, target.nextSibling);
+        } else {
+            var toolbarHostFallback = getStyleGridToolbarHost();
+            if (!toolbarHostFallback) return false;
+            btn.classList.add("sg-trigger-btn--toolbar-host");
+            toolbarHostFallback.appendChild(btn);
+        }
         return true;
     }
 

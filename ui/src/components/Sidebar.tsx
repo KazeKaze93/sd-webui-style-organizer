@@ -1,13 +1,16 @@
-import { startTransition, useEffect, useState } from 'react'
+import { startTransition, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Reorder } from 'framer-motion'
-import { BookMarked } from 'lucide-react'
+import { BookMarked, Clock, Dna, Image, Star } from 'lucide-react'
 import { sendToHost } from '../bridge'
 import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { MenuDivider } from './MenuDivider'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
 import { WildcardMenuItems } from './WildcardMenuItems'
+
+const FAVORITES_ID = '★ Favorites'
+const RECENT_ID = '🕑 Recent'
 
 export function Sidebar() {
   const {
@@ -23,6 +26,9 @@ export function Sidebar() {
       setCategoryOrder: s.setCategoryOrder,
       presets: s.presets,
       styles: s.styles,
+      // categories() deps — refresh list/order without App re-renders
+      activeSource: s.activeSource,
+      categoryOrder: s.categoryOrder,
     }))
   )
   const [catMenu, setCatMenu] = useState<{
@@ -31,11 +37,25 @@ export function Sidebar() {
     cat: string
   } | null>(null)
   const cats = categories()
+  const catsSig = cats.join('\0')
+  const [dragOrder, setDragOrder] = useState<string[]>(cats)
+  const dragOrderRef = useRef(dragOrder)
+  dragOrderRef.current = dragOrder
+  const dragActiveRef = useRef(false)
+
+  useEffect(() => {
+    if (!dragActiveRef.current) {
+      setDragOrder(cats)
+    }
+    // catsSig tracks cats identity; cats read from latest categories()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+  }, [catsSig])
+
   const loraCount = styles.reduce((n, s) => s.source_file === LORA_SOURCE ? n + 1 : n, 0)
   const specialCategories = [
-    { id: '★ Favorites', label: '★ Favorites', count: favorites.size },
-    { id: '🕑 Recent', label: '🕑 Recent', count: recentNames.length },
-    { id: LORA_VIEW, label: LORA_VIEW, count: loraCount },
+    { id: FAVORITES_ID, label: 'Favorites', Icon: Star, count: favorites.size },
+    { id: RECENT_ID, label: 'Recent', Icon: Clock, count: recentNames.length },
+    { id: LORA_VIEW, label: 'LoRA', Icon: Dna, count: loraCount },
   ]
 
   useEffect(() => {
@@ -77,8 +97,8 @@ export function Sidebar() {
           {count(null)}
         </span>
       </button>
-      {specialCategories.map(({ id, label, count }) => {
-      const alwaysShow = id === '★ Favorites' || id === '🕑 Recent'
+      {specialCategories.map(({ id, label, Icon, count }) => {
+      const alwaysShow = id === FAVORITES_ID || id === RECENT_ID
       if (!alwaysShow && count === 0) return null
       return (
         <button
@@ -90,14 +110,17 @@ export function Sidebar() {
             e.stopPropagation()
             setCatMenu({ x: e.clientX, y: e.clientY, cat: 'LoRA' })
           } : undefined}
-          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors
+          className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors
       ${activeCategory === id
         ? 'bg-sg-accent text-white'
         : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}
       ${count === 0 ? 'opacity-40' : ''}`}
         >
-          {label}
-          <span className="ml-auto float-right text-xs opacity-60">{count}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <Icon className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="truncate">{label}</span>
+          </span>
+          <span className="text-xs opacity-60 shrink-0">{count}</span>
         </button>
       )
     })}
@@ -127,12 +150,15 @@ export function Sidebar() {
       <div className="border-t border-sg-border my-1" />
       <Reorder.Group
         axis="y"
-        values={cats}
-        onReorder={(newOrder) => setCategoryOrder(newOrder)}
+        values={dragOrder}
+        onReorder={(newOrder) => {
+          dragOrderRef.current = newOrder
+          setDragOrder(newOrder)
+        }}
         as="div"
         className="flex flex-col gap-1"
       >
-        {cats.map(cat => {
+        {dragOrder.map(cat => {
           const isActive = activeCategory === cat
           return (
             <Reorder.Item
@@ -141,10 +167,14 @@ export function Sidebar() {
               as="div"
               whileDrag={{ scale: 1.02, opacity: 0.9 }}
               className="cursor-grab active:cursor-grabbing"
+              onDragStart={() => { dragActiveRef.current = true }}
+              onDragEnd={() => {
+                dragActiveRef.current = false
+                setCategoryOrder(dragOrderRef.current)
+              }}
             >
               <button
                 type="button"
-                onPointerDown={e => e.stopPropagation()}
                 onClick={() => startTransition(() => setCategory(activeCategory === cat ? null : cat))}
                 onContextMenu={(e) => {
                   e.preventDefault()
@@ -189,7 +219,8 @@ export function Sidebar() {
             <>
               <MenuDivider />
               <button
-                className="w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+                type="button"
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
                 onClick={() => {
                   const rawSrc =
                     useStylesStore.getState().activeSource ??
@@ -203,7 +234,8 @@ export function Sidebar() {
                   setCatMenu(null)
                 }}
               >
-                🎨 Generate previews...
+                <Image className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                Generate previews...
               </button>
             </>
           )}

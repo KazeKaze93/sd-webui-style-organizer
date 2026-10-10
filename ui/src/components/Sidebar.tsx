@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Reorder } from 'framer-motion'
 import { BookMarked, Clock, Dna, Image, Star } from 'lucide-react'
 import { sendToHost } from '../bridge'
-import { getCategoryColor, LORA_SOURCE, LORA_VIEW, useStylesStore } from '../store/stylesStore'
+import { LORA_SOURCE, LORA_VIEW, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { MenuDivider } from './MenuDivider'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
@@ -11,6 +11,15 @@ import { WildcardMenuItems } from './WildcardMenuItems'
 
 const FAVORITES_ID = '★ Favorites'
 const RECENT_ID = '🕑 Recent'
+
+function CategoryName({ category }: { category: string }) {
+  const color = useCategoryColor(category)
+  return (
+    <span className="flex-1 truncate" style={{ color }}>
+      {category}
+    </span>
+  )
+}
 
 export function Sidebar() {
   const {
@@ -31,6 +40,7 @@ export function Sidebar() {
       categoryOrder: s.categoryOrder,
     }))
   )
+  const allColor = useCategoryColor('All')
   const [catMenu, setCatMenu] = useState<{
     x: number
     y: number
@@ -91,7 +101,7 @@ export function Sidebar() {
           />
         )}
         <span className="relative z-10 flex items-center gap-2 min-w-0">
-          <span className="truncate" style={{ color: getCategoryColor('All') }}>All</span>
+          <span className="truncate" style={{ color: allColor }}>All</span>
         </span>
         <span className="relative z-10 text-xs opacity-60 shrink-0">
           {count(null)}
@@ -195,9 +205,7 @@ export function Sidebar() {
                   />
                 )}
                 <span className="flex items-center gap-2 relative z-10">
-                  <span className="flex-1 truncate" style={{ color: getCategoryColor(cat) }}>
-                    {cat}
-                  </span>
+                  <CategoryName category={cat} />
                   <span className="text-xs opacity-60 shrink-0">{count(cat)}</span>
                 </span>
               </button>
@@ -220,7 +228,7 @@ export function Sidebar() {
               <MenuDivider />
               <button
                 type="button"
-                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors"
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
                 onClick={() => {
                   const rawSrc =
                     useStylesStore.getState().activeSource ??

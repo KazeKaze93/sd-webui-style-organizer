@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
-import { getCategoryColor, LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
+import { LORA_SOURCE, styleRowKey, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { styleGridWriteHeaders } from '../lib/styleGridFetch'
 import { ThumbnailPreview } from './ThumbnailPreview'
@@ -62,7 +62,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
     ? style.name.split('_').slice(1).join(' ')
     : style.name)
 
-  const borderColor = getCategoryColor(style.category || 'OTHER')
+  const borderColor = useCategoryColor(style.category || 'OTHER')
   const previewReadOnlyClass = style.read_only
     ? 'opacity-45 cursor-not-allowed text-sg-muted hover:bg-transparent'
     : 'text-sg-text hover:bg-sg-accent/20'
@@ -141,7 +141,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               <Star
                 size={12}
                 fill="currentColor"
-                className="absolute top-1.5 right-1.5 text-amber-300"
+                className="absolute top-1.5 right-1.5 text-sg-warning-text"
                 aria-hidden="true"
               />
               <span className="sr-only">Favorite</span>
@@ -343,7 +343,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               <>
                 <div className="h-px my-1 bg-sg-border" />
                 <button
-                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-red-400 hover:bg-red-500/20 transition-colors"
+                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-danger-text hover:bg-sg-danger/20 transition-colors"
                   onClick={() => {
                     sendToHost({
                       type: 'SG_DELETE_STYLE',

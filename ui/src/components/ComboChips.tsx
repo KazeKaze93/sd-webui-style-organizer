@@ -45,8 +45,8 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
               }}
               className={`px-2 py-0.5 rounded text-xs border transition-colors
                 ${isSelected
-                  ? 'bg-blue-500/30 border-blue-500/60 text-blue-300'
-                  : 'bg-blue-500/10 border-blue-500/30 text-blue-400 hover:bg-blue-500/20'}`}
+                  ? 'bg-sg-accent/30 border-sg-accent/60 text-sg-accent-text'
+                  : 'bg-sg-accent/10 border-sg-accent/30 text-sg-accent-text hover:bg-sg-accent/20'}`}
               title={title}
             >
               {isSelected ? '✓ ' : ''}{chipLabel(token)}
@@ -61,8 +61,8 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
               key={`c:${resolved.token}:${resolved.comment}:${index}`}
               onClick={() => startTransition(() => setCategory(resolved.category))}
               className="px-2 py-0.5 rounded text-xs border transition-colors
-                bg-orange-500/10 border-orange-500/30 text-orange-400
-                hover:bg-orange-500/20"
+                bg-sg-warning-text/10 border-sg-warning-text/30 text-sg-warning-text
+                hover:bg-sg-warning-text/20"
               title={title}
             >
               {resolved.token}
@@ -74,7 +74,7 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
           <span
             key={`r:${resolved.token}:${index}`}
             className="px-2 py-0.5 rounded text-xs border
-              bg-orange-500/10 border-orange-500/30 text-orange-400"
+              bg-sg-warning-text/10 border-sg-warning-text/30 text-sg-warning-text"
             title={resolved.token}
           >
             {resolved.token}

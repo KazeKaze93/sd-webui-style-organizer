@@ -9,18 +9,30 @@ import {
 } from '../lib/wildcardLabels'
 import { buildSliceSpec } from '../lib/wildcardSlice'
 import {
-  getCategoryColor,
   LORA_SOURCE,
   LORA_VIEW,
   matchesSearch,
   selectFilteredStyles,
   styleRowKey,
+  useCategoryColor,
   useStylesStore,
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
 import { WildcardMenuItems } from './WildcardMenuItems'
+
+function CategoryName({ category }: { category: string }) {
+  const color = useCategoryColor(category)
+  return (
+    <span
+      className="text-xs font-bold tracking-wider uppercase"
+      style={{ color }}
+    >
+      {category}
+    </span>
+  )
+}
 
 export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const [loraCatMenu, setLoraCatMenu] = useState<{ x: number; y: number; cat: string } | null>(null)
@@ -187,7 +199,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
         <button
           type="button"
           className={`absolute inset-0 z-20 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent ${
-            checked ? 'bg-purple-500/15 ring-1 ring-purple-400/50' : 'bg-transparent'
+            checked ? 'bg-sg-wildcard/15 ring-1 ring-sg-wildcard/50' : 'bg-transparent'
           }`}
           aria-pressed={checked}
           aria-label={`${checked ? 'Deselect' : 'Select'} ${label} for wildcard slice`}
@@ -204,7 +216,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               readOnly
               tabIndex={-1}
               aria-hidden
-              className="pointer-events-none h-4 w-4 accent-purple-500"
+              className="pointer-events-none h-4 w-4 accent-sg-wildcard"
             />
           </span>
         </button>
@@ -221,11 +233,11 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
         role="toolbar"
         aria-label={`Wildcard slice selection for ${cat}`}
         className="flex flex-wrap items-center gap-2 px-1 py-2 mb-2 rounded-md
-                   border border-purple-400/40 bg-purple-500/10"
+                   border border-sg-wildcard/40 bg-sg-wildcard/10"
       >
         <span className="text-sm text-sg-text font-medium">
           {isDeck ? SLICE_BAR_TITLE_SHUFFLE : 'Slice: '}
-          <span className="text-purple-300">{cat}</span>
+          <span className="text-sg-wildcard-text">{cat}</span>
         </span>
         <span className="text-xs text-sg-muted" aria-live="polite">
           {sliceSelection.length} selected
@@ -256,8 +268,8 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               ? SLICE_ADD_SHUFFLE_ARIA
               : 'Add selection as wildcard slice'
           }
-          className="text-xs px-2.5 py-1 rounded bg-purple-500/30 border border-purple-400/50
-                     text-sg-text hover:bg-purple-500/45 transition-colors font-medium"
+          className="text-xs px-2.5 py-1 rounded bg-sg-wildcard/30 border border-sg-wildcard/50
+                     text-sg-text hover:bg-sg-wildcard/45 transition-colors font-medium"
           onClick={() => {
             const spec = buildSliceSpec(cat, sliceSelection, allNamesInCategory)
             sendToHost(
@@ -342,7 +354,6 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     <div className="space-y-4">
       {sortedGroups.map(([cat, catStyles]) => {
         const isCollapsed = collapsedCategories.has(cat)
-        const color = getCategoryColor(cat)
         const allSelected = catStyles.every(s =>
           selectedStyles.some(sel => styleRowKey(sel) === styleRowKey(s))
         )
@@ -367,12 +378,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               <span className="text-sg-muted">
                 {isCollapsed ? '▶' : '▼'}
               </span>
-              <span
-                className="text-xs font-bold tracking-wider uppercase"
-                style={{ color }}
-              >
-                {cat}
-              </span>
+              <CategoryName category={cat} />
               <span className="text-xs text-sg-muted">
                 ({catStyles.length})
               </span>

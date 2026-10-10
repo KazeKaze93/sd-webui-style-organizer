@@ -10,7 +10,9 @@
     "build:watch": "vite build --watch",
     "lint": "eslint .",
     "test": "node scripts/run-vitest-with-min.mjs",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench": "node bench/run.mjs",
+    "bench:compare": "node bench/compare.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",
@@ -37,6 +39,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.4.0",
+    "playwright": "^1.64.0",
     "postcss": "^8.5.8",
     "shadcn": "^4.1.0",
     "tailwindcss": "^3.4.19",

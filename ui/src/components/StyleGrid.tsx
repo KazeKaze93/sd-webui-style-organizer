@@ -32,6 +32,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
     sliceMode, sliceSelection,
     exitSliceMode, toggleSliceSelection,
     selectAllSlice, clearSliceSelection,
+    setSearch, setCategory, setActiveSource,
   } = useStylesStore(
     useShallow(s => ({
       styles: s.styles,
@@ -51,8 +52,68 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       toggleSliceSelection: s.toggleSliceSelection,
       selectAllSlice: s.selectAllSlice,
       clearSliceSelection: s.clearSliceSelection,
+      setSearch: s.setSearch,
+      setCategory: s.setCategory,
+      setActiveSource: s.setActiveSource,
     }))
   )
+
+  const renderEmptyState = (opts?: { sliceCategory?: string | null }) => {
+    const sliceCat = opts?.sliceCategory ?? null
+    const hasSearch = search.trim().length > 0
+    const hasSource = Boolean(activeSource)
+    const hasCategory = Boolean(activeCategory) || Boolean(sliceCat)
+    const reasonParts: string[] = []
+    if (hasSearch) reasonParts.push(`search "${search.trim()}"`)
+    if (hasSource) reasonParts.push(`source "${activeSource}"`)
+    if (sliceCat) reasonParts.push(`slice category "${sliceCat}"`)
+    else if (activeCategory) reasonParts.push(`category "${activeCategory}"`)
+    const reason = reasonParts.length > 0
+      ? `No styles match ${reasonParts.join(', ')}.`
+      : 'No styles found.'
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 h-32 px-4 text-center">
+        <p className="text-sg-muted text-sm">{reason}</p>
+        {(hasSearch || hasSource || hasCategory) && (
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {hasSearch && (
+              <button
+                type="button"
+                className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
+                           hover:bg-sg-surface/60 transition-colors"
+                onClick={() => setSearch('')}
+              >
+                Clear search
+              </button>
+            )}
+            {hasSource && (
+              <button
+                type="button"
+                className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
+                           hover:bg-sg-surface/60 transition-colors"
+                onClick={() => setActiveSource(null)}
+              >
+                All sources
+              </button>
+            )}
+            {hasCategory && (
+              <button
+                type="button"
+                className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
+                           hover:bg-sg-surface/60 transition-colors"
+                onClick={() => {
+                  if (sliceCat) exitSliceMode()
+                  setCategory(null)
+                }}
+              >
+                All categories
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   const filtered = useMemo(
     () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames),
@@ -233,9 +294,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
       <div className="space-y-2">
         {renderSliceModeBar()}
         {visibleSliceStyles.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-sg-muted text-sm">
-            No styles found
-          </div>
+          renderEmptyState({ sliceCategory: sliceCategory })
         ) : (
           <div className={gridClass} style={{ contentVisibility: 'auto' }}>
             {visibleSliceStyles.map(renderSliceCard)}
@@ -250,12 +309,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   }
 
   if (filtered.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-32 
-                      text-sg-muted text-sm">
-        No styles found
-      </div>
-    )
+    return renderEmptyState()
   }
 
   // If specific category selected - flat grid, no headers
@@ -319,7 +373,7 @@ export function StyleGrid({ windowed = false }: { windowed?: boolean }) {
               >
                 {cat}
               </span>
-              <span className="text-xs text-sg-muted/60">
+              <span className="text-xs text-sg-muted">
                 ({catStyles.length})
               </span>
               <div className="flex-1" />

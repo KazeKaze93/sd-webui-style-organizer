@@ -10,7 +10,7 @@ import { DeckIcon } from './DeckIcon'
 import { MenuDivider } from './MenuDivider'
 
 const MENU_BTN =
-  'w-full text-left px-3 py-1.5 text-sm text-white hover:bg-sg-accent/20 transition-colors'
+  'w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors'
 
 const MENU_HEADING = 'text-xs text-sg-muted px-3 pt-1.5'
 

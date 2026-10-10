@@ -39,13 +39,13 @@ export function DeckIcon({ className = DEFAULT_CLASS }: Props) {
           width={VIEW_SIZE}
           height={VIEW_SIZE}
         >
-          <rect width={VIEW_SIZE} height={VIEW_SIZE} fill="#fff" stroke="none" />
-          <rect {...CARD} fill="#000" stroke="#000" strokeWidth={CUT_STROKE_WIDTH} />
+          <rect width={VIEW_SIZE} height={VIEW_SIZE} fill="white" stroke="none" />
+          <rect {...CARD} fill="black" stroke="black" strokeWidth={CUT_STROKE_WIDTH} />
           <rect
             {...CARD}
             transform={`rotate(${FAN_ANGLE} ${FAN_PIVOT})`}
-            fill="#000"
-            stroke="#000"
+            fill="black"
+            stroke="black"
             strokeWidth={CUT_STROKE_WIDTH}
           />
         </mask>
@@ -57,12 +57,12 @@ export function DeckIcon({ className = DEFAULT_CLASS }: Props) {
           width={VIEW_SIZE}
           height={VIEW_SIZE}
         >
-          <rect width={VIEW_SIZE} height={VIEW_SIZE} fill="#fff" stroke="none" />
+          <rect width={VIEW_SIZE} height={VIEW_SIZE} fill="white" stroke="none" />
           <rect
             {...CARD}
             transform={`rotate(${FAN_ANGLE} ${FAN_PIVOT})`}
-            fill="#000"
-            stroke="#000"
+            fill="black"
+            stroke="black"
             strokeWidth={CUT_STROKE_WIDTH}
           />
         </mask>

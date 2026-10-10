@@ -131,10 +131,10 @@ export function SelectedBar() {
                 title={title}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full
                            ${isEmptyFallback
-                             ? 'bg-amber-500/20 border border-amber-400/50 text-amber-200'
-                             : 'bg-purple-500/20 border border-purple-400/40 text-sg-text'}
+                             ? 'bg-sg-warning-text/20 border border-sg-warning-text/50 text-sg-warning-text'
+                             : 'bg-sg-wildcard/20 border border-sg-wildcard/40 text-sg-text'}
                            text-xs cursor-grab active:cursor-grabbing
-                           hover:bg-purple-500/30 transition-colors select-none`}
+                           hover:bg-sg-wildcard/30 transition-colors select-none`}
                 whileDrag={{ scale: 1.05, zIndex: 50 }}
               >
                 <span aria-hidden="true" className="text-sg-muted mr-0.5 text-[10px]">⠿</span>

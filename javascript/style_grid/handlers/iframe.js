@@ -8,6 +8,7 @@ import {
 import {
     anySGFrameVisible,
     setHostPageScrollLock,
+    syncTriggerExpanded,
 } from "../render.js";
 import {
     installForgeMainTabSyncForV2,
@@ -23,6 +24,7 @@ function initSGFrame(tab) {
         }
         const frame = document.createElement("iframe");
         frame.id = "sg-frame-" + tab;
+        frame.title = "Style Grid";
         // Query string busts stale index.html / iframe document cache after ui/dist updates (bump when shipping UI changes).
         frame.src = `/style_grid/ui?t=${Date.now()}`;
         var wrapper = document.createElement("div");
@@ -59,6 +61,7 @@ function initSGFrame(tab) {
             if (!wrapper.contains(target)) {
                 wrapper.style.display = "none";
                 setHostPageScrollLock(anySGFrameVisible());
+                syncTriggerExpanded(tab);
             }
         }, true);
         document.addEventListener("keydown", function (e) {
@@ -66,6 +69,7 @@ function initSGFrame(tab) {
                 e.stopPropagation();
                 wrapper.style.display = "none";
                 setHostPageScrollLock(anySGFrameVisible());
+                syncTriggerExpanded(tab);
             }
         }, true);
 

@@ -25,6 +25,45 @@ export const hooks = {
 var _sgHostPrevBodyOverflow = "";
 var _sgHostPrevDocOverflow = "";
 var _sgHostScrollLocked = false;
+var _sgDlgCounter = 0;
+
+function nextDlgTitleId() {
+        _sgDlgCounter += 1;
+        return "sg-dlg-" + _sgDlgCounter;
+    }
+
+function decorateEditorModal(modal, titleEl) {
+        var titleId = nextDlgTitleId();
+        titleEl.id = titleId;
+        modal.setAttribute("role", "dialog");
+        modal.setAttribute("aria-modal", "true");
+        modal.setAttribute("aria-labelledby", titleId);
+    }
+
+function syncTriggerExpanded(tab) {
+        var btn = qs("#sg_trigger_" + tab);
+        if (!btn) return;
+        var wr = state[tab] && state[tab].sgFrameWrapper;
+        if (!wr) {
+            var fr = state[tab] && state[tab].sgFrame;
+            if (fr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tab) {
+                wr = fr.parentElement;
+            }
+        }
+        var expanded = !!(wr && wr.style.display === "block");
+        btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
+
+function postPanelToast(tabName, message) {
+        var fr = state[tabName] && state[tabName].sgFrame;
+        if (fr && fr.contentWindow) {
+            fr.contentWindow.postMessage({
+                type: "SG_TOAST",
+                message: message,
+                variant: "error"
+            }, "*");
+        }
+    }
 
 function qs(sel, root) {
         if (root) return root.querySelector(sel);
@@ -67,6 +106,7 @@ function openStyleEditor(tabName, existingStyle, sourceFile) {
         const modal = el("div", { className: "sg-editor-modal" });
 
         const title = el("h3", { textContent: isNew ? "Create New Style" : "Edit Style: " + (existingStyle ? existingStyle.name : ""), className: "sg-editor-title" });
+        decorateEditorModal(modal, title);
         modal.appendChild(title);
 
         const nameInput = el("input", { className: "sg-editor-input", type: "text", placeholder: "Style name (e.g. BODY_Thicc)", value: existingStyle ? existingStyle.name : "" });
@@ -181,24 +221,29 @@ function duplicateStyle(tabName, style, onDone) {
             var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
             if (typeof notify === "function") notify();
             if (typeof onDone === "function") onDone();
-        }).catch(function () {});
+        }).catch(function (err) {
+            var msg = "Duplicate failed";
+            if (err && err.message) msg += ": " + err.message;
+            postPanelToast(tabName, msg);
+        });
     }
 
 function deleteStyle(tabName, styleName, source, onDeleted) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
-        modal.appendChild(el("h3", {
+        var deleteTitle = el("h3", {
             className: "sg-editor-title",
             textContent: "Delete style?"
-        }));
+        });
+        decorateEditorModal(modal, deleteTitle);
+        modal.appendChild(deleteTitle);
         modal.appendChild(el("p", {
+            className: "sg-editor-text-subdued",
             textContent: "\"" + styleName + "\" will be permanently removed from the CSV.",
-            style: "font-size:13px; color: var(--body-text-color-subdued, #9ca3af);"
         }));
         const btns = el("div", { className: "sg-editor-btns" });
         btns.appendChild(el("button", {
-            className: "sg-btn",
-            style: "background:#dc2626; border-color:#dc2626; color:#fff;",
+            className: "sg-btn sg-btn-danger",
             textContent: "🗑️ Delete",
             onClick: function () {
                 overlay.remove();
@@ -247,10 +292,12 @@ function moveToCategory(tabName, style, onDone) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
 
-        modal.appendChild(el("h3", {
+        var moveTitle = el("h3", {
             className: "sg-editor-title",
             textContent: "Move to category"
-        }));
+        });
+        decorateEditorModal(modal, moveTitle);
+        modal.appendChild(moveTitle);
         modal.appendChild(el("label", {
             className: "sg-editor-label",
             textContent: "New category name"
@@ -329,7 +376,9 @@ function moveToCategory(tabName, style, onDone) {
 function showExportImport(tabName) {
         const overlay = el("div", { className: "sg-editor-overlay" });
         const modal = el("div", { className: "sg-editor-modal" });
-        modal.appendChild(el("h3", { className: "sg-editor-title", textContent: "📥 Import / Export" }));
+        var ieTitle = el("h3", { className: "sg-editor-title", textContent: "📥 Import / Export" });
+        decorateEditorModal(modal, ieTitle);
+        modal.appendChild(ieTitle);
 
         const btnExport = el("button", {
             className: "sg-btn sg-btn-primary", textContent: "⬇️ Export all (JSON)",
@@ -340,14 +389,32 @@ function showExportImport(tabName) {
                     a.href = URL.createObjectURL(blob);
                     a.download = "style_grid_export_" + new Date().toISOString().slice(0, 10) + ".json";
                     a.click();
-                }).catch(function () {});
+                }).catch(function (err) {
+                    var msg = "Export failed";
+                    if (err && err.message) msg += ": " + err.message;
+                    postPanelToast(tabName, msg);
+                });
             }
         });
         modal.appendChild(btnExport);
 
         const importLabel = el("label", { className: "sg-editor-label", textContent: "Import JSON file:" });
         const importInput = el("input", { type: "file", accept: ".json" });
+        const importError = el("p", {
+            className: "sg-editor-error",
+            role: "alert",
+            hidden: "true",
+        });
+        function showImportError(text) {
+            importError.textContent = text;
+            importError.removeAttribute("hidden");
+        }
+        function clearImportError() {
+            importError.textContent = "";
+            importError.setAttribute("hidden", "true");
+        }
         importInput.addEventListener("change", function () {
+            clearImportError();
             const file = importInput.files[0];
             if (!file) return;
             const reader = new FileReader();
@@ -386,14 +453,15 @@ function showExportImport(tabName) {
                         var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                         if (typeof notify === "function") notify();
                     }).catch(function (err) {
-                        alert((err && err.message) ? err.message : "Import failed");
+                        showImportError((err && err.message) ? err.message : "Import failed");
                     });
-                } catch (_e) { alert("Invalid JSON file"); }
+                } catch (_e) { showImportError("Invalid JSON file"); }
             };
             reader.readAsText(file);
         });
         modal.appendChild(importLabel);
         modal.appendChild(importInput);
+        modal.appendChild(importError);
 
         modal.appendChild(el("button", { className: "sg-btn sg-btn-secondary", textContent: "Close", onClick: function () { overlay.remove(); } }));
         overlay.appendChild(modal);
@@ -486,10 +554,12 @@ function togglePanel(tabName, show) {
         if (!show) {
             target.style.display = "none";
             setHostPageScrollLock(anySGFrameVisible());
+            syncTriggerExpanded(tabName);
             return;
         }
         target.style.display = "block";
         setHostPageScrollLock(true);
+        syncTriggerExpanded(tabName);
         hooks.syncWildcards(tabName);
         if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
         hooks.forgeTab.lastBroadcast = null;
@@ -517,7 +587,10 @@ function createTriggerButton(tabName) {
         });
         const btn = el("button", {
             className: "sg-trigger-btn lg secondary gradio-button tool svelte-cmf5ev",
-            id: "sg_trigger_" + tabName, title: "Open Style Grid",
+            id: "sg_trigger_" + tabName,
+            title: "Open Style Grid",
+            "aria-controls": "sg-panel-wrapper-" + tabName,
+            "aria-expanded": "false",
         });
         btn.appendChild(svg);
         const badge = el("span", { className: "sg-btn-badge", id: "sg_btn_badge_" + tabName });
@@ -584,6 +657,7 @@ export {
     postSGInitToFrame,
     anySGFrameVisible,
     setHostPageScrollLock,
+    syncTriggerExpanded,
     togglePanel,
     createTriggerButton,
     getStyleGridToolbarHost,

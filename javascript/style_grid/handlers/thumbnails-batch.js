@@ -98,8 +98,7 @@ function startBatchThumbnails(tabName, catName, styles) {
            }
        });
        var cancelBtn = el("button", {
-           className: "sg-btn",
-           style: "background:#dc2626; border-color:#dc2626; color:#fff;",
+           className: "sg-btn sg-btn-danger",
            textContent: "✕ Cancel",
            onClick: function () {
                _batchState.cancelled = true;

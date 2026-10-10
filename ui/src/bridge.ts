@@ -1,3 +1,5 @@
+import type { ThemeMode } from './lib/themeMode'
+
 // ── Shared types ──────────────────────────────────────────────
 export type Tab = 'txt2img' | 'img2img'
 
@@ -26,6 +28,7 @@ export type HostMessage =
   | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
+  | { type: 'SG_THEME'; mode: ThemeMode }
 
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =

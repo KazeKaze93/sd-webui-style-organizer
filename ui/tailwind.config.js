@@ -4,17 +4,22 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Style Grid dark palette
-        'sg-bg': '#1a1a2e',
-        'sg-surface': '#16213e',
-        'sg-border': '#2d2d4e',
-        'sg-accent': '#6366f1',
-        'sg-text': '#e2e8f0',
-        'sg-muted': '#8291a8',
-        'sg-popover': '#0f172a',
-        'sg-success': '#15803d',
-        'sg-danger': '#b91c1c',
-        'sg-info': '#4f46e5',
+        'sg-bg': 'rgb(var(--sg-bg) / <alpha-value>)',
+        'sg-surface': 'rgb(var(--sg-surface) / <alpha-value>)',
+        'sg-popover': 'rgb(var(--sg-popover) / <alpha-value>)',
+        'sg-border': 'rgb(var(--sg-border) / <alpha-value>)',
+        'sg-text': 'rgb(var(--sg-text) / <alpha-value>)',
+        'sg-muted': 'rgb(var(--sg-muted) / <alpha-value>)',
+        'sg-accent': 'rgb(var(--sg-accent) / <alpha-value>)',
+        'sg-accent-text': 'rgb(var(--sg-accent-text) / <alpha-value>)',
+        'sg-success': 'rgb(var(--sg-success) / <alpha-value>)',
+        'sg-success-text': 'rgb(var(--sg-success-text) / <alpha-value>)',
+        'sg-danger': 'rgb(var(--sg-danger) / <alpha-value>)',
+        'sg-danger-text': 'rgb(var(--sg-danger-text) / <alpha-value>)',
+        'sg-warning-text': 'rgb(var(--sg-warning-text) / <alpha-value>)',
+        'sg-info': 'rgb(var(--sg-info) / <alpha-value>)',
+        'sg-wildcard': 'rgb(var(--sg-wildcard) / <alpha-value>)',
+        'sg-wildcard-text': 'rgb(var(--sg-wildcard-text) / <alpha-value>)',
         // shadcn (CSS variables)
         border: 'var(--border)',
         input: 'var(--input)',

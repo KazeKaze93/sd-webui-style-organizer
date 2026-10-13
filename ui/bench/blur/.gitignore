@@ -1,0 +1,4 @@
+# Local measurement artifacts (report.md + key PNG crops are kept)
+out/
+*.tmp.png
+results.json

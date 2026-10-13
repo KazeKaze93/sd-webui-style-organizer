@@ -20,7 +20,13 @@ import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
-import { DUPLICATE_NAME_RATIO, generateStyles } from './generateStyles.mjs'
+import { DUPLICATE_NAME_RATIO, buildBenchFixture } from './generateStyles.mjs'
+import {
+  applySelected,
+  runLayoutInvariantsForFrame,
+  selectFirstSource as harnessSelectFirstSource,
+  sleep as harnessSleep,
+} from './lib/layoutHarness.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UI_ROOT = path.resolve(__dirname, '..')
@@ -268,7 +274,15 @@ async function startVite(port, opts = { mode: 'preview' }) {
   return { ...dev, mode: 'dev' }
 }
 
-async function installRouteStubs(page) {
+/**
+ * @param {import('playwright').Page} page
+ * @param {{ usageCounts?: Record<string, number> }} [fixture]
+ */
+async function installRouteStubs(page, fixture = {}) {
+  const usageCounts = fixture.usageCounts && typeof fixture.usageCounts === 'object'
+    ? fixture.usageCounts
+    : {}
+
   await page.route('**/style_grid/**', async (route) => {
     const req = route.request()
     const url = req.url()
@@ -278,7 +292,7 @@ async function installRouteStubs(page) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({}),
+        body: JSON.stringify(usageCounts),
       })
       return
     }
@@ -554,17 +568,25 @@ async function measureRun(page, frame, n) {
  * @param {boolean} headed
  */
 async function runOne(browser, baseUrl, n, headed) {
-  const styles = generateStyles(n)
+  const fixture = buildBenchFixture(n)
+  const { styles, usageCounts, favorites, selected } = fixture
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   })
   const page = await context.newPage()
-  await installRouteStubs(page)
+  await installRouteStubs(page, { usageCounts })
 
   await page.addInitScript((payload) => {
     window.__BENCH__ = payload
-  }, { styles, tab: 'txt2img', n })
+    if (Array.isArray(payload.favorites) && payload.favorites.length > 0) {
+      try {
+        localStorage.setItem('sg_v2_favorites', JSON.stringify(payload.favorites))
+      } catch {
+        // ignore
+      }
+    }
+  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
 
   await setCpuThrottle(page, CPU_RATE)
 
@@ -594,13 +616,80 @@ async function runOne(browser, baseUrl, n, headed) {
   let result
   try {
     result = await measureRun(page, activeFrame, n)
+    // Realistic selection chrome after perf samples (does not affect init/toggle metrics).
+    await applySelected(activeFrame, selected)
   } finally {
     await iframeHandle.dispose().catch(() => {})
     await context.close()
   }
 
   void headed
-  return result
+  return { ...result, fixtureMeta: fixture.meta }
+}
+
+/**
+ * Layout invariants at N∈{500,5000} — every density × top + scroll3.
+ * @param {import('playwright').Browser} browser
+ * @param {string} baseUrl
+ * @param {number} n
+ */
+async function runLayoutPass(browser, baseUrl, n) {
+  const fixture = buildBenchFixture(n)
+  const { styles, usageCounts, favorites, selected } = fixture
+  const context = await browser.newContext({
+    viewport: VIEWPORT,
+    deviceScaleFactor: 1,
+  })
+  const page = await context.newPage()
+  await installRouteStubs(page, { usageCounts })
+  await page.addInitScript((payload) => {
+    window.__BENCH__ = payload
+    if (Array.isArray(payload.favorites) && payload.favorites.length > 0) {
+      try {
+        localStorage.setItem('sg_v2_favorites', JSON.stringify(payload.favorites))
+      } catch {
+        // ignore
+      }
+    }
+  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
+
+  await page.goto(`${baseUrl}/bench/host.html?n=${n}&layout=1`, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  })
+  await page.waitForFunction(
+    () => window.__BENCH_HOST__ && window.__BENCH_HOST__.initAcked === true,
+    null,
+    { timeout: 60_000 },
+  )
+  const iframeHandle = await page.locator('#panel').elementHandle()
+  if (!iframeHandle) {
+    await context.close()
+    throw new Error('Panel iframe element not found')
+  }
+  const frame = await iframeHandle.contentFrame()
+  if (!frame) {
+    await context.close()
+    throw new Error('Panel iframe frame not found')
+  }
+  await frame.waitForSelector('#root', { timeout: 60_000 })
+  await frame.waitForFunction(
+    () => document.querySelectorAll('[data-sg-card="true"]').length >= 1,
+    null,
+    { timeout: 180_000 },
+  )
+  await harnessSelectFirstSource(frame)
+  await harnessSleep(100)
+  await applySelected(frame, selected)
+
+  let layout
+  try {
+    layout = await runLayoutInvariantsForFrame(frame, { n })
+  } finally {
+    await iframeHandle.dispose().catch(() => {})
+    await context.close()
+  }
+  return layout
 }
 
 function evaluateGate(medians) {
@@ -695,6 +784,9 @@ async function main() {
       return doc
     }
 
+    /** @type {Record<string, unknown>} */
+    let layoutInvariants = {}
+
     try {
       for (const n of args.sizes) {
         const runs = []
@@ -720,11 +812,25 @@ async function main() {
         writeDoc()
         console.log(`[bench] checkpoint wrote ${outPath} (after N=${n})`)
       }
+
+      // Layout invariants (N=500 and 5000 when present in --sizes).
+      const layoutNs = args.sizes.filter((n) => n === 500 || n === 5000)
+      for (const n of layoutNs) {
+        console.log(`[bench] layout invariants N=${n} …`)
+        const layout = await runLayoutPass(browser, baseUrl, n)
+        layoutInvariants[String(n)] = layout
+        if (!layout.ok) {
+          console.error(`[bench] layout invariants FAILED at N=${n}`)
+          process.exitCode = 1
+        }
+      }
     } finally {
       await browser.close()
     }
 
     const doc = writeDoc()
+    doc.layoutInvariants = layoutInvariants
+    fs.writeFileSync(outPath, `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
     console.log(`[bench] wrote ${outPath}`)
     printTable(doc)
   } finally {

@@ -12,6 +12,7 @@
     "test": "node scripts/run-vitest-with-min.mjs",
     "test:watch": "vitest",
     "bench": "node bench/run.mjs",
+    "bench:layout": "node bench/layout.mjs",
     "bench:compare": "node bench/compare.mjs"
   },
   "dependencies": {

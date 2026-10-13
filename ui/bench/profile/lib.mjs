@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { generateStyles } from '../generateStyles.mjs'
+import { buildBenchFixture } from '../generateStyles.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const PROFILE_ROOT = __dirname
@@ -191,7 +191,15 @@ export async function startVite(port = 5173, opts = {}) {
   }
 }
 
-export async function installRouteStubs(page) {
+/**
+ * @param {import('playwright').Page} page
+ * @param {{ usageCounts?: Record<string, number> }} [fixture]
+ */
+export async function installRouteStubs(page, fixture = {}) {
+  const usageCounts = fixture.usageCounts && typeof fixture.usageCounts === 'object'
+    ? fixture.usageCounts
+    : {}
+
   await page.route('**/style_grid/**', async (route) => {
     const req = route.request()
     const url = req.url()
@@ -201,7 +209,7 @@ export async function installRouteStubs(page) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({}),
+        body: JSON.stringify(usageCounts),
       })
       return
     }
@@ -250,17 +258,26 @@ export async function installRouteStubs(page) {
  * @param {{ profileFromNavigation?: boolean }} [opts]
  */
 export async function openBench(browser, baseUrl, n, opts = {}) {
-  const styles = generateStyles(n)
+  const fixture = buildBenchFixture(n)
+  const { styles, usageCounts, favorites, selected } = fixture
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   })
   const page = await context.newPage()
-  await installRouteStubs(page)
+  await installRouteStubs(page, { usageCounts })
 
   await page.addInitScript((payload) => {
     window.__BENCH__ = payload
-  }, { styles, tab: 'txt2img', n })
+    // Favorites hydrate from LS at store module init (same-origin iframe shares LS).
+    if (Array.isArray(payload.favorites) && payload.favorites.length > 0) {
+      try {
+        localStorage.setItem('sg_v2_favorites', JSON.stringify(payload.favorites))
+      } catch {
+        // ignore quota / private-mode
+      }
+    }
+  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
 
   const hostClient = await page.context().newCDPSession(page)
   await hostClient.send('Target.setAutoAttach', {
@@ -314,6 +331,7 @@ export async function openBench(browser, baseUrl, n, opts = {}) {
     client,
     iframeHandle,
     n,
+    fixture,
     async close() {
       await iframeHandle.dispose().catch(() => {})
       await context.close()

@@ -42,9 +42,10 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
     <div
       data-sg-category-header={category}
       data-sg-sticky-header={isStickyActive ? 'true' : undefined}
-      className="flex items-center gap-2 mb-2 sticky top-0
-                 bg-sg-bg/95 backdrop-blur-sm py-1 z-10 cursor-pointer
-                 hover:bg-sg-surface/30 rounded-md transition-colors -mx-1 px-1"
+      className={`flex items-center gap-2 py-1 cursor-pointer
+                 rounded-md transition-colors -mx-1 px-1
+                 hover:bg-sg-surface/30
+                 ${isStickyActive ? 'bg-sg-bg z-10' : 'bg-sg-bg/95'}`}
       onClick={() => onToggleCollapse(category)}
       onContextMenu={
         enableLoraContextMenu

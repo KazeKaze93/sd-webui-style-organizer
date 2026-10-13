@@ -25,11 +25,11 @@ import {
 import { CardsRow } from './CardsRow'
 import { CategoryHeaderRow } from './CategoryHeaderRow'
 import {
+  cardRowHeightPx,
   columnsForWidth,
-  GRID_CARD_ROW_ESTIMATE_COMPACT_PX,
-  GRID_CARD_ROW_ESTIMATE_NORMAL_PX,
-  GRID_HEADER_ROW_ESTIMATE_PX,
   GRID_VIRTUAL_OVERSCAN,
+  headerRowHeightPx,
+  rowGapPx,
   VIRTUALIZER_TEST_INITIAL_RECT,
   gridGapPx,
   minCardWidthPx,
@@ -50,12 +50,15 @@ export type VirtualStyleGridProps = {
   children?: ReactNode
 }
 
-function estimateRowSize(row: GridRow | undefined, compactMode: boolean): number {
-  if (!row) return GRID_CARD_ROW_ESTIMATE_NORMAL_PX
-  if (row.kind === 'header') return GRID_HEADER_ROW_ESTIMATE_PX
-  return compactMode
-    ? GRID_CARD_ROW_ESTIMATE_COMPACT_PX
-    : GRID_CARD_ROW_ESTIMATE_NORMAL_PX
+function estimateRowSize(
+  row: GridRow | undefined,
+  compactMode: boolean,
+  windowed: boolean,
+): number {
+  if (!row || row.kind === 'cards') {
+    return cardRowHeightPx(compactMode, windowed)
+  }
+  return headerRowHeightPx(compactMode)
 }
 
 /** Profile (P toggle N=5000): VirtualStyleGrid 21 stack hits — memo + stable groups from StyleGrid. */
@@ -77,9 +80,19 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null)
   const [widthPx, setWidthPx] = useState<number>(VIRTUALIZER_TEST_INITIAL_RECT.width)
   const activeStickyIndexRef = useRef(0)
+  const rowsRef = useRef<GridRow[]>([])
+  // Profile (scroll N=5000): rangeExtractor new arrays every scroll sample —
+  // reuse prior result when start/end/sticky index unchanged.
+  const rangeCacheRef = useRef<{
+    startIndex: number
+    endIndex: number
+    sticky: number
+    result: number[]
+  } | null>(null)
 
   const minW = minCardWidthPx(compactMode, windowed)
   const gapPx = gridGapPx(compactMode)
+  const rowGap = rowGapPx(compactMode)
   const columns = useMemo(
     () => columnsForWidth(widthPx, minW, gapPx),
     [widthPx, minW, gapPx],
@@ -89,8 +102,15 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     () => buildGridRows(groups, collapsedCategories, columns, { includeHeaders }),
     [groups, collapsedCategories, columns, includeHeaders],
   )
+  rowsRef.current = rows
 
   const stickyIndexes = useMemo(() => headerRowIndexes(rows), [rows])
+
+  // Catalog size for bench readiness (virtualized DOM card count ≠ N).
+  const itemCount = useMemo(
+    () => groups.reduce((n, [, styles]) => n + styles.length, 0),
+    [groups],
+  )
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -115,17 +135,37 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
 
   const rangeExtractor = useCallback(
     (range: Range) => {
-      activeStickyIndexRef.current = activeStickyHeaderIndex(
-        stickyIndexes,
-        range.startIndex,
-      )
-      const next = new Set([
-        activeStickyIndexRef.current,
-        ...defaultRangeExtractor(range),
-      ])
-      return [...next].sort((a, b) => a - b)
+      if (stickyIndexes.length === 0) {
+        return defaultRangeExtractor(range)
+      }
+      const sticky = activeStickyHeaderIndex(stickyIndexes, range.startIndex)
+      activeStickyIndexRef.current = sticky
+      const cached = rangeCacheRef.current
+      if (
+        cached &&
+        cached.startIndex === range.startIndex &&
+        cached.endIndex === range.endIndex &&
+        cached.sticky === sticky
+      ) {
+        return cached.result
+      }
+      const next = new Set([sticky, ...defaultRangeExtractor(range)])
+      const result = [...next].sort((a, b) => a - b)
+      rangeCacheRef.current = {
+        startIndex: range.startIndex,
+        endIndex: range.endIndex,
+        sticky,
+        result,
+      }
+      return result
     },
     [stickyIndexes],
+  )
+
+  // Stable identity — profile: recreated estimateSize closed over `rows` forced remounts.
+  const estimateSize = useCallback(
+    (index: number) => estimateRowSize(rowsRef.current[index], compactMode, windowed),
+    [compactMode, windowed],
   )
 
   // TanStack Virtual returns unstable function identities; React Compiler skips this file.
@@ -133,15 +173,18 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollElRef.current ?? scrollEl,
-    estimateSize: (index) => estimateRowSize(rows[index], compactMode),
+    estimateSize,
     overscan: GRID_VIRTUAL_OVERSCAN,
     rangeExtractor,
     initialRect: VIRTUALIZER_TEST_INITIAL_RECT,
+    // Fixed row heights (card + ROW_GAP). No measureElement — measuring remounts
+    // on scroll caused multi-second TBT and glued later rows (measured without gap).
   })
 
   useEffect(() => {
+    rangeCacheRef.current = null
     virtualizer.measure()
-  }, [columns, compactMode, windowed, rows, virtualizer])
+  }, [columns, compactMode, windowed, virtualizer])
 
   const scrollToHeader = useCallback(
     (category: string) => {
@@ -164,7 +207,13 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   const virtualItems = virtualizer.getVirtualItems()
 
   return (
-    <div ref={rootRef} className="relative w-full">
+    <div
+      ref={rootRef}
+      className="relative w-full"
+      role="grid"
+      aria-rowcount={rows.length}
+      data-sg-item-count={itemCount}
+    >
       <div
         style={{
           height: virtualizer.getTotalSize(),
@@ -177,13 +226,15 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
           if (!row) return null
           const isActiveSticky =
             row.kind === 'header' &&
+            stickyIndexes.length > 0 &&
             virtualRow.index === activeStickyIndexRef.current
 
           return (
             <div
               key={virtualRow.key}
               data-index={virtualRow.index}
-              ref={virtualizer.measureElement}
+              role="row"
+              aria-rowindex={virtualRow.index + 1}
               style={
                 isActiveSticky
                   ? {
@@ -192,12 +243,19 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                       zIndex: 10,
                       left: 0,
                       width: '100%',
+                      // Sticky overlay still needs trailing gap so next row isn't glued.
+                      paddingBottom: `${rowGap}px`,
+                      boxSizing: 'border-box',
                     }
                   : {
                       position: 'absolute',
                       top: 0,
                       left: 0,
                       width: '100%',
+                      height: `${virtualRow.size}px`,
+                      // ROW_GAP as padding-bottom — matches column gap on both axes.
+                      paddingBottom: `${rowGap}px`,
+                      boxSizing: 'border-box',
                       transform: `translateY(${virtualRow.start}px)`,
                     }
               }

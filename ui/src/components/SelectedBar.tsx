@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { Reorder } from 'framer-motion'
 import { useShallow } from 'zustand/react/shallow'
 import { styleRowKey, useStylesStore } from '../store/stylesStore'
@@ -8,6 +8,9 @@ import { describeSpec } from '../lib/wildcardSlice'
 import { wildcardKey } from '../lib/wildcardKey'
 import { DeckIcon } from './DeckIcon'
 import { SaveSetDialog } from './SaveSetDialog'
+
+const CHIP_FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
 
 /**
  * Profile (P toggle N=5000): SelectedBar on toggle stacks; bare useStylesStore()
@@ -50,6 +53,16 @@ export function SelectedBar() {
       .map((s) => s.name)
   }
 
+  const onChipKeyDown = (
+    e: KeyboardEvent,
+    remove: () => void,
+  ) => {
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return
+    e.preventDefault()
+    e.stopPropagation()
+    remove()
+  }
+
   return (
     <>
       <div className="flex items-start gap-2 px-4 py-2">
@@ -73,20 +86,27 @@ export function SelectedBar() {
                   key={styleRowKey(s)}
                   value={s}
                   as="span"
-                  className="flex items-center gap-1 px-2 py-1 rounded-full
+                  tabIndex={0}
+                  role="group"
+                  aria-label={displayName(s.name)}
+                  onKeyDown={(e) => onChipKeyDown(e, () => toggleStyle(s))}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-full
                              bg-sg-accent/20 border border-sg-accent/40
                              text-xs text-sg-text cursor-grab active:cursor-grabbing
-                             hover:bg-sg-accent/30 transition-colors select-none"
+                             hover:bg-sg-accent/30 transition-colors select-none
+                             ${CHIP_FOCUS_RING}`}
                   whileDrag={{ scale: 1.05, zIndex: 50 }}
                 >
                   <span aria-hidden="true" className="text-sg-muted mr-0.5 text-[10px]">⠿</span>
                   {displayName(s.name)}
                   <button
+                    type="button"
                     onPointerDown={e => e.stopPropagation()}
                     onClick={() => toggleStyle(s)}
                     aria-label={`Remove ${s.name}`}
-                    className="text-sg-muted hover:text-sg-text ml-1
-                               transition-colors leading-none"
+                    className={`text-sg-muted hover:text-sg-text ml-1
+                               transition-colors leading-none rounded-sm
+                               ${CHIP_FOCUS_RING}`}
                   >✕</button>
                 </Reorder.Item>
               ))}
@@ -97,8 +117,9 @@ export function SelectedBar() {
           <button
             type="button"
             onClick={() => setSaveOpen(true)}
-            className="shrink-0 px-2.5 py-1 text-xs rounded border border-sg-accent/50
-                       bg-sg-accent/15 text-sg-text hover:bg-sg-accent/25 transition-colors"
+            className={`shrink-0 px-2.5 py-1 text-xs rounded border border-sg-accent/50
+                       bg-sg-accent/15 text-sg-text hover:bg-sg-accent/25 transition-colors
+                       ${CHIP_FOCUS_RING}`}
             title="Save current selection as a set"
           >
             Save set ({selectedStyles.length})
@@ -144,13 +165,18 @@ export function SelectedBar() {
                 key={wildcardKey(category, spec, ref.kind)}
                 value={ref}
                 as="span"
+                tabIndex={0}
+                role="group"
+                aria-label={label}
                 title={title}
+                onKeyDown={(e) => onChipKeyDown(e, () => removeWildcard(ref))}
                 className={`flex items-center gap-1 px-2 py-1 rounded-full
                            ${isEmptyFallback
                              ? 'bg-sg-warning-text/20 border border-sg-warning-text/50 text-sg-warning-text'
                              : 'bg-sg-wildcard/20 border border-sg-wildcard/40 text-sg-text'}
                            text-xs cursor-grab active:cursor-grabbing
-                           hover:bg-sg-wildcard/30 transition-colors select-none`}
+                           hover:bg-sg-wildcard/30 transition-colors select-none
+                           ${CHIP_FOCUS_RING}`}
                 whileDrag={{ scale: 1.05, zIndex: 50 }}
               >
                 <span aria-hidden="true" className="text-sg-muted mr-0.5 text-[10px]">⠿</span>
@@ -164,10 +190,12 @@ export function SelectedBar() {
                 )}
                 {label}
                 <button
+                  type="button"
                   onPointerDown={e => e.stopPropagation()}
                   onClick={() => removeWildcard(ref)}
                   aria-label={`Remove ${category}`}
-                  className="text-sg-muted hover:text-sg-text ml-1 transition-colors leading-none"
+                  className={`text-sg-muted hover:text-sg-text ml-1 transition-colors leading-none rounded-sm
+                             ${CHIP_FOCUS_RING}`}
                 >✕</button>
               </Reorder.Item>
             )

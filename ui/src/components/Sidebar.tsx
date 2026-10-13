@@ -5,11 +5,15 @@ import { sendToHost } from '../bridge'
 import { LORA_SOURCE, LORA_VIEW, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { MenuDivider } from './MenuDivider'
-import { ViewportFixedMenu } from './ViewportFixedMenu'
+import { MenuItem, ViewportFixedMenu } from './ViewportFixedMenu'
 import { WildcardMenuItems } from './WildcardMenuItems'
+import { cn } from '../lib/utils'
 
 const FAVORITES_ID = '★ Favorites'
 const RECENT_ID = '🕑 Recent'
+
+const NAV_FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
 
 function CategoryName({ category }: { category: string }) {
   const color = useCategoryColor(category)
@@ -48,7 +52,22 @@ export const Sidebar = memo(function Sidebar() {
     x: number
     y: number
     cat: string
+    restoreFocusTo: HTMLElement | null
   } | null>(null)
+
+  const openCatMenu = (
+    e: { clientX: number; clientY: number; currentTarget: EventTarget },
+    cat: string,
+  ) => {
+    const opener =
+      e.currentTarget instanceof HTMLElement ? e.currentTarget : null
+    setCatMenu({
+      x: e.clientX,
+      y: e.clientY,
+      cat,
+      restoreFocusTo: opener,
+    })
+  }
   const cats = categories()
   const catsSig = cats.join('\0')
   const [dragOrder, setDragOrder] = useState<string[]>(cats)
@@ -101,10 +120,14 @@ export const Sidebar = memo(function Sidebar() {
       <button
         type="button"
         onClick={() => startTransition(() => setCategory(null))}
-        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors
-          ${!activeCategory
+        aria-current={!activeCategory ? 'true' : undefined}
+        className={cn(
+          'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
+          NAV_FOCUS_RING,
+          !activeCategory
             ? 'bg-sg-accent text-white'
-            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
+            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+        )}
       >
         <span className="flex items-center gap-2 min-w-0">
           <span className="truncate" style={{ color: allColor }}>All</span>
@@ -116,21 +139,26 @@ export const Sidebar = memo(function Sidebar() {
       {specialCategories.map(({ id, label, Icon, count }) => {
       const alwaysShow = id === FAVORITES_ID || id === RECENT_ID
       if (!alwaysShow && count === 0) return null
+      const isActive = activeCategory === id
       return (
         <button
           key={id}
           type="button"
           onClick={() => startTransition(() => setCategory(activeCategory === id ? null : id))}
+          aria-current={isActive ? 'true' : undefined}
           onContextMenu={id === LORA_VIEW ? (e) => {
             e.preventDefault()
             e.stopPropagation()
-            setCatMenu({ x: e.clientX, y: e.clientY, cat: 'LoRA' })
+            openCatMenu(e, 'LoRA')
           } : undefined}
-          className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors
-      ${activeCategory === id
-        ? 'bg-sg-accent text-white'
-        : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}
-      ${count === 0 ? 'opacity-40' : ''}`}
+          className={cn(
+            'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
+            NAV_FOCUS_RING,
+            isActive
+              ? 'bg-sg-accent text-white'
+              : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+            count === 0 ? 'opacity-40' : '',
+          )}
         >
           <span className="flex min-w-0 items-center gap-2">
             <Icon className="h-4 w-4 shrink-0" aria-hidden />
@@ -143,10 +171,14 @@ export const Sidebar = memo(function Sidebar() {
       <button
         type="button"
         onClick={() => startTransition(() => setCategory(activeCategory === 'presets' ? null : 'presets'))}
-        className={`w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors
-          ${activeCategory === 'presets'
+        aria-current={activeCategory === 'presets' ? 'true' : undefined}
+        className={cn(
+          'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
+          NAV_FOCUS_RING,
+          activeCategory === 'presets'
             ? 'bg-sg-accent text-white'
-            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
+            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+        )}
       >
         <span className="flex min-w-0 items-center gap-2">
           <BookMarked className="h-4 w-4 shrink-0" aria-hidden />
@@ -185,16 +217,19 @@ export const Sidebar = memo(function Sidebar() {
               <button
                 type="button"
                 onClick={() => startTransition(() => setCategory(activeCategory === cat ? null : cat))}
+                aria-current={isActive ? 'true' : undefined}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   e.stopPropagation()
-                  setCatMenu({ x: e.clientX, y: e.clientY, cat })
+                  openCatMenu(e, cat)
                 }}
-                className={`w-full text-left px-3 py-2 rounded-md text-sm 
-                    transition-colors cursor-context-menu
-                  ${isActive
+                className={cn(
+                  'w-full text-left px-3 py-2 rounded-md text-sm transition-colors cursor-context-menu',
+                  NAV_FOCUS_RING,
+                  isActive
                     ? 'bg-sg-accent text-white'
-                    : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface'}`}
+                    : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+                )}
               >
                 <span className="flex items-center gap-2">
                   <CategoryName category={cat} />
@@ -209,7 +244,8 @@ export const Sidebar = memo(function Sidebar() {
         <ViewportFixedMenu
           x={catMenu.x}
           y={catMenu.y}
-          onDismiss={() => setCatMenu(null)}
+          onClose={() => setCatMenu(null)}
+          restoreFocusTo={catMenu.restoreFocusTo}
         >
           <WildcardMenuItems
             category={catMenu.cat}
@@ -218,10 +254,9 @@ export const Sidebar = memo(function Sidebar() {
           {catMenu.cat !== 'LoRA' && (
             <>
               <MenuDivider />
-              <button
-                type="button"
-                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                onClick={() => {
+              <MenuItem
+                className="flex items-center gap-2"
+                onSelect={() => {
                   const rawSrc =
                     useStylesStore.getState().activeSource ??
                     (typeof localStorage !== 'undefined' ? localStorage.getItem('sg_v2_last_source') : null)
@@ -236,7 +271,7 @@ export const Sidebar = memo(function Sidebar() {
               >
                 <Image className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 Generate previews...
-              </button>
+              </MenuItem>
             </>
           )}
         </ViewportFixedMenu>

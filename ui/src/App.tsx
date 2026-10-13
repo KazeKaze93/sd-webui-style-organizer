@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Save, Import, Eraser, Rows3, ChevronsUpDown, ChevronsDownUp, Plus, Globe,
   Palette, AlertTriangle, Maximize2, Minimize2, X,
@@ -24,9 +24,39 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from './components/ui/popover'
+import { closeTopLayer, hasOpenLayer, useLayer } from './lib/layerStack'
 import { cn } from './lib/utils'
 import { styleGridPost } from './lib/styleGridFetch'
 import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
+
+const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tag = target.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+  return target.isContentEditable
+}
+
+function clearSearchField(searchRoot: HTMLElement | null): boolean {
+  const { search, setSearch } = useStylesStore.getState()
+  const input = searchRoot?.querySelector('input')
+  const hasText =
+    (typeof search === 'string' && search.length > 0) ||
+    (!!input && input.value.length > 0)
+  if (!hasText) return false
+  setSearch('')
+  if (input) {
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )?.set
+    setter?.call(input, '')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+  return true
+}
 
 const WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
@@ -57,6 +87,7 @@ const ToolBtn = ({
       aria-pressed={active !== undefined ? active : undefined}
       className={cn(
         'w-8 h-8 flex items-center justify-center rounded transition-colors border',
+        FOCUS_RING,
         disabled
           ? 'opacity-45 cursor-not-allowed text-sg-muted border-transparent [filter:grayscale(0.35)]'
           : active
@@ -113,6 +144,8 @@ function ConflictsControl() {
     s.conflicts.length > 0 ? s.selectedStyles : EMPTY_SELECTED,
   )
 
+  useLayer(conflictsOpen, () => setConflictsOpen(false))
+
   if (conflicts.length === 0) return null
 
   return (
@@ -121,10 +154,13 @@ function ConflictsControl() {
         <button
           type="button"
           aria-label={`${conflicts.length} style conflicts`}
-          className="flex items-center gap-1 px-2 py-1 rounded
-             bg-red-500/20 border border-red-500/40
-             text-red-400 text-xs
-             motion-safe:animate-pulse"
+          className={cn(
+            'flex items-center gap-1 px-2 py-1 rounded',
+            'bg-red-500/20 border border-red-500/40',
+            'text-red-400 text-xs',
+            'motion-safe:animate-pulse',
+            FOCUS_RING,
+          )}
         >
           <AlertTriangle size={14} aria-hidden />
           {conflicts.length}
@@ -132,6 +168,7 @@ function ConflictsControl() {
       </PopoverTrigger>
       <PopoverContent
         align="end"
+        onEscapeKeyDown={(e) => e.preventDefault()}
         className="w-auto min-w-64 max-w-[min(20rem,calc(100vw-2.5rem))] p-3 bg-sg-popover border border-sg-border rounded-lg shadow-xl"
       >
         <div className="text-xs font-semibold text-white mb-2">
@@ -170,6 +207,7 @@ function ConflictsControl() {
 
 export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const searchRootRef = useRef<HTMLDivElement>(null)
   const [loraFetchStatus, setLoraFetchStatus] = useState<{
     status: string; done: number; total: number; errors: number
   } | null>(null)
@@ -310,17 +348,51 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      const { search, setSearch } = useStylesStore.getState()
-      if (search) {
-        e.stopPropagation()
-        setSearch('')
+      if (e.key === 'Escape') {
+        if (hasOpenLayer() && closeTopLayer()) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
+        if (clearSearchField(searchRootRef.current)) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
+        sendToHost({ type: 'SG_CLOSE_REQUEST' })
         return
       }
-      sendToHost({ type: 'SG_CLOSE_REQUEST' })
+
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (isEditableTarget(e.target)) return
+        e.preventDefault()
+        searchRootRef.current?.querySelector('input')?.focus()
+      }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    let attempts = 0
+    const focusFirstCell = () => {
+      if (cancelled) return
+      const cell = document.querySelector<HTMLElement>('[data-sg-card]')
+      if (cell) {
+        cell.focus()
+        return
+      }
+      attempts += 1
+      if (attempts < 30) {
+        window.setTimeout(focusFirstCell, 50)
+      }
+    }
+    const raf = requestAnimationFrame(focusFirstCell)
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+    }
   }, [])
 
   const toggleFullscreen = () => {
@@ -394,7 +466,7 @@ export default function App() {
           {tab}
         </span>
         <SourceFilter />
-        <div className="flex-1">
+        <div className="flex-1" ref={searchRootRef}>
           <SearchBar />
         </div>
         <TooltipProvider>

@@ -1,5 +1,8 @@
 import { useStylesStore } from '../store/stylesStore'
 
+const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
+
 export function SourceFilter() {
   const { sources, activeSource, setActiveSource, styles } = useStylesStore()
   if (sources.length === 0) return null
@@ -18,9 +21,10 @@ export function SourceFilter() {
       <select
         value={activeSource ?? ''}
         onChange={e => setActiveSource(e.target.value || null)}
-        className="h-9 px-2 rounded border border-sg-border bg-sg-surface 
+        aria-label="Style source"
+        className={`h-9 px-2 rounded border border-sg-border bg-sg-surface 
                    text-sg-text text-xs focus:border-sg-accent
-                   focus:outline-none cursor-pointer"
+                   focus:outline-none cursor-pointer ${FOCUS_RING}`}
         style={{ width: `${selectWidthCh}ch` }}
         title={currentLabel}
       >

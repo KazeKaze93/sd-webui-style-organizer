@@ -8,6 +8,9 @@ interface Props {
   onBeforeToggle?: () => void
 }
 
+const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
+
 function chipLabel(token: string): string {
   return token.includes('_') ? token.split('_').slice(1).join(' ') : token
 }
@@ -39,11 +42,13 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
           return (
             <button
               key={`s:${token}:${resolved.comment}:${index}`}
+              type="button"
               onClick={() => {
                 onBeforeToggle?.()
                 toggleStyle(resolved.style)
               }}
-              className={`px-2 py-0.5 rounded text-xs border transition-colors
+              aria-pressed={isSelected}
+              className={`px-2 py-0.5 rounded text-xs border transition-colors ${FOCUS_RING}
                 ${isSelected
                   ? 'bg-sg-accent/30 border-sg-accent/60 text-sg-accent-text'
                   : 'bg-sg-accent/10 border-sg-accent/30 text-sg-accent-text hover:bg-sg-accent/20'}`}
@@ -59,10 +64,11 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
           return (
             <button
               key={`c:${resolved.token}:${resolved.comment}:${index}`}
+              type="button"
               onClick={() => startTransition(() => setCategory(resolved.category))}
-              className="px-2 py-0.5 rounded text-xs border transition-colors
+              className={`px-2 py-0.5 rounded text-xs border transition-colors ${FOCUS_RING}
                 bg-sg-warning-text/10 border-sg-warning-text/30 text-sg-warning-text
-                hover:bg-sg-warning-text/20"
+                hover:bg-sg-warning-text/20`}
               title={title}
             >
               {resolved.token}

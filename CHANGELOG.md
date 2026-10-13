@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [5.2.0] - 2026-10-13
+
+### Changed
+- **Much faster with big libraries** (5,000 styles: opens in about 0.4 s instead of 6.9 s, select/search respond in about 40 ms, only visible rows are rendered).
+- **Smooth scrolling** with sticky category headers.
+- **Intended font restored** (sans instead of serif fallback).
+- **Selection dot is back** (instead of the check badge).
+- **Cleaner cards** (the small usage counter under style names is gone, card rows keep an even gap).
+- **Context menus stay on screen** (card menus and the source picker no longer get cut off at the panel edge).
+
+Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs unchanged, no thumbnail regeneration.
+
 ## [5.1.0] - 2026-10-11
 
 ### Changed

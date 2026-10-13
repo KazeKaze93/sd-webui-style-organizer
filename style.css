@@ -131,6 +131,11 @@
     box-sizing: border-box;
 }
 .sg-editor-input:focus { border-color: var(--color-accent, #6366f1); }
+.sg-editor-modal:focus { outline: none; }
+.sg-editor-overlay .sg-btn:focus-visible {
+    outline: 2px solid var(--color-accent, #6366f1);
+    outline-offset: 2px;
+}
 .sg-editor-textarea {
     width: 100%;
     padding: 8px 12px;

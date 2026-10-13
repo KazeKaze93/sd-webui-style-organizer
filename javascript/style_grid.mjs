@@ -9,8 +9,12 @@
  */
 import { state } from "./style_grid/state.js";
 import {
-    anySGFrameVisible,
     setHostPageScrollLock,
+    installHostKeyboardA11y,
+    syncTriggerExpanded,
+    focusTriggerButton,
+    getTopmostHostOverlay,
+    getPanelTarget,
 } from "./style_grid/render.js";
 import {
     init,
@@ -24,21 +28,33 @@ import "./style_grid/prompt-utils-bridge.js";
 
 "use strict";
 
-// Keyboard (Escape closes open panel) — moved from style_grid.js body tail
-document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") {
+// Host-document Escape: overlays first, then panel (see installHostKeyboardA11y).
+// Escape inside the iframe is handled by App → SG_CLOSE_REQUEST (not this listener).
+installHostKeyboardA11y();
+
+// After App posts SG_CLOSE_REQUEST, iframe-messages hides the wrapper but does not
+// sync aria-expanded or restore focus. Defer so that hide runs first, then fix up.
+// If a host overlay is open, undo the panel hide (Escape must dismiss overlay first).
+window.addEventListener("message", function (e) {
+    if (!e.data || e.data.type !== "SG_CLOSE_REQUEST") return;
+    var src = e.source;
+    setTimeout(function () {
         ["txt2img", "img2img"].forEach(function (t) {
-            var frEsc = state[t].sgFrame;
-            var wrEsc = state[t].sgFrameWrapper || (frEsc && frEsc.parentElement && frEsc.parentElement.id === "sg-panel-wrapper-" + t ? frEsc.parentElement : null);
-            var targetEsc = wrEsc || frEsc;
-            if (targetEsc && targetEsc.style.display === "block") {
-                targetEsc.style.display = "none";
-                setHostPageScrollLock(anySGFrameVisible());
-                e.preventDefault();
+            var fr = state[t] && state[t].sgFrame;
+            if (!fr || src !== fr.contentWindow) return;
+            var target = getPanelTarget(t);
+            if (getTopmostHostOverlay()) {
+                if (target && target.style.display === "none") {
+                    target.style.display = "block";
+                    setHostPageScrollLock(true);
+                }
+                syncTriggerExpanded(t);
                 return;
             }
+            syncTriggerExpanded(t);
+            focusTriggerButton(t);
         });
-    }
+    }, 0);
 });
 
 init();

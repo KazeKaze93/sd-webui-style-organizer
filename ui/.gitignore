@@ -15,6 +15,7 @@ dist-ssr
 # Local bench metrics (never commit)
 bench/results/*.json
 !bench/results/.gitkeep
+bench/.preview-dist/
 
 # Editor directories and files
 .vscode/*

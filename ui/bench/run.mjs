@@ -1,14 +1,18 @@
 /**
- * Style Grid Phase-A perf bench (per-card cost).
+ * Style Grid Phase-A/B perf bench (per-card cost).
  *
  * Playwright + Chromium, CDP CPU 4x, N=500/2000/5000, 3 runs → median.
  * Host embeds panel (bench vite config serves /bench/host.html).
  * Stubs /style_grid/** via page.route.
  *
+ * Default runtime: production build + `vite preview` (no jsxDEV).
+ * Pass `--dev` only for local debugging against Vite transform pipeline.
+ *
  * Usage:
  *   node bench/run.mjs --label baseline
  *   node bench/run.mjs --label phase-a
  *   node bench/run.mjs --label smoke --sizes 500 --runs 1
+ *   node bench/run.mjs --label phase-b --dev
  */
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -21,6 +25,8 @@ import { DUPLICATE_NAME_RATIO, generateStyles } from './generateStyles.mjs'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UI_ROOT = path.resolve(__dirname, '..')
 const RESULTS_DIR = path.join(__dirname, 'results')
+/** Isolated preview output — do not clobber shipped `ui/dist` during benches. */
+const PREVIEW_OUT_DIR = path.join(__dirname, '.preview-dist')
 
 const DEFAULT_SIZES = [500, 2000, 5000]
 const DEFAULT_RUNS = 3
@@ -42,6 +48,8 @@ function parseArgs(argv) {
     runs: DEFAULT_RUNS,
     port: 0,
     headed: false,
+    /** false = vite build + preview (gate); true = vite dev (jsxDEV). */
+    dev: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i]
@@ -54,6 +62,7 @@ function parseArgs(argv) {
     } else if (a === '--runs') out.runs = Math.max(1, Number(argv[++i]) || DEFAULT_RUNS)
     else if (a === '--port') out.port = Number(argv[++i]) || 0
     else if (a === '--headed') out.headed = true
+    else if (a === '--dev') out.dev = true
   }
   if (!out.label) throw new Error('--label is required')
   if (out.sizes.length === 0) throw new Error('--sizes produced an empty list')
@@ -104,25 +113,38 @@ async function waitForUrl(url, timeoutMs = 60_000) {
   throw new Error(`Timed out waiting for ${url}`)
 }
 
-function startVite(port) {
-  const configPath = path.join(__dirname, 'vite.config.ts')
-  const chosenPort = port > 0 ? port : 5173
-  const args = [
-    '--config',
-    configPath,
-    '--host',
-    '127.0.0.1',
-    '--strictPort',
-    '--port',
-    String(chosenPort),
-  ]
-
-  // Invoke Vite's JS entry directly (avoids npx + shell quirks on Windows).
+function viteBin() {
   const viteEntry = path.join(UI_ROOT, 'node_modules', 'vite', 'bin', 'vite.js')
   if (!fs.existsSync(viteEntry)) {
     throw new Error(`Vite not found at ${viteEntry}; run npm ci in ui/`)
   }
-  const child = spawn(process.execPath, [viteEntry, ...args], {
+  return viteEntry
+}
+
+function stopChild(child) {
+  return async () => {
+    if (child.pid == null || child.exitCode != null) return
+    if (process.platform === 'win32') {
+      await new Promise((resolve) => {
+        const killer = spawn(
+          'taskkill',
+          ['/pid', String(child.pid), '/T', '/F'],
+          { stdio: 'ignore', windowsHide: true },
+        )
+        killer.on('exit', () => resolve())
+        killer.on('error', () => resolve())
+      })
+    } else {
+      child.kill('SIGTERM')
+      await sleep(500)
+      if (child.exitCode == null) child.kill('SIGKILL')
+    }
+    await sleep(200)
+  }
+}
+
+function spawnVite(args) {
+  const child = spawn(process.execPath, [viteBin(), ...args], {
     cwd: UI_ROOT,
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: false,
@@ -171,29 +193,79 @@ function startVite(port) {
     })
   })
 
-  return {
-    child,
-    ready,
-    async stop() {
-      if (child.pid == null || child.exitCode != null) return
-      if (process.platform === 'win32') {
-        await new Promise((resolve) => {
-          const killer = spawn(
-            'taskkill',
-            ['/pid', String(child.pid), '/T', '/F'],
-            { stdio: 'ignore', windowsHide: true },
-          )
-          killer.on('exit', () => resolve())
-          killer.on('error', () => resolve())
-        })
+  return { child, ready, stop: stopChild(child), getLogs: () => ({ stdout, stderr }) }
+}
+
+/** Production bundle for preview (jsx runtime, no jsxDEV). */
+async function buildBenchPreview() {
+  const configPath = path.join(__dirname, 'vite.config.ts')
+  console.log(`[bench] building production preview → ${PREVIEW_OUT_DIR}`)
+  await new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      [viteBin(), 'build', '--config', configPath],
+      {
+        cwd: UI_ROOT,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        shell: false,
+        env: { ...process.env, BROWSER: 'none', NODE_ENV: 'production' },
+        windowsHide: true,
+      },
+    )
+    let stdout = ''
+    let stderr = ''
+    child.stdout.on('data', (d) => {
+      stdout += d.toString()
+    })
+    child.stderr.on('data', (d) => {
+      stderr += d.toString()
+    })
+    child.on('error', reject)
+    child.on('exit', (code) => {
+      if (code === 0) {
+        console.log('[bench] production build ok')
+        resolve()
       } else {
-        child.kill('SIGTERM')
-        await sleep(500)
-        if (child.exitCode == null) child.kill('SIGKILL')
+        reject(new Error(`vite build exited ${code}\n${stderr || stdout}`))
       }
-      await sleep(200)
-    },
+    })
+  })
+}
+
+/**
+ * @param {number} port
+ * @param {{ mode: 'preview' | 'dev' }} opts
+ */
+async function startVite(port, opts = { mode: 'preview' }) {
+  const configPath = path.join(__dirname, 'vite.config.ts')
+  const chosenPort = port > 0 ? port : 5173
+  const mode = opts.mode === 'dev' ? 'dev' : 'preview'
+
+  if (mode === 'preview') {
+    await buildBenchPreview()
+    const preview = spawnVite([
+      'preview',
+      '--config',
+      configPath,
+      '--host',
+      '127.0.0.1',
+      '--strictPort',
+      '--port',
+      String(chosenPort),
+    ])
+    return { ...preview, mode: 'preview' }
   }
+
+  const dev = spawnVite([
+    '--config',
+    configPath,
+    '--host',
+    '127.0.0.1',
+    '--strictPort',
+    '--port',
+    String(chosenPort),
+  ])
+  return { ...dev, mode: 'dev' }
 }
 
 async function installRouteStubs(page) {
@@ -582,14 +654,18 @@ async function main() {
   const args = parseArgs(process.argv.slice(2))
   fs.mkdirSync(RESULTS_DIR, { recursive: true })
 
-  console.log(`[bench] label=${args.label} sizes=${args.sizes.join(',')} runs=${args.runs} cpu=${CPU_RATE}x`)
+  const viteMode = args.dev ? 'dev' : 'preview'
+  console.log(
+    `[bench] label=${args.label} sizes=${args.sizes.join(',')} runs=${args.runs} ` +
+      `cpu=${CPU_RATE}x vite=${viteMode}`,
+  )
 
-  const vite = startVite(args.port)
+  const vite = await startVite(args.port, { mode: viteMode })
   let baseUrl
   try {
     baseUrl = await vite.ready
     await waitForUrl(`${baseUrl}/bench/host.html`)
-    console.log(`[bench] vite ready at ${baseUrl}`)
+    console.log(`[bench] vite ${vite.mode} ready at ${baseUrl}`)
 
     const browser = await chromium.launch({
       headless: !args.headed,
@@ -606,6 +682,7 @@ async function main() {
         cpuThrottle: CPU_RATE,
         runsPerN: args.runs,
         viewport: VIEWPORT,
+        viteMode: vite.mode,
         sizes,
         phaseBGate: evaluateGate({
           initMs: gateMedians.initMs,

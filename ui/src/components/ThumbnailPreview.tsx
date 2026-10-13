@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Style } from '../bridge'
 import { styleRowKey, useStylesStore, useThumbVersion } from '../store/stylesStore'
 
@@ -8,7 +8,7 @@ interface Props {
   children: React.ReactNode
 }
 
-export function ThumbnailPreview({ style, children }: Props) {
+export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children }: Props) {
   /**
    * Delays preview open (300ms) to reduce flicker during fast cursor travel,
    * and falls back to text-only popup if thumbnail image fails to load.
@@ -122,4 +122,4 @@ export function ThumbnailPreview({ style, children }: Props) {
       )}
     </div>
   )
-}
+})

@@ -1,4 +1,4 @@
-import { memo, type ReactNode } from 'react'
+import { memo, useMemo, type ReactNode } from 'react'
 import type { Style } from '../../bridge'
 import { styleRowKey } from '../../store/stylesStore'
 import { StyleCard } from '../StyleCard'
@@ -12,6 +12,25 @@ export type CardsRowProps = {
   renderCard?: (style: Style) => ReactNode
 }
 
+function stylesPropsEqual(a: readonly Style[], b: readonly Style[]): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function cardsRowPropsEqual(prev: CardsRowProps, next: CardsRowProps): boolean {
+  return (
+    prev.columns === next.columns &&
+    prev.compactMode === next.compactMode &&
+    prev.windowed === next.windowed &&
+    prev.renderCard === next.renderCard &&
+    stylesPropsEqual(prev.styles, next.styles)
+  )
+}
+
 /** Profile (P toggle N=5000): CardsRow 40 stack hits — memo skips identical viewport rows. */
 export const CardsRow = memo(function CardsRow({
   styles,
@@ -22,14 +41,16 @@ export const CardsRow = memo(function CardsRow({
 }: CardsRowProps) {
   // Column gap only — vertical ROW_GAP lives on the virtual row padding-bottom.
   const colGap = gridGapPx(compactMode)
+  // Stable style object across parent scroll re-renders with unchanged columns.
+  const gridStyle = useMemo(
+    () => ({
+      gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+      columnGap: `${colGap}px`,
+    }),
+    [columns, colGap],
+  )
   return (
-    <div
-      className="grid content-start"
-      style={{
-        gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-        columnGap: `${colGap}px`,
-      }}
-    >
+    <div className="grid content-start" style={gridStyle}>
       {styles.map((style) =>
         renderCard ? (
           <div key={styleRowKey(style)}>{renderCard(style)}</div>
@@ -39,4 +60,4 @@ export const CardsRow = memo(function CardsRow({
       )}
     </div>
   )
-})
+}, cardsRowPropsEqual)

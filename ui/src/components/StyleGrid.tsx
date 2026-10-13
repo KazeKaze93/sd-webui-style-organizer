@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { sendToHost, WILDCARD_KIND_DECK, type Style } from '../bridge'
 import {
@@ -208,6 +208,11 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b))
   }, [isFlatCategory, filtered])
 
+  // Stable callback — fresh inline broke VirtualStyleGrid memo on every parent render.
+  const onHeaderContextMenu = useCallback((cat: string, x: number, y: number) => {
+    setLoraCatMenu({ x, y, cat })
+  }, [])
+
   const renderSliceCard = (style: Style) => {
     const checked = sliceSelection.includes(style.name)
     const label = style.display_name || (style.name.includes('_')
@@ -370,7 +375,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
       enableLoraContextMenu={activeCategory === LORA_VIEW}
       onToggleCollapse={toggleCollapse}
       onSelectAll={selectAllInCategory}
-      onHeaderContextMenu={(cat, x, y) => setLoraCatMenu({ x, y, cat })}
+      onHeaderContextMenu={onHeaderContextMenu}
     >
       {loraCatMenu && (
         <ViewportFixedMenu

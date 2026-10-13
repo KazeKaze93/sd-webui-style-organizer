@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [5.3.0] - 2026-10-14
+
+### Changed
+- **Full keyboard navigation** (Tab into the grid, arrow keys, Home/End, Page Up/Down, Enter or Space to select, works across thousands of styles).
+- **Context menus from the keyboard** (menu key or Shift+F10, arrow keys inside).
+- **Escape does the right thing** (closes only the topmost layer, then clears the search, and only then closes the panel; no longer closes the panel on top of an open editor).
+- **Dialogs keep focus** (Tab stays inside, focus returns when they close).
+- **Visible focus ring** for keyboard users; mouse use looks as before.
+
+Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs unchanged.
+
 ## [5.2.0] - 2026-10-13
 
 ### Changed

@@ -27,6 +27,9 @@ var _sgHostPrevBodyOverflow = "";
 var _sgHostPrevDocOverflow = "";
 var _sgHostScrollLocked = false;
 var _sgDlgCounter = 0;
+var _sgHostKbdInstalled = false;
+var SG_HOST_OVERLAY_SEL = ".sg-editor-overlay";
+var SG_FOCUSABLE_SEL = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 function nextDlgTitleId() {
         _sgDlgCounter += 1;
@@ -41,18 +44,187 @@ function decorateEditorModal(modal, titleEl) {
         modal.setAttribute("aria-labelledby", titleId);
     }
 
+function restoreFocus(el) {
+        if (!el || typeof el.focus !== "function") return;
+        if (el.isConnected === false) return;
+        try { el.focus(); } catch (_err) { /* ignore */ }
+    }
+
+function getFocusableElements(root) {
+        if (!root || !root.querySelectorAll) return [];
+        return Array.prototype.filter.call(root.querySelectorAll(SG_FOCUSABLE_SEL), function (node) {
+            if (node.disabled) return false;
+            if (node.getAttribute("aria-hidden") === "true") return false;
+            var style = window.getComputedStyle(node);
+            if (style.visibility === "hidden" || style.display === "none") return false;
+            return true;
+        });
+    }
+
+function getTopmostHostOverlay() {
+        var list = document.querySelectorAll(SG_HOST_OVERLAY_SEL);
+        return list.length ? list[list.length - 1] : null;
+    }
+
+function focusTriggerButton(tab) {
+        restoreFocus(qs("#sg_trigger_" + tab));
+    }
+
+function getPanelTarget(tab) {
+        var fr = state[tab] && state[tab].sgFrame;
+        var wr = state[tab] && state[tab].sgFrameWrapper;
+        if (!wr && fr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tab) {
+            wr = fr.parentElement;
+            state[tab].sgFrameWrapper = wr;
+        }
+        return wr || fr || null;
+    }
+
 function syncTriggerExpanded(tab) {
         var btn = qs("#sg_trigger_" + tab);
         if (!btn) return;
-        var wr = state[tab] && state[tab].sgFrameWrapper;
-        if (!wr) {
-            var fr = state[tab] && state[tab].sgFrame;
-            if (fr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tab) {
-                wr = fr.parentElement;
-            }
-        }
+        var wr = getPanelTarget(tab);
         var expanded = !!(wr && wr.style.display === "block");
         btn.setAttribute("aria-expanded", expanded ? "true" : "false");
+    }
+
+function closeSGPanel(tab) {
+        var target = getPanelTarget(tab);
+        if (!target) return false;
+        if (target.style.display !== "block") {
+            syncTriggerExpanded(tab);
+            return false;
+        }
+        target.style.display = "none";
+        setHostPageScrollLock(anySGFrameVisible());
+        syncTriggerExpanded(tab);
+        focusTriggerButton(tab);
+        return true;
+    }
+
+function tryCloseTopmostHostOverlay() {
+        var overlay = getTopmostHostOverlay();
+        if (!overlay) return false;
+        if (overlay.classList.contains("sg-batch-overlay")) {
+            var cancelBtn = overlay.querySelector(".sg-btn-danger");
+            if (cancelBtn && !cancelBtn.disabled) {
+                cancelBtn.click();
+                return true;
+            }
+        }
+        if (typeof overlay._sgCloseOverlay === "function") {
+            overlay._sgCloseOverlay();
+        } else {
+            overlay.remove();
+        }
+        return true;
+    }
+
+function trapTabKey(e, overlay) {
+        var modal = overlay.querySelector(".sg-editor-modal") || overlay;
+        var nodes = getFocusableElements(modal);
+        if (!nodes.length) {
+            e.preventDefault();
+            return;
+        }
+        var first = nodes[0];
+        var last = nodes[nodes.length - 1];
+        var active = document.activeElement;
+        if (e.shiftKey) {
+            if (active === first || !modal.contains(active)) {
+                e.preventDefault();
+                last.focus();
+            }
+        } else if (active === last || !modal.contains(active)) {
+            e.preventDefault();
+            first.focus();
+        }
+    }
+
+function enhanceHostOverlay(overlay, opts) {
+        opts = opts || {};
+        if (!overlay || overlay.dataset.sgA11y === "1") return;
+        overlay.dataset.sgA11y = "1";
+        var prevFocus = document.activeElement;
+        var modal = overlay.querySelector(".sg-editor-modal") || overlay;
+
+        function cleanupAndRestore() {
+            if (overlay._sgA11yCleaned) return;
+            overlay._sgA11yCleaned = true;
+            restoreFocus(prevFocus);
+        }
+
+        var nativeRemove = overlay.remove;
+        overlay.remove = function () {
+            cleanupAndRestore();
+            return nativeRemove.call(overlay);
+        };
+        overlay._sgCloseOverlay = function () {
+            overlay.remove();
+        };
+
+        var initial = opts.initialFocus;
+        if (!initial || !modal.contains(initial)) {
+            initial = getFocusableElements(modal)[0] || modal;
+        }
+        if (initial === modal && !modal.hasAttribute("tabindex")) {
+            modal.setAttribute("tabindex", "-1");
+        }
+        setTimeout(function () {
+            if (overlay.isConnected) restoreFocus(initial);
+        }, 0);
+    }
+
+function installHostKeyboardA11y() {
+        if (_sgHostKbdInstalled) return;
+        _sgHostKbdInstalled = true;
+
+        document.addEventListener("keydown", function (e) {
+            var overlay = getTopmostHostOverlay();
+            if (overlay && e.key === "Tab") {
+                trapTabKey(e, overlay);
+                return;
+            }
+            if (e.key !== "Escape") return;
+            if (tryCloseTopmostHostOverlay()) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+                return;
+            }
+            var closed = false;
+            ["txt2img", "img2img"].forEach(function (t) {
+                if (closeSGPanel(t)) closed = true;
+            });
+            if (closed) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (typeof e.stopImmediatePropagation === "function") e.stopImmediatePropagation();
+            }
+        }, true);
+
+        function watchOverlays() {
+            if (!document.body || typeof MutationObserver !== "function") return;
+            var obs = new MutationObserver(function (mutations) {
+                mutations.forEach(function (m) {
+                    Array.prototype.forEach.call(m.addedNodes || [], function (node) {
+                        if (!node || node.nodeType !== 1) return;
+                        if (node.classList && node.classList.contains("sg-editor-overlay")) {
+                            enhanceHostOverlay(node);
+                        }
+                        if (node.querySelectorAll) {
+                            Array.prototype.forEach.call(
+                                node.querySelectorAll(SG_HOST_OVERLAY_SEL),
+                                function (el) { enhanceHostOverlay(el); }
+                            );
+                        }
+                    });
+                });
+            });
+            obs.observe(document.body, { childList: true, subtree: true });
+        }
+        if (document.body) watchOverlays();
+        else document.addEventListener("DOMContentLoaded", watchOverlays);
     }
 
 function postPanelToast(tabName, message) {
@@ -210,7 +382,7 @@ function openStyleEditor(tabName, existingStyle, sourceFile) {
             editorOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
-        nameInput.focus();
+        enhanceHostOverlay(overlay, { initialFocus: nameInput });
     }
 
 function duplicateStyle(tabName, style, onDone) {
@@ -287,6 +459,7 @@ function deleteStyle(tabName, styleName, source, onDeleted) {
             deleteOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
+        enhanceHostOverlay(overlay);
     }
 
 function moveToCategory(tabName, style, onDone) {
@@ -372,6 +545,7 @@ function moveToCategory(tabName, style, onDone) {
             moveOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
+        enhanceHostOverlay(overlay, { initialFocus: input });
     }
 
 function showExportImport(tabName) {
@@ -462,6 +636,7 @@ function showExportImport(tabName) {
             importExportOverlayMouseDownTarget = null;
         });
         document.body.appendChild(overlay);
+        enhanceHostOverlay(overlay);
     }
 
 function syncSelectionChrome(tabName) {
@@ -527,20 +702,14 @@ function setHostPageScrollLock(lock) {
 function togglePanel(tabName, show) {
         if (!state[tabName].sgFrame) hooks.ensureSGFramesOnce();
         var fr = state[tabName].sgFrame;
-        var wr = state[tabName].sgFrameWrapper;
         if (!fr) {
             return;
         }
-        if (!wr && fr.parentElement && fr.parentElement.id === "sg-panel-wrapper-" + tabName) {
-            wr = fr.parentElement;
-            state[tabName].sgFrameWrapper = wr;
-        }
-        var target = wr || fr;
+        var target = getPanelTarget(tabName);
+        if (!target) return;
         if (typeof show === "undefined") show = target.style.display !== "block";
         if (!show) {
-            target.style.display = "none";
-            setHostPageScrollLock(anySGFrameVisible());
-            syncTriggerExpanded(tabName);
+            closeSGPanel(tabName);
             return;
         }
         target.style.display = "block";
@@ -550,6 +719,7 @@ function togglePanel(tabName, show) {
         if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
         hooks.forgeTab.lastBroadcast = null;
         hooks.scheduleSyncForgeHostTabToV2Frames();
+        try { fr.focus(); } catch (_err) { /* ignore */ }
     }
 
 function createTriggerButton(tabName) {
@@ -651,6 +821,13 @@ export {
     anySGFrameVisible,
     setHostPageScrollLock,
     syncTriggerExpanded,
+    focusTriggerButton,
+    getTopmostHostOverlay,
+    getPanelTarget,
+    closeSGPanel,
+    tryCloseTopmostHostOverlay,
+    enhanceHostOverlay,
+    installHostKeyboardA11y,
     togglePanel,
     createTriggerButton,
     getStyleGridToolbarHost,

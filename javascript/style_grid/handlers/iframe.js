@@ -6,9 +6,7 @@ import {
     pushStyleIntoCategories,
 } from "../state.js";
 import {
-    anySGFrameVisible,
-    setHostPageScrollLock,
-    syncTriggerExpanded,
+    closeSGPanel,
 } from "../render.js";
 import {
     installForgeMainTabSyncForV2,
@@ -79,19 +77,11 @@ function initSGFrame(tab) {
             if (target.closest && target.closest(".sg-trigger-btn")) return;
             if (target.closest && target.closest(".sg-editor-overlay, .sg-source-picker")) return;
             if (!wrapper.contains(target)) {
-                wrapper.style.display = "none";
-                setHostPageScrollLock(anySGFrameVisible());
-                syncTriggerExpanded(tab);
+                closeSGPanel(tab);
             }
         }, true);
-        document.addEventListener("keydown", function (e) {
-            if (e.key === "Escape" && wrapper.style.display !== "none") {
-                e.stopPropagation();
-                wrapper.style.display = "none";
-                setHostPageScrollLock(anySGFrameVisible());
-                syncTriggerExpanded(tab);
-            }
-        }, true);
+        // Escape is handled centrally by installHostKeyboardA11y (render.js):
+        // host overlays first, then panel close + trigger focus + aria-expanded.
 
         frame.addEventListener("load", function () {
             setTimeout(function () {

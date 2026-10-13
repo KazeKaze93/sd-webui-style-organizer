@@ -31,11 +31,12 @@ body {
 }
 
 @layer base {
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: "Geist Variable", sans-serif;
-  }
   :root {
+    /* Font tokens on :root so both theme palettes inherit (no unused .theme class).
+       Family name only — Tailwind fontFamily.sans / .heading supply the fallback chain. */
+    --font-sans: "Geist Variable";
+    --font-heading: var(--font-sans);
+
     color-scheme: dark;
     --sg-bg: 26 26 46;
     --sg-surface: 22 33 62;

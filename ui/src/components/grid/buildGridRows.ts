@@ -1,5 +1,10 @@
 import type { Style } from '../../bridge'
 
+/** Stable DOM id for header aria-controls → first cards row of this category. */
+export function categoryPanelId(category: string): string {
+  return `sg-grid-cat-${category.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+}
+
 export type GridRow =
   | { kind: 'header'; category: string; count: number; collapsed: boolean }
   | { kind: 'cards'; category: string; styles: readonly Style[] }

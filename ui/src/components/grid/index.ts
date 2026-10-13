@@ -1,5 +1,6 @@
 export {
   buildGridRows,
+  categoryPanelId,
   findHeaderRowIndex,
   headerRowIndexes,
   activeStickyHeaderIndex,

@@ -9,6 +9,10 @@ export type CardsRowProps = {
   columns: number
   compactMode: boolean
   windowed: boolean
+  rowIndex: number
+  focusedCol: number | null
+  /** First cards row of a category — target for header aria-controls. */
+  categoryPanelId?: string
   renderCard?: (style: Style) => ReactNode
 }
 
@@ -26,6 +30,9 @@ function cardsRowPropsEqual(prev: CardsRowProps, next: CardsRowProps): boolean {
     prev.columns === next.columns &&
     prev.compactMode === next.compactMode &&
     prev.windowed === next.windowed &&
+    prev.rowIndex === next.rowIndex &&
+    prev.focusedCol === next.focusedCol &&
+    prev.categoryPanelId === next.categoryPanelId &&
     prev.renderCard === next.renderCard &&
     stylesPropsEqual(prev.styles, next.styles)
   )
@@ -37,6 +44,9 @@ export const CardsRow = memo(function CardsRow({
   columns,
   compactMode,
   windowed,
+  rowIndex,
+  focusedCol,
+  categoryPanelId,
   renderCard,
 }: CardsRowProps) {
   // Column gap only — vertical ROW_GAP lives on the virtual row padding-bottom.
@@ -50,12 +60,26 @@ export const CardsRow = memo(function CardsRow({
     [columns, colGap],
   )
   return (
-    <div className="grid content-start" style={gridStyle}>
-      {styles.map((style) =>
+    <div
+      id={categoryPanelId}
+      role="presentation"
+      className="grid content-start"
+      style={gridStyle}
+    >
+      {styles.map((style, col) =>
         renderCard ? (
-          <div key={styleRowKey(style)}>{renderCard(style)}</div>
+          <div key={styleRowKey(style)} role="gridcell">
+            {renderCard(style)}
+          </div>
         ) : (
-          <StyleCard key={styleRowKey(style)} style={style} windowed={windowed} />
+          <StyleCard
+            key={styleRowKey(style)}
+            style={style}
+            windowed={windowed}
+            cellRow={rowIndex}
+            cellCol={col}
+            tabIndex={focusedCol === col ? 0 : -1}
+          />
         ),
       )}
     </div>

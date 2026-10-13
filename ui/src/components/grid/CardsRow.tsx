@@ -2,7 +2,7 @@ import { memo, type ReactNode } from 'react'
 import type { Style } from '../../bridge'
 import { styleRowKey } from '../../store/stylesStore'
 import { StyleCard } from '../StyleCard'
-import { gridGapClass } from './constants'
+import { gridGapPx } from './constants'
 
 export type CardsRowProps = {
   styles: readonly Style[]
@@ -20,11 +20,14 @@ export const CardsRow = memo(function CardsRow({
   windowed,
   renderCard,
 }: CardsRowProps) {
+  // Column gap only — vertical ROW_GAP lives on the virtual row padding-bottom.
+  const colGap = gridGapPx(compactMode)
   return (
     <div
-      className={`grid content-start ${gridGapClass(compactMode)}`}
+      className="grid content-start"
       style={{
         gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+        columnGap: `${colGap}px`,
       }}
     >
       {styles.map((style) =>

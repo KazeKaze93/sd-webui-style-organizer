@@ -16,7 +16,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
-import { generateStyles } from './generateStyles.mjs'
+import { DUPLICATE_NAME_RATIO, generateStyles } from './generateStyles.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const UI_ROOT = path.resolve(__dirname, '..')
@@ -269,25 +269,19 @@ async function measureRun(page, frame, n) {
     throw new Error('Host did not record SG_INIT send time')
   }
 
-  // Wait until the panel has mounted a substantial card set (all cards in Phase A).
-  const expectedMin = Math.min(n, 40)
+  // Virtualized DOM cards ≠ N. All-sources view also dedupes by name (~N/1.1 rows).
+  const minCatalog = Math.max(1, Math.floor(n / (1 + DUPLICATE_NAME_RATIO)))
   await frame.waitForFunction(
-    (minCards) => document.querySelectorAll('[data-sg-card="true"]').length >= minCards,
-    expectedMin,
+    ({ min }) => {
+      const grid = document.querySelector('[data-sg-item-count]')
+      if (!grid) return false
+      const items = Number(grid.getAttribute('data-sg-item-count') || '0')
+      return items >= min && document.querySelectorAll('[data-sg-card="true"]').length >= 1
+    },
+    { min: minCatalog },
     { timeout: 180_000 },
   )
-
-  // Stabilize: card count unchanged across a few frames.
-  let lastCount = -1
-  let stableHits = 0
-  const stableDeadline = Date.now() + 60_000
-  while (Date.now() < stableDeadline && stableHits < 4) {
-    const count = await frame.locator('[data-sg-card="true"]').count()
-    if (count === lastCount && count >= expectedMin) stableHits += 1
-    else stableHits = 0
-    lastCount = count
-    await sleep(50)
-  }
+  await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
   const initMs = Date.now() - initSentAtMs
 
   // Prefer a single source so duplicate-name rows do not open the source picker.
@@ -298,6 +292,24 @@ async function measureRun(page, frame, n) {
     proto?.call(select, select.options[1].value)
     select.dispatchEvent(new Event('change', { bubbles: true }))
   })
+  // Source filter changes catalog size; wait until item-count settles.
+  let catalogCount = -1
+  {
+    let last = -1
+    let stableHits = 0
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline && stableHits < 4) {
+      const count = await frame.evaluate(() => {
+        const grid = document.querySelector('[data-sg-item-count]')
+        return grid ? Number(grid.getAttribute('data-sg-item-count') || '0') : -1
+      })
+      if (count > 0 && count === last) stableHits += 1
+      else stableHits = 0
+      last = count
+      await sleep(50)
+    }
+    catalogCount = last
+  }
   await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
 
   // ── toggleP50Ms (in-page click + double-rAF; avoid Playwright actionability overhead)
@@ -345,6 +357,20 @@ async function measureRun(page, frame, n) {
     return samples
   })
   const searchKeyP50Ms = percentile(keySamples, 0.5)
+
+  // Restore full (source-filtered) catalog before scroll — DOM cards ≠ N when virtualized.
+  const restoreTarget = catalogCount > 0 ? catalogCount : n
+  await frame.waitForFunction(
+    ({ count }) => {
+      const grid = document.querySelector('[data-sg-item-count]')
+      if (!grid) return false
+      const items = Number(grid.getAttribute('data-sg-item-count') || '0')
+      return items >= count && document.querySelectorAll('[data-sg-card="true"]').length >= 1
+    },
+    { count: restoreTarget },
+    { timeout: 180_000 },
+  )
+  await frame.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
   await sleep(50)
 
   // ── scrollTbtMs + longTasks ─────────────────────────────────
@@ -359,7 +385,8 @@ async function measureRun(page, frame, n) {
           })
         }
       })
-      obs.observe({ type: 'longtask', buffered: true })
+      // buffered:false — do not attribute pre-scroll longtasks (search restore) to scroll TBT
+      obs.observe({ type: 'longtask', buffered: false })
       window.__BENCH_LONG_TASK_OBS__ = obs
     } catch {
       window.__BENCH_LONG_TASK_OBS__ = null
@@ -429,6 +456,11 @@ async function measureRun(page, frame, n) {
     }
   })
 
+  const itemCount = await frame.evaluate(() => {
+    const grid = document.querySelector('[data-sg-item-count]')
+    return grid ? Number(grid.getAttribute('data-sg-item-count') || '0') : 0
+  })
+
   return {
     n,
     initMs,
@@ -436,7 +468,7 @@ async function measureRun(page, frame, n) {
     searchKeyP50Ms,
     scrollTbtMs: scrollMetrics.scrollTbtMs,
     longTasks: scrollMetrics.longTasks,
-    cardCount: lastCount,
+    cardCount: itemCount,
     toggleSamples,
     keySamples,
     scrollWallMs: scrollMetrics.scrollWallMs,

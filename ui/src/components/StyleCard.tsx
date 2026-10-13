@@ -36,6 +36,14 @@ const Portal = ({ children }: { children: React.ReactNode }) =>
 const READ_ONLY_PREVIEW_TOAST =
   'This style is from the protected samples pack (read-only). Duplicate it into a data source to manage your own preview.'
 
+/** Skip re-render when row identity + chrome mode unchanged (scroll parent churn). */
+function styleCardPropsEqual(prev: Props, next: Props): boolean {
+  return (
+    prev.windowed === next.windowed &&
+    prev.style === next.style
+  )
+}
+
 export const StyleCard = memo(function StyleCard({ style, windowed = false }: Props) {
   const key = useMemo(() => styleRowKey(style), [style])
   const isSelected = useIsSelected(key)
@@ -408,4 +416,4 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
       )}
     </>
   )
-})
+}, styleCardPropsEqual)

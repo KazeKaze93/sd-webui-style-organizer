@@ -61,6 +61,16 @@ function estimateRowSize(
   return headerRowHeightPx(compactMode)
 }
 
+/** Sticky overlay chrome — shared object; only paddingBottom varies with compactMode. */
+const STICKY_ROW_STYLE_BASE = {
+  position: 'sticky',
+  top: 0,
+  zIndex: 10,
+  left: 0,
+  width: '100%',
+  boxSizing: 'border-box',
+} as const
+
 /** Profile (P toggle N=5000): VirtualStyleGrid 21 stack hits — memo + stable groups from StyleGrid. */
 export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   groups,
@@ -206,6 +216,15 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
 
   const virtualItems = virtualizer.getVirtualItems()
 
+  // Stable sticky padding across scroll frames (compactMode rarely flips).
+  const stickyRowStyle = useMemo(
+    () => ({
+      ...STICKY_ROW_STYLE_BASE,
+      paddingBottom: `${rowGap}px`,
+    }),
+    [rowGap],
+  )
+
   return (
     <div
       ref={rootRef}
@@ -237,16 +256,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
               aria-rowindex={virtualRow.index + 1}
               style={
                 isActiveSticky
-                  ? {
-                      position: 'sticky',
-                      top: 0,
-                      zIndex: 10,
-                      left: 0,
-                      width: '100%',
-                      // Sticky overlay still needs trailing gap so next row isn't glued.
-                      paddingBottom: `${rowGap}px`,
-                      boxSizing: 'border-box',
-                    }
+                  ? stickyRowStyle
                   : {
                       position: 'absolute',
                       top: 0,

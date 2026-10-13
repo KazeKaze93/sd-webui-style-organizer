@@ -121,7 +121,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             toggleStyle(style)
           }}
           className={`
-            relative cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
+            relative overflow-hidden cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
             select-none transition-colors
             transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]
             motion-reduce:transition-none motion-reduce:transform-none
@@ -129,14 +129,23 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               ? 'border-sg-accent bg-sg-accent/10'
               : 'border-sg-border bg-sg-surface hover:border-sg-accent/50'}
           `}
-          style={{
-            borderLeftColor: isSelected ? undefined : borderColor,
-            borderLeftWidth: '3px'
-          }}
         >
+          {/* Category accent — separate strip avoids asymmetric border-radius bleed onto the name */}
+          {!isSelected && (
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-y-0 left-0 w-[3px]"
+              style={{ backgroundColor: borderColor }}
+            />
+          )}
           <div className={`${windowed ? 'text-xs' : 'text-sm'} font-medium text-sg-text truncate`}>
             {displayName}
           </div>
+          {usageCount > 0 && (
+            <span className="mt-0.5 block text-[10px] leading-none text-sg-muted font-mono">
+              {usageCount > 99 ? '99+' : usageCount}
+            </span>
+          )}
 
           {fav && (
             <>
@@ -156,12 +165,6 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               aria-hidden="true"
               className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-sg-accent"
             />
-          )}
-          {usageCount > 0 && (
-            <span className="absolute bottom-1.5 left-2 text-[10px] 
-                     text-sg-muted font-mono">
-              {usageCount > 99 ? '99+' : usageCount}
-            </span>
           )}
         </div>
       </ThumbnailPreview>

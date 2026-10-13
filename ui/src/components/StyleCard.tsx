@@ -1,5 +1,4 @@
 import { memo, useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import {
   Copy,
   CopyPlus,
@@ -29,6 +28,7 @@ import {
   ROW_GAP_NORMAL_PX,
 } from './grid/constants'
 import { ThumbnailPreview } from './ThumbnailPreview'
+import { ViewportFixedMenu } from './ViewportFixedMenu'
 
 /** Card chrome height = virtualizer row size minus inter-row gap. */
 const CARD_HEIGHT_NORMAL = CARD_ROW_HEIGHT_NORMAL_PX - ROW_GAP_NORMAL_PX
@@ -38,9 +38,6 @@ interface Props {
   style: Style
   windowed?: boolean
 }
-
-const Portal = ({ children }: { children: React.ReactNode }) =>
-  createPortal(children, document.body)
 
 const READ_ONLY_PREVIEW_TOAST =
   'This style is from the protected samples pack (read-only). Duplicate it into a data source to manage your own preview.'
@@ -129,9 +126,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
           onClick={(e) => {
             if (hasMultipleSources && !activeSource && !isSelected) {
               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
-              const left = Math.min(rect.right + 8, window.innerWidth - 280)
-              const top = Math.max(8, rect.top)
-              setPickerPos({ x: left, y: top })
+              setPickerPos({ x: rect.right + 8, y: rect.top })
               return
             }
             toggleStyle(style)
@@ -184,241 +179,229 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
       </ThumbnailPreview>
 
       {menuPos && (
-        <Portal>
-          <div
-            className="fixed z-[9999] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1 min-w-48"
-            style={{ left: menuPos.x, top: menuPos.y }}
-            onContextMenu={(e) => e.preventDefault()}
+        <ViewportFixedMenu
+          x={menuPos.x}
+          y={menuPos.y}
+          onDismiss={() => setMenuPos(null)}
+          className="fixed z-[9999] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1 min-w-48"
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+            onClick={() => { toggleStyle(style); setMenuPos(null) }}
           >
-            <button
-              className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { toggleStyle(style); setMenuPos(null) }}
-            >
-              {isSelected ? '✕ Deselect' : '✓ Select'}
-            </button>
-            <button
-              className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={() => { toggleFavorite(style); setMenuPos(null) }}
-            >
-              <Star size={14} aria-hidden="true" />
-              {fav ? 'Remove from Favorites' : 'Add to Favorites'}
-            </button>
-            <div className="h-px my-1 bg-sg-border" />
-            <button
-              className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-              onClick={async () => {
-                setMenuPos(null)
-                try {
-                  await navigator.clipboard.writeText(style.prompt)
-                  showToast('Prompt copied', 'success')
-                } catch {
-                  showToast('Copy failed', 'error')
-                }
-              }}
-            >
-              <Copy size={14} aria-hidden="true" />
-              Copy prompt
-            </button>
-            {!isLora && (
-              <>
-                <button
-                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => {
-                    sendToHost({
-                      type: 'SG_EDIT_STYLE',
-                      styleId: style.name,
-                      source_file: style.source_file,
-                    })
+            {isSelected ? '✕ Deselect' : '✓ Select'}
+          </button>
+          <button
+            className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+            onClick={() => { toggleFavorite(style); setMenuPos(null) }}
+          >
+            <Star size={14} aria-hidden="true" />
+            {fav ? 'Remove from Favorites' : 'Add to Favorites'}
+          </button>
+          <div className="h-px my-1 bg-sg-border" />
+          <button
+            className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+            onClick={async () => {
+              setMenuPos(null)
+              try {
+                await navigator.clipboard.writeText(style.prompt)
+                showToast('Prompt copied', 'success')
+              } catch {
+                showToast('Copy failed', 'error')
+              }
+            }}
+          >
+            <Copy size={14} aria-hidden="true" />
+            Copy prompt
+          </button>
+          {!isLora && (
+            <>
+              <button
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                onClick={() => {
+                  sendToHost({
+                    type: 'SG_EDIT_STYLE',
+                    styleId: style.name,
+                    source_file: style.source_file,
+                  })
+                  setMenuPos(null)
+                }}
+              >
+                <Pencil size={14} aria-hidden="true" />
+                Edit
+              </button>
+              <button
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                onClick={() => {
+                  sendToHost({
+                    type: 'SG_DUPLICATE_STYLE',
+                    styleId: style.name,
+                    source_file: style.source_file,
+                  })
+                  setMenuPos(null)
+                }}
+              >
+                <CopyPlus size={14} aria-hidden="true" />
+                Duplicate
+              </button>
+              <button
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                onClick={() => {
+                  sendToHost({
+                    type: 'SG_MOVE_TO_CATEGORY',
+                    styleId: style.name,
+                    source_file: style.source_file,
+                  })
+                  setMenuPos(null)
+                }}
+              >
+                <FolderInput size={14} aria-hidden="true" />
+                Move to category...
+              </button>
+            </>
+          )}
+          {!isLora && (
+            <>
+              <div className="h-px my-1 bg-sg-border" />
+              <button
+                className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
+                onClick={() => {
+                  if (style.read_only) {
                     setMenuPos(null)
-                  }}
-                >
-                  <Pencil size={14} aria-hidden="true" />
-                  Edit
-                </button>
-                <button
-                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => {
-                    sendToHost({
-                      type: 'SG_DUPLICATE_STYLE',
-                      styleId: style.name,
-                      source_file: style.source_file,
-                    })
+                    showToast(READ_ONLY_PREVIEW_TOAST, 'info')
+                    return
+                  }
+                  sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name, source: style.source_file })
+                  setMenuPos(null)
+                }}
+              >
+                <Sparkles size={14} aria-hidden="true" />
+                Generate preview (SD)
+              </button>
+              <button
+                className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
+                onClick={() => {
+                  if (style.read_only) {
                     setMenuPos(null)
-                  }}
-                >
-                  <CopyPlus size={14} aria-hidden="true" />
-                  Duplicate
-                </button>
-                <button
-                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onClick={() => {
-                    sendToHost({
-                      type: 'SG_MOVE_TO_CATEGORY',
-                      styleId: style.name,
-                      source_file: style.source_file,
-                    })
-                    setMenuPos(null)
-                  }}
-                >
-                  <FolderInput size={14} aria-hidden="true" />
-                  Move to category...
-                </button>
-              </>
-            )}
-            {!isLora && (
-              <>
-                <div className="h-px my-1 bg-sg-border" />
+                    showToast(READ_ONLY_PREVIEW_TOAST, 'info')
+                    return
+                  }
+                  sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name, source: style.source_file })
+                  setMenuPos(null)
+                }}
+              >
+                <ImagePlus size={14} aria-hidden="true" />
+                Upload preview image
+              </button>
+              {style.has_thumbnail && (
                 <button
                   className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
-                  onClick={() => {
+                  onClick={async () => {
                     if (style.read_only) {
                       setMenuPos(null)
                       showToast(READ_ONLY_PREVIEW_TOAST, 'info')
                       return
                     }
-                    sendToHost({ type: 'SG_GENERATE_PREVIEW', styleId: style.name, source: style.source_file })
                     setMenuPos(null)
-                  }}
-                >
-                  <Sparkles size={14} aria-hidden="true" />
-                  Generate preview (SD)
-                </button>
-                <button
-                  className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
-                  onClick={() => {
-                    if (style.read_only) {
-                      setMenuPos(null)
-                      showToast(READ_ONLY_PREVIEW_TOAST, 'info')
-                      return
-                    }
-                    sendToHost({ type: 'SG_UPLOAD_PREVIEW', styleId: style.name, source: style.source_file })
-                    setMenuPos(null)
-                  }}
-                >
-                  <ImagePlus size={14} aria-hidden="true" />
-                  Upload preview image
-                </button>
-                {style.has_thumbnail && (
-                  <button
-                    className={`w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm transition-colors ${previewReadOnlyClass}`}
-                    onClick={async () => {
-                      if (style.read_only) {
-                        setMenuPos(null)
-                        showToast(READ_ONLY_PREVIEW_TOAST, 'info')
+                    try {
+                      const name = style.name
+                      const source_file = style.source_file
+                      const params = new URLSearchParams({ name })
+                      if (source_file) params.set('source', source_file)
+                      const res = await styleGridDelete(`/style_grid/thumbnail?${params}`)
+                      const data = await res.json().catch(() => ({}))
+                      if (!res.ok || data.ok === false || data.error) {
+                        showToast(
+                          typeof data.error === 'string' && data.error
+                            ? data.error
+                            : 'Remove preview failed',
+                          'error',
+                        )
                         return
                       }
-                      setMenuPos(null)
-                      try {
-                        const name = style.name
-                        const source_file = style.source_file
-                        const params = new URLSearchParams({ name })
-                        if (source_file) params.set('source', source_file)
-                        const res = await styleGridDelete(`/style_grid/thumbnail?${params}`)
-                        const data = await res.json().catch(() => ({}))
-                        if (!res.ok || data.ok === false || data.error) {
-                          showToast(
-                            typeof data.error === 'string' && data.error
-                              ? data.error
-                              : 'Remove preview failed',
-                            'error',
-                          )
-                          return
-                        }
-                        const version = String(Date.now())
-                        useStylesStore.getState().bumpThumbVersion(key, version)
-                        window.postMessage(
-                          {
-                            type: 'SG_THUMB_DONE',
-                            styleId: name,
-                            version,
-                            source_file: source_file || '',
-                          },
-                          '*',
-                        )
-                        useStylesStore.setState((s) => ({
-                          styles: s.styles.map((row) =>
-                            styleRowKey(row) === key
-                              ? { ...row, has_thumbnail: false }
-                              : row
-                          ),
-                        }))
-                        showToast('Preview removed', 'success')
-                      } catch {
-                        showToast('Remove preview failed', 'error')
-                      }
-                    }}
-                  >
-                    <ImageMinus size={14} aria-hidden="true" />
-                    Remove preview
-                  </button>
-                )}
-              </>
-            )}
-            {!isLora && (
-              <>
-                <div className="h-px my-1 bg-sg-border" />
-                <button
-                  className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-danger-text hover:bg-sg-danger/20 transition-colors"
-                  onClick={() => {
-                    sendToHost({
-                      type: 'SG_DELETE_STYLE',
-                      styleId: style.name,
-                      source_file: style.source_file,
-                    })
-                    setMenuPos(null)
+                      const version = String(Date.now())
+                      useStylesStore.getState().bumpThumbVersion(key, version)
+                      window.postMessage(
+                        {
+                          type: 'SG_THUMB_DONE',
+                          styleId: name,
+                          version,
+                          source_file: source_file || '',
+                        },
+                        '*',
+                      )
+                      useStylesStore.setState((s) => ({
+                        styles: s.styles.map((row) =>
+                          styleRowKey(row) === key
+                            ? { ...row, has_thumbnail: false }
+                            : row
+                        ),
+                      }))
+                      showToast('Preview removed', 'success')
+                    } catch {
+                      showToast('Remove preview failed', 'error')
+                    }
                   }}
                 >
-                  <Trash2 size={14} aria-hidden="true" />
-                  Delete
+                  <ImageMinus size={14} aria-hidden="true" />
+                  Remove preview
                 </button>
-              </>
-            )}
-          </div>
-          <div
-            className="fixed inset-0 z-[9998]"
-            onClick={() => setMenuPos(null)}
-            onContextMenu={(e) => e.preventDefault()}
-          />
-        </Portal>
+              )}
+            </>
+          )}
+          {!isLora && (
+            <>
+              <div className="h-px my-1 bg-sg-border" />
+              <button
+                className="w-full flex items-center gap-2 text-left px-3 py-1.5 text-sm text-sg-danger-text hover:bg-sg-danger/20 transition-colors"
+                onClick={() => {
+                  sendToHost({
+                    type: 'SG_DELETE_STYLE',
+                    styleId: style.name,
+                    source_file: style.source_file,
+                  })
+                  setMenuPos(null)
+                }}
+              >
+                <Trash2 size={14} aria-hidden="true" />
+                Delete
+              </button>
+            </>
+          )}
+        </ViewportFixedMenu>
       )}
 
       {pickerPos && (
-        <Portal>
-          <div
-            className="fixed z-[10005] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            style={{
-              left: pickerPos.x,
-              top: pickerPos.y,
-              width: `${pickerWidthCh}ch`,
-              minWidth: '18ch',
-              maxWidth: '48ch',
-            }}
-          >
-            {duplicates.map((dup, idx) => {
-              const sourceLabel = sourceLabels[idx] || 'Unknown'
-              return (
-                <button
-                  key={`${dup.source_file || 'unknown'}-${idx}`}
-                  className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    toggleStyle(dup)
-                    setPickerPos(null)
-                  }}
-                >
-                  <div className="font-medium truncate">{sourceLabel}</div>
-                </button>
-              )
-            })}
-          </div>
-          <div
-            className="fixed inset-0 z-[10004]"
-            onMouseDown={() => setPickerPos(null)}
-          />
-        </Portal>
+        <ViewportFixedMenu
+          x={pickerPos.x}
+          y={pickerPos.y}
+          onDismiss={() => setPickerPos(null)}
+          className="fixed z-[10005] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1"
+          backdropClassName="fixed inset-0 z-[10004]"
+          style={{
+            width: `${pickerWidthCh}ch`,
+            minWidth: '18ch',
+            maxWidth: '48ch',
+          }}
+        >
+          {duplicates.map((dup, idx) => {
+            const sourceLabel = sourceLabels[idx] || 'Unknown'
+            return (
+              <button
+                key={`${dup.source_file || 'unknown'}-${idx}`}
+                className="w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors"
+                onMouseDown={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  toggleStyle(dup)
+                  setPickerPos(null)
+                }}
+              >
+                <div className="font-medium truncate">{sourceLabel}</div>
+              </button>
+            )
+          })}
+        </ViewportFixedMenu>
       )}
     </>
   )

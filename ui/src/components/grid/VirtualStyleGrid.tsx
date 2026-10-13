@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react'
 import {
@@ -15,8 +16,20 @@ import {
 } from '@tanstack/react-virtual'
 import type { Style } from '../../bridge'
 import {
+  getFocusedCell,
+  setFocusedCell,
+  useFocusedCell,
+} from '../../lib/gridFocus'
+import {
+  cellCount,
+  nextCell,
+  type GridCell,
+  type GridNavKey,
+} from '../../lib/gridNav'
+import {
   activeStickyHeaderIndex,
   buildGridRows,
+  categoryPanelId,
   findHeaderRowIndex,
   headerRowIndexes,
   type CategoryGroup,
@@ -34,6 +47,17 @@ import {
   gridGapPx,
   minCardWidthPx,
 } from './constants'
+
+const NAV_KEYS = new Set<string>([
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'Home',
+  'End',
+  'PageUp',
+  'PageDown',
+])
 
 export type VirtualStyleGridProps = {
   groups: readonly CategoryGroup[]
@@ -59,6 +83,24 @@ function estimateRowSize(
     return cardRowHeightPx(compactMode, windowed)
   }
   return headerRowHeightPx(compactMode)
+}
+
+function firstFocusableCell(rows: readonly GridRow[]): GridCell | null {
+  for (let row = 0; row < rows.length; row++) {
+    if (cellCount(rows[row]) > 0) return { row, col: 0 }
+  }
+  return null
+}
+
+function clampFocusedCell(
+  rows: readonly GridRow[],
+  cell: GridCell,
+): GridCell | null {
+  if (rows.length === 0) return null
+  if (cell.row < 0 || cell.row >= rows.length) return firstFocusableCell(rows)
+  const count = cellCount(rows[cell.row])
+  if (count <= 0) return firstFocusableCell(rows)
+  return { row: cell.row, col: Math.max(0, Math.min(cell.col, count - 1)) }
 }
 
 /** Sticky overlay chrome — shared object; only paddingBottom varies with compactMode. */
@@ -97,8 +139,12 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     startIndex: number
     endIndex: number
     sticky: number
+    focusedRow: number | null
     result: number[]
   } | null>(null)
+
+  const focusedCell = useFocusedCell()
+  const focusedRow = focusedCell?.row ?? null
 
   const minW = minCardWidthPx(compactMode, windowed)
   const gapPx = gridGapPx(compactMode)
@@ -121,6 +167,33 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     () => groups.reduce((n, [, styles]) => n + styles.length, 0),
     [groups],
   )
+
+  const pageRows = useMemo(() => {
+    const viewportH = scrollEl?.clientHeight ?? VIRTUALIZER_TEST_INITIAL_RECT.height
+    const rowH = cardRowHeightPx(compactMode, windowed)
+    return Math.max(1, Math.floor(viewportH / rowH))
+  }, [scrollEl, compactMode, windowed])
+
+  // Default / clamp roving cell when the row model changes (tab stop only — no focus steal).
+  useEffect(() => {
+    if (rows.length === 0) {
+      setFocusedCell(null)
+      return
+    }
+    const current = getFocusedCell()
+    if (!current) {
+      setFocusedCell(firstFocusableCell(rows))
+      return
+    }
+    const clamped = clampFocusedCell(rows, current)
+    if (!clamped) {
+      setFocusedCell(null)
+      return
+    }
+    if (clamped.row !== current.row || clamped.col !== current.col) {
+      setFocusedCell(clamped)
+    }
+  }, [rows])
 
   useLayoutEffect(() => {
     const root = rootRef.current
@@ -145,8 +218,36 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
 
   const rangeExtractor = useCallback(
     (range: Range) => {
+      const focused =
+        focusedRow != null &&
+        focusedRow >= 0 &&
+        focusedRow < rowsRef.current.length
+          ? focusedRow
+          : null
       if (stickyIndexes.length === 0) {
-        return defaultRangeExtractor(range)
+        const base = defaultRangeExtractor(range)
+        if (focused == null) return base
+        const cached = rangeCacheRef.current
+        if (
+          cached &&
+          cached.startIndex === range.startIndex &&
+          cached.endIndex === range.endIndex &&
+          cached.sticky === -1 &&
+          cached.focusedRow === focused
+        ) {
+          return cached.result
+        }
+        const next = new Set(base)
+        next.add(focused)
+        const result = [...next].sort((a, b) => a - b)
+        rangeCacheRef.current = {
+          startIndex: range.startIndex,
+          endIndex: range.endIndex,
+          sticky: -1,
+          focusedRow: focused,
+          result,
+        }
+        return result
       }
       const sticky = activeStickyHeaderIndex(stickyIndexes, range.startIndex)
       activeStickyIndexRef.current = sticky
@@ -155,21 +256,24 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         cached &&
         cached.startIndex === range.startIndex &&
         cached.endIndex === range.endIndex &&
-        cached.sticky === sticky
+        cached.sticky === sticky &&
+        cached.focusedRow === focused
       ) {
         return cached.result
       }
       const next = new Set([sticky, ...defaultRangeExtractor(range)])
+      if (focused != null) next.add(focused)
       const result = [...next].sort((a, b) => a - b)
       rangeCacheRef.current = {
         startIndex: range.startIndex,
         endIndex: range.endIndex,
         sticky,
+        focusedRow: focused,
         result,
       }
       return result
     },
-    [stickyIndexes],
+    [stickyIndexes, focusedRow],
   )
 
   // Stable identity — profile: recreated estimateSize closed over `rows` forced remounts.
@@ -194,7 +298,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   useEffect(() => {
     rangeCacheRef.current = null
     virtualizer.measure()
-  }, [columns, compactMode, windowed, virtualizer])
+  }, [columns, compactMode, windowed, focusedRow, virtualizer])
 
   const scrollToHeader = useCallback(
     (category: string) => {
@@ -216,6 +320,90 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
 
   const virtualItems = virtualizer.getVirtualItems()
 
+  // Keep DOM focus on the roving cell after virtualization remounts / scrollToIndex.
+  useLayoutEffect(() => {
+    if (!focusedCell) return
+    const root = rootRef.current
+    if (!root) return
+    if (!root.contains(document.activeElement)) return
+    const el = root.querySelector<HTMLElement>(
+      `[data-cell-row="${focusedCell.row}"][data-cell-col="${focusedCell.col}"]`,
+    )
+    if (el && document.activeElement !== el) {
+      el.focus({ preventScroll: true })
+    }
+  }, [focusedCell, virtualItems])
+
+  const openCardMenuAtCell = useCallback((cell: GridCell) => {
+    const root = rootRef.current
+    if (!root) return
+    const row = rowsRef.current[cell.row]
+    if (!row || row.kind !== 'cards') return
+    const el = root.querySelector<HTMLElement>(
+      `[data-cell-row="${cell.row}"][data-cell-col="${cell.col}"]`,
+    )
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    el.dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left,
+        clientY: rect.bottom,
+        view: window,
+      }),
+    )
+  }, [])
+
+  const onGridKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (NAV_KEYS.has(e.key)) {
+        const from = getFocusedCell() ?? firstFocusableCell(rowsRef.current)
+        if (!from) return
+        const next = nextCell(
+          rowsRef.current,
+          columns,
+          from,
+          e.key as GridNavKey,
+          pageRows,
+          e.ctrlKey || e.metaKey,
+        )
+        if (!next) {
+          e.preventDefault()
+          return
+        }
+        e.preventDefault()
+        setFocusedCell(next)
+        virtualizer.scrollToIndex(next.row, { align: 'auto' })
+        return
+      }
+
+      if (e.key === 'Enter' || e.key === ' ') {
+        const cell = getFocusedCell()
+        if (!cell) return
+        const root = rootRef.current
+        const el = root?.querySelector<HTMLElement>(
+          `[data-cell-row="${cell.row}"][data-cell-col="${cell.col}"]`,
+        )
+        // Focused <button> already activates on Enter/Space — do not double-fire.
+        if (el && document.activeElement === el) return
+        e.preventDefault()
+        el?.click()
+        return
+      }
+
+      if (e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey)) {
+        const cell = getFocusedCell()
+        if (!cell) return
+        const row = rowsRef.current[cell.row]
+        if (!row || row.kind !== 'cards') return
+        e.preventDefault()
+        openCardMenuAtCell(cell)
+      }
+    },
+    [columns, pageRows, virtualizer, openCardMenuAtCell],
+  )
+
   // Stable sticky padding across scroll frames (compactMode rarely flips).
   const stickyRowStyle = useMemo(
     () => ({
@@ -225,13 +413,27 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     [rowGap],
   )
 
+  /** Index of the first cards row per category (for aria-controls targets). */
+  const firstCardsRowByCategory = useMemo(() => {
+    const map = new Map<string, number>()
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]
+      if (row.kind === 'cards' && !map.has(row.category)) {
+        map.set(row.category, i)
+      }
+    }
+    return map
+  }, [rows])
+
   return (
     <div
       ref={rootRef}
       className="relative w-full"
       role="grid"
+      aria-label="Styles"
       aria-rowcount={rows.length}
       data-sg-item-count={itemCount}
+      onKeyDown={onGridKeyDown}
     >
       <div
         style={{
@@ -247,6 +449,10 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
             row.kind === 'header' &&
             stickyIndexes.length > 0 &&
             virtualRow.index === activeStickyIndexRef.current
+          const rowFocusedCol =
+            focusedCell && focusedCell.row === virtualRow.index
+              ? focusedCell.col
+              : null
 
           return (
             <div
@@ -277,6 +483,8 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                   collapsed={row.collapsed}
                   isStickyActive={isActiveSticky}
                   enableLoraContextMenu={enableLoraContextMenu}
+                  rowIndex={virtualRow.index}
+                  focusedCol={rowFocusedCol}
                   onToggleCollapse={handleToggleCollapse}
                   onSelectAll={onSelectAll}
                   onContextMenu={onHeaderContextMenu}
@@ -287,6 +495,13 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                   columns={columns}
                   compactMode={compactMode}
                   windowed={windowed}
+                  rowIndex={virtualRow.index}
+                  focusedCol={rowFocusedCol}
+                  categoryPanelId={
+                    firstCardsRowByCategory.get(row.category) === virtualRow.index
+                      ? categoryPanelId(row.category)
+                      : undefined
+                  }
                   renderCard={renderCard}
                 />
               )}

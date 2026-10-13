@@ -223,7 +223,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         <StyleCard style={style} windowed={windowed} />
         <button
           type="button"
-          className={`absolute inset-0 z-20 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent ${
+          className={`absolute inset-0 z-20 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg ${
             checked ? 'bg-sg-wildcard/15 ring-1 ring-sg-wildcard/50' : 'bg-transparent'
           }`}
           aria-pressed={checked}
@@ -381,7 +381,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         <ViewportFixedMenu
           x={loraCatMenu.x}
           y={loraCatMenu.y}
-          onDismiss={() => setLoraCatMenu(null)}
+          onClose={() => setLoraCatMenu(null)}
         >
           <WildcardMenuItems
             category={loraCatMenu.cat}

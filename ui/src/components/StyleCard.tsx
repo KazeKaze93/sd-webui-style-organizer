@@ -23,7 +23,16 @@ import {
 } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { styleGridDelete } from '../lib/styleGridFetch'
+import {
+  CARD_ROW_HEIGHT_NORMAL_PX,
+  CARD_ROW_HEIGHT_WINDOWED_PX,
+  ROW_GAP_NORMAL_PX,
+} from './grid/constants'
 import { ThumbnailPreview } from './ThumbnailPreview'
+
+/** Card chrome height = virtualizer row size minus inter-row gap. */
+const CARD_HEIGHT_NORMAL = CARD_ROW_HEIGHT_NORMAL_PX - ROW_GAP_NORMAL_PX
+const CARD_HEIGHT_WINDOWED = CARD_ROW_HEIGHT_WINDOWED_PX - ROW_GAP_NORMAL_PX
 
 interface Props {
   style: Style
@@ -49,7 +58,6 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
   const isSelected = useIsSelected(key)
   const duplicates = useStyleDuplicates(style.name)
   const fav = useStylesStore(s => s.favorites.has(key))
-  const usageCount = useStylesStore(s => s.usageCounts[style.name] || 0)
   const activeSource = useStylesStore(s => s.activeSource)
   const showToast = useStylesStore(s => s.showToast)
   const { toggleStyle, toggleFavorite } = useStylesStore(
@@ -128,6 +136,7 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
             }
             toggleStyle(style)
           }}
+          style={{ height: windowed ? CARD_HEIGHT_WINDOWED : CARD_HEIGHT_NORMAL }}
           className={`
             relative overflow-hidden cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
             select-none transition-colors
@@ -146,14 +155,11 @@ export const StyleCard = memo(function StyleCard({ style, windowed = false }: Pr
               style={{ backgroundColor: borderColor }}
             />
           )}
-          <div className={`${windowed ? 'text-xs' : 'text-sm'} font-medium text-sg-text truncate`}>
+          <div
+            className={`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`}
+          >
             {displayName}
           </div>
-          {usageCount > 0 && (
-            <span className="mt-0.5 block text-[10px] leading-none text-sg-muted font-mono">
-              {usageCount > 99 ? '99+' : usageCount}
-            </span>
-          )}
 
           {fav && (
             <>

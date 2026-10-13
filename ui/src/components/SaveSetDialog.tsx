@@ -1,11 +1,17 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { wildcardKey } from '../lib/wildcardKey'
+import { useLayer } from '../lib/layerStack'
+import { useFocusTrap } from '../lib/useFocusTrap'
+import { cn } from '../lib/utils'
 import {
   resolvePresetMembers,
   suggestPresetName,
   useStylesStore,
   type ResolvedPresetMember,
 } from '../store/stylesStore'
+
+const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
 
 export interface SaveSetDialogProps {
   open: boolean
@@ -25,6 +31,7 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
   const [includeWildcards, setIncludeWildcards] = useState(true)
   const [existsWarning, setExistsWarning] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const titleId = useId()
   const nameId = useId()
@@ -32,6 +39,11 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
   const wildcardsId = useId()
 
   const hasWildcards = activeWildcards.length > 0
+
+  useLayer(open, () => {
+    if (!isSubmitting) onClose()
+  })
+  useFocusTrap(dialogRef, open, { initialFocus: inputRef })
 
   useEffect(() => {
     if (!open) {
@@ -68,21 +80,7 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
     setIncludeWildcards(hasWildcards)
     setExistsWarning(false)
     setIsSubmitting(false)
-    const id = requestAnimationFrame(() => inputRef.current?.focus())
-    return () => cancelAnimationFrame(id)
   }, [open, selectedStyles, hasWildcards, activeWildcards, styles, presets])
-
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        if (!isSubmitting) onClose()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [open, onClose, isSubmitting])
 
   if (!open) return null
 
@@ -132,6 +130,7 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
       />
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
@@ -157,10 +156,13 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
                 void doSave(existsWarning)
               }
             }}
-            className="w-full h-9 px-3 rounded border border-sg-border
-                       bg-sg-surface text-sg-text text-sm
-                       placeholder:text-sg-muted focus:border-sg-accent
-                       focus:outline-none transition-colors disabled:opacity-45"
+            className={cn(
+              'w-full h-9 px-3 rounded border border-sg-border',
+              'bg-sg-surface text-sg-text text-sm',
+              'placeholder:text-sg-muted focus:border-sg-accent',
+              'focus:outline-none transition-colors disabled:opacity-45',
+              FOCUS_RING,
+            )}
             placeholder="Set name"
           />
 
@@ -171,10 +173,13 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
             disabled={isSubmitting}
             onChange={(e) => setNote(e.target.value)}
             rows={2}
-            className="w-full px-3 py-2 rounded border border-sg-border
-                       bg-sg-surface text-sg-text text-sm resize-none
-                       placeholder:text-sg-muted focus:border-sg-accent
-                       focus:outline-none transition-colors disabled:opacity-45"
+            className={cn(
+              'w-full px-3 py-2 rounded border border-sg-border',
+              'bg-sg-surface text-sg-text text-sm resize-none',
+              'placeholder:text-sg-muted focus:border-sg-accent',
+              'focus:outline-none transition-colors disabled:opacity-45',
+              FOCUS_RING,
+            )}
             placeholder="Short note"
           />
 
@@ -186,7 +191,7 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
                 checked={includeWildcards}
                 disabled={isSubmitting}
                 onChange={(e) => setIncludeWildcards(e.target.checked)}
-                className="rounded border-sg-border"
+                className={cn('rounded border-sg-border', FOCUS_RING)}
               />
               Include active wildcards ({activeWildcards.length})
             </label>
@@ -203,7 +208,12 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
               type="button"
               disabled={isSubmitting}
               onClick={onClose}
-              className="px-3 py-1.5 text-sm text-sg-text border border-sg-border rounded hover:bg-sg-accent/20 transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+              className={cn(
+                'px-3 py-1.5 text-sm text-sg-text border border-sg-border rounded',
+                'hover:bg-sg-accent/20 transition-colors',
+                'disabled:opacity-45 disabled:cursor-not-allowed',
+                FOCUS_RING,
+              )}
             >
               Cancel
             </button>
@@ -212,7 +222,12 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
                 type="button"
                 disabled={isSubmitting || !trimmed}
                 onClick={() => void doSave(true)}
-                className="px-3 py-1.5 text-sm rounded bg-amber-500/90 text-white hover:bg-amber-500 transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded bg-amber-500/90 text-white',
+                  'hover:bg-amber-500 transition-colors',
+                  'disabled:opacity-45 disabled:cursor-not-allowed',
+                  FOCUS_RING,
+                )}
               >
                 Overwrite
               </button>
@@ -221,7 +236,12 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
                 type="button"
                 disabled={!canSave}
                 onClick={() => void doSave(false)}
-                className="px-3 py-1.5 text-sm rounded bg-sg-accent text-white hover:bg-sg-accent/90 transition-colors disabled:opacity-45 disabled:cursor-not-allowed"
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded bg-sg-accent text-white',
+                  'hover:bg-sg-accent/90 transition-colors',
+                  'disabled:opacity-45 disabled:cursor-not-allowed',
+                  FOCUS_RING,
+                )}
               >
                 Save
               </button>

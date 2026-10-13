@@ -1,15 +1,20 @@
-import { useState, useRef } from 'react'
+import { useId, useState, useRef } from 'react'
 import {
   dedupeStylesByNameForAllSources,
   matchesSearch,
   styleRowKey,
   useStylesStore,
 } from '../store/stylesStore'
+import { useLayer } from '../lib/layerStack'
+import { cn } from '../lib/utils'
 import {
   Command, CommandEmpty, CommandGroup,
   CommandItem, CommandList
 } from './ui/command'
 import { Popover, PopoverContent, PopoverAnchor } from './ui/popover'
+
+const FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
 
 type StyleRow = ReturnType<typeof useStylesStore.getState>['styles'][number]
 
@@ -23,6 +28,9 @@ export function SearchBar() {
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState(search)
   const inputRef = useRef<HTMLInputElement>(null)
+  const listId = useId()
+
+  useLayer(open, () => setOpen(false))
 
   // Autocomplete suggestions:
   // - specific source selected: search only in that CSV
@@ -54,23 +62,36 @@ export function SearchBar() {
         <div className="relative flex-1">
           <input
             ref={inputRef}
+            role="combobox"
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-autocomplete="list"
+            aria-label="Search styles"
             value={inputValue}
             onChange={e => handleInput(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Escape') { setOpen(false); setInputValue(''); setSearch('') }
+              // Escape: layer stack closes the list first; App clears query next.
               if (e.key === 'ArrowDown' && open) e.preventDefault()
             }}
             placeholder="Search styles..."
-            className="w-full h-9 px-3 pr-8 rounded border border-sg-border 
-                       bg-sg-surface text-sg-text text-sm
-                       placeholder:text-sg-muted focus:border-sg-accent 
-                       focus:outline-none transition-colors"
+            className={cn(
+              'w-full h-9 px-3 pr-8 rounded border border-sg-border',
+              'bg-sg-surface text-sg-text text-sm',
+              'placeholder:text-sg-muted focus:border-sg-accent',
+              'focus:outline-none transition-colors',
+              FOCUS_RING,
+            )}
           />
           {inputValue && (
             <button
+              type="button"
+              aria-label="Clear search"
               onClick={() => { setInputValue(''); setSearch(''); setOpen(false) }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 
-                         text-sg-muted hover:text-sg-text text-xs"
+              className={cn(
+                'absolute right-2 top-1/2 -translate-y-1/2',
+                'text-sg-muted hover:text-sg-text text-xs rounded',
+                FOCUS_RING,
+              )}
             >✕</button>
           )}
         </div>
@@ -79,9 +100,10 @@ export function SearchBar() {
         className="p-0 w-72 bg-sg-popover border border-sg-border"
         align="start"
         onOpenAutoFocus={e => e.preventDefault()}
+        onEscapeKeyDown={e => e.preventDefault()}
       >
         <Command shouldFilter={false} className="bg-transparent">
-          <CommandList className="bg-transparent">
+          <CommandList id={listId} className="bg-transparent">
             <CommandEmpty className="text-sg-muted text-sm py-3 px-4">
               No styles found
             </CommandEmpty>

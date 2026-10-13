@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "bench": "node bench/run.mjs",
     "bench:layout": "node bench/layout.mjs",
-    "bench:compare": "node bench/compare.mjs"
+    "bench:compare": "node bench/compare.mjs",
+    "bench:keys": "node bench/keys/run.mjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.2.8",

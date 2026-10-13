@@ -8,9 +8,7 @@ import {
 import { useStylesStore } from '../store/stylesStore'
 import { DeckIcon } from './DeckIcon'
 import { MenuDivider } from './MenuDivider'
-
-const MENU_BTN =
-  'w-full text-left px-3 py-1.5 text-sm text-sg-text hover:bg-sg-accent/20 transition-colors'
+import { MenuItem } from './ViewportFixedMenu'
 
 const MENU_HEADING = 'text-xs text-sg-muted px-3 pt-1.5'
 
@@ -27,10 +25,8 @@ export function WildcardMenuItems({ category, onClose }: Props) {
         <div className={MENU_HEADING} aria-hidden>
           {MENU_GROUP_RANDOM}
         </div>
-        <button
-          type="button"
-          className={MENU_BTN}
-          onClick={() => {
+        <MenuItem
+          onSelect={() => {
             sendToHost({
               type: 'SG_WILDCARD_CATEGORY',
               category,
@@ -39,27 +35,23 @@ export function WildcardMenuItems({ category, onClose }: Props) {
           }}
         >
           🎲 {MENU_WHOLE_CATEGORY}
-        </button>
-        <button
-          type="button"
-          className={MENU_BTN}
-          onClick={() => {
+        </MenuItem>
+        <MenuItem
+          onSelect={() => {
             useStylesStore.getState().startSliceMode(category)
             onClose()
           }}
         >
           🎲 {MENU_PICK_STYLES}
-        </button>
+        </MenuItem>
       </div>
       <MenuDivider />
       <div role="group" aria-label={MENU_GROUP_SHUFFLE}>
         <div className={MENU_HEADING} aria-hidden>
           {MENU_GROUP_SHUFFLE}
         </div>
-        <button
-          type="button"
-          className={MENU_BTN}
-          onClick={() => {
+        <MenuItem
+          onSelect={() => {
             sendToHost({
               type: 'SG_WILDCARD_CATEGORY',
               category,
@@ -69,17 +61,15 @@ export function WildcardMenuItems({ category, onClose }: Props) {
           }}
         >
           <DeckIcon /> {MENU_WHOLE_CATEGORY}
-        </button>
-        <button
-          type="button"
-          className={MENU_BTN}
-          onClick={() => {
+        </MenuItem>
+        <MenuItem
+          onSelect={() => {
             useStylesStore.getState().startSliceMode(category, WILDCARD_KIND_DECK)
             onClose()
           }}
         >
           <DeckIcon /> {MENU_PICK_STYLES}
-        </button>
+        </MenuItem>
       </div>
     </>
   )

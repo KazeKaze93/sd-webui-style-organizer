@@ -100,9 +100,20 @@ export function columnsForWidth(
   return Math.max(1, Math.floor((widthPx + gapPx) / (minCardWidth + gapPx)))
 }
 
-/** Legacy `auto-fill` class for non-virtualized paths (slice mode). */
+/**
+ * Tailwind emits only utilities it can read literally in the source text. These strings must never be
+ * assembled from template parts: `minmax(${minW}px,1fr)` was scanned as a mangled rule, the real utility
+ * was never generated and slice mode collapsed into a single-column list.
+ * The pixel values mirror minCardWidthPx; autoFillGridClass.test.ts enforces that.
+ */
+function autoFillColumnsClass(compactMode: boolean, windowed: boolean): string {
+  if (compactMode && windowed) return 'grid-cols-[repeat(auto-fill,minmax(80px,1fr))]'
+  if (compactMode) return 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))]'
+  if (windowed) return 'grid-cols-[repeat(auto-fill,minmax(110px,1fr))]'
+  return 'grid-cols-[repeat(auto-fill,minmax(150px,1fr))]'
+}
+
+/** `auto-fill` CSS grid for the non-virtualized path (slice-selection mode). */
 export function autoFillGridClass(compactMode: boolean, windowed: boolean): string {
-  const minW = minCardWidthPx(compactMode, windowed)
-  const gap = gridGapClass(compactMode)
-  return `grid content-start grid-cols-[repeat(auto-fill,minmax(${minW}px,1fr))] ${gap}`
+  return ['grid', 'content-start', autoFillColumnsClass(compactMode, windowed), gridGapClass(compactMode)].join(' ')
 }

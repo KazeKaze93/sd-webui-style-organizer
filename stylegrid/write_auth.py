@@ -29,6 +29,7 @@ WRITE_ROUTE_PATHS = frozenset({
     "/style_grid/presets/touch",
     "/style_grid/category_order/save",
     "/style_grid/backup",
+    "/style_grid/restore",
     "/style_grid/usage/increment",
     "/style_grid/favorites/save",
     "/style_grid/favorites/migrate",

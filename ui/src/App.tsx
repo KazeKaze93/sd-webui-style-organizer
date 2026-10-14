@@ -474,7 +474,7 @@ export default function App() {
           <div className="flex items-center gap-1.5 shrink-0">
             <ToolBtn
               icon={Save}
-              label="Backup CSV"
+              label="Backup / Restore"
               onClick={() => sendToHost({ type: 'SG_BACKUP' })}
             />
             <ToolBtn

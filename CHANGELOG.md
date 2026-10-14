@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 - **Favorites and Recent** persist in `data/favorites.json` / `data/recent.json` (server) instead of browser localStorage. On first load, legacy `sg_v2_favorites` / `sg_v2_recent` keys are migrated once when the server files are absent.
+- **Backup** also includes `usage.json`, `category_order.json`, `favorites.json`, and `recent.json` (plus existing CSVs and `presets.json`). Thumbnails are opt-in. **Restore** is available in the Backup / Restore UI and creates a safety snapshot first.
+
+### Added
+- `GET /style_grid/backups`, `POST /style_grid/restore`, and optional `include_thumbnails` on `POST /style_grid/backup`.
 
 ## [5.3.0] - 2026-10-14
 

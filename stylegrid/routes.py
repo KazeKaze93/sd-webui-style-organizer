@@ -44,6 +44,7 @@ from stylegrid.data_files import (
     CorruptDataError,
     backup_csv_files,
     increment_usage,
+    list_backups,
     load_favorites,
     load_presets,
     load_recent,
@@ -52,9 +53,11 @@ from stylegrid.data_files import (
     migrate_recent_once,
     migrate_usage_on_rename,
     preset_styles_payload_ok,
+    restore_from_backup,
     save_favorites,
     save_presets,
     save_recent,
+    thumbnails_dir_size,
 )
 from stylegrid.lora_scan import (
     LORA_SOURCE,
@@ -604,12 +607,48 @@ def _register_crud_routes(app):
             pass
         return {"ok": True}
 
+    @app.get("/style_grid/backups")
+    async def api_list_backups():
+        return {
+            "backups": list_backups(),
+            "thumbnails_bytes": thumbnails_dir_size(),
+        }
+
     @app.post("/style_grid/backup")
-    async def api_backup():
+    async def api_backup(request: Request):
+        include_thumbnails = False
         try:
-            return {"ok": backup_csv_files()}
+            raw = await request.body()
+            if raw:
+                data = json.loads(raw.decode("utf-8"))
+                if isinstance(data, dict):
+                    include_thumbnails = bool(data.get("include_thumbnails"))
+        except Exception:
+            include_thumbnails = False
+        try:
+            result = backup_csv_files(include_thumbnails=include_thumbnails)
+            return result
         except Exception as e:
             return {"error": str(e)}
+
+    @app.post("/style_grid/restore")
+    async def api_restore(data: dict):
+        name = (data.get("snapshot") or data.get("name") or "").strip()
+        if not name:
+            return JSONResponse(
+                {"ok": False, "error": "snapshot name required"},
+                status_code=400,
+            )
+        try:
+            result = restore_from_backup(name, create_safety=True)
+        except FileNotFoundError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=404)
+        except ValueError as exc:
+            return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        invalidate_styles_cache()
+        return result
 
 
 def _register_thumbnail_routes(app):

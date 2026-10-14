@@ -47,6 +47,7 @@ function resetStore() {
     usageCounts: {},
     favorites: new Set(),
     recentNames: [],
+    favoritesRecentHydrated: true,
     presets: {},
     presetsCorrupt: null,
     activePresetName: null,

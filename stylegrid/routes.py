@@ -44,11 +44,17 @@ from stylegrid.data_files import (
     CorruptDataError,
     backup_csv_files,
     increment_usage,
+    load_favorites,
     load_presets,
+    load_recent,
     load_usage,
+    migrate_favorites_once,
+    migrate_recent_once,
     migrate_usage_on_rename,
     preset_styles_payload_ok,
+    save_favorites,
     save_presets,
+    save_recent,
 )
 from stylegrid.lora_scan import (
     LORA_SOURCE,
@@ -323,6 +329,64 @@ def _register_usage_routes(app):
     async def api_increment(data: dict):
         increment_usage(data.get("styles", []))
         return {"ok": True}
+
+
+def _items_payload(items, persisted):
+    return {"items": items, "persisted": persisted}
+
+
+def _register_favorites_recent_routes(app):
+    """Register server-side favorites / recent list routes."""
+
+    @app.get("/style_grid/favorites")
+    async def get_favorites():
+        try:
+            items, persisted = load_favorites()
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
+        return _items_payload(items, persisted)
+
+    @app.post("/style_grid/favorites/save")
+    async def api_save_favorites(data: dict):
+        try:
+            items = save_favorites(data.get("items", []))
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
+        return {"ok": True, "items": items}
+
+    @app.post("/style_grid/favorites/migrate")
+    async def api_migrate_favorites(data: dict):
+        """Write localStorage favorites only when favorites.json is absent."""
+        try:
+            items, migrated = migrate_favorites_once(data.get("items", []))
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
+        return {"ok": True, "migrated": migrated, "items": items}
+
+    @app.get("/style_grid/recent")
+    async def get_recent():
+        try:
+            items, persisted = load_recent()
+        except CorruptDataError as exc:
+            raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
+        return _items_payload(items, persisted)
+
+    @app.post("/style_grid/recent/save")
+    async def api_save_recent(data: dict):
+        try:
+            items = save_recent(data.get("items", []))
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
+        return {"ok": True, "items": items}
+
+    @app.post("/style_grid/recent/migrate")
+    async def api_migrate_recent(data: dict):
+        """Write localStorage recent only when recent.json is absent."""
+        try:
+            items, migrated = migrate_recent_once(data.get("items", []))
+        except CorruptDataError as exc:
+            return _corrupt_response(exc)
+        return {"ok": True, "migrated": migrated, "items": items}
 
 
 def _remove_thumbnail_file(name, source):
@@ -755,6 +819,7 @@ def register_api(demo, app):
     _register_style_routes(app)
     _register_preset_routes(app)
     _register_usage_routes(app)
+    _register_favorites_recent_routes(app)
     _register_crud_routes(app)
     _register_thumbnail_routes(app)
     _register_lora_routes(app)

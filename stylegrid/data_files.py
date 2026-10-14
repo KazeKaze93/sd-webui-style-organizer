@@ -1,4 +1,4 @@
-"""Presets, usage stats, CSV backups (JSON / filesystem under data/)."""
+"""Presets, usage stats, favorites/recent, CSV backups (JSON / filesystem under data/)."""
 
 import os
 import shutil
@@ -8,7 +8,10 @@ import zipfile
 from stylegrid.config import (
     BACKUP_DIR,
     EXT_DIR,
+    FAVORITES_FILE,
     PRESETS_FILE,
+    RECENT_FILE,
+    RECENT_MAX,
     USAGE_FILE,
     get_all_styles_file_paths,
 )
@@ -35,8 +38,98 @@ __all__ = [
     "normalize_wildcard_entry",
     "preset_styles_payload_ok",
     "update_presets",
+    "load_favorites",
+    "save_favorites",
+    "migrate_favorites_once",
+    "load_recent",
+    "save_recent",
+    "migrate_recent_once",
     "backup_csv_files",
 ]
+
+
+def _normalize_string_list(raw_items, *, max_len=None):
+    """Return unique non-empty strings preserving first-seen order.
+
+    Favorites/recent keys are ``styleRowKey`` composites (may contain ``\\0``);
+    empty strings are dropped, interior whitespace is kept as-is.
+    """
+    if not isinstance(raw_items, list):
+        return []
+    out = []
+    seen = set()
+    for entry in raw_items:
+        if not isinstance(entry, str) or not entry:
+            continue
+        if entry in seen:
+            continue
+        seen.add(entry)
+        out.append(entry)
+        if max_len is not None and len(out) >= max_len:
+            break
+    return out
+
+
+def _load_items_file(path):
+    """Load ``{"items": [...]}``. Missing → ``([], False)``; present → ``(items, True)``."""
+    with locked_path(path):
+        cleanup_stale_tmp(path)
+        if not os.path.isfile(path):
+            return [], False
+        raw = load_json_object(path)
+        items = _normalize_string_list(raw.get("items", []))
+        return items, True
+
+
+def _save_items_file(path, items, *, max_len=None):
+    """Atomically write ``{"items": [...]}``."""
+    normalized = _normalize_string_list(items, max_len=max_len)
+    with locked_path(path):
+        write_json_atomic(path, {"items": normalized})
+        return normalized
+
+
+def _migrate_items_once(path, items, *, max_len=None):
+    """Write *items* only when *path* is absent. Returns ``(items, migrated)``."""
+    normalized = _normalize_string_list(items, max_len=max_len)
+    with locked_path(path):
+        cleanup_stale_tmp(path)
+        if os.path.isfile(path):
+            current = load_json_object(path)
+            return _normalize_string_list(current.get("items", []), max_len=max_len), False
+        write_json_atomic(path, {"items": normalized})
+        return normalized, True
+
+
+def load_favorites():
+    """Load favorites.json. Returns ``(items, persisted)``."""
+    return _load_items_file(FAVORITES_FILE)
+
+
+def save_favorites(items):
+    """Replace favorites.json contents. Returns the normalized list."""
+    return _save_items_file(FAVORITES_FILE, items)
+
+
+def migrate_favorites_once(items):
+    """Push localStorage favorites to server only when favorites.json is absent."""
+    return _migrate_items_once(FAVORITES_FILE, items)
+
+
+def load_recent():
+    """Load recent.json. Returns ``(items, persisted)`` (at most ``RECENT_MAX``)."""
+    items, persisted = _load_items_file(RECENT_FILE)
+    return items[:RECENT_MAX], persisted
+
+
+def save_recent(items):
+    """Replace recent.json contents (capped at ``RECENT_MAX``)."""
+    return _save_items_file(RECENT_FILE, items, max_len=RECENT_MAX)
+
+
+def migrate_recent_once(items):
+    """Push localStorage recent to server only when recent.json is absent."""
+    return _migrate_items_once(RECENT_FILE, items, max_len=RECENT_MAX)
 
 
 def _coerce_weight(raw):

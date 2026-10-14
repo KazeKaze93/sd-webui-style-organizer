@@ -9,8 +9,12 @@ EXT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(EXT_DIR, "data")
 PRESETS_FILE = os.path.join(DATA_DIR, "presets.json")
 USAGE_FILE = os.path.join(DATA_DIR, "usage.json")
+CATEGORY_ORDER_FILE = os.path.join(DATA_DIR, "category_order.json")
+FAVORITES_FILE = os.path.join(DATA_DIR, "favorites.json")
+RECENT_FILE = os.path.join(DATA_DIR, "recent.json")
 BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 THUMBNAILS_DIR = os.path.join(DATA_DIR, "thumbnails")
+RECENT_MAX = 10
 
 for _d in [DATA_DIR, BACKUP_DIR]:
     os.makedirs(_d, exist_ok=True)

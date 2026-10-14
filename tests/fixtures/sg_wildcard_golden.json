@@ -1,0 +1,330 @@
+{
+  "note": "Golden cases for stylegrid.wildcards.resolve_sg_wildcards (R3 ComfyUI). field pos->prompt, neg->negative_prompt. seed pins random.Random. styles_fixture is the styles_by_category map passed to the resolver.",
+  "cases": [
+    {
+      "id": "whole_category",
+      "input": "{sg:body}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned skin",
+            "negative_prompt": "pale skin"
+          },
+          {
+            "name": "BODY_Pale",
+            "prompt": "pale skin",
+            "negative_prompt": "tanned skin"
+          },
+          {
+            "name": "BODY_Shortstack",
+            "prompt": "shortstack",
+            "negative_prompt": "tall"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "shortstack",
+      "expected_warnings": []
+    },
+    {
+      "id": "slice_include",
+      "input": "{sg:body:Tanned,Shortstack}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned skin",
+            "negative_prompt": "pale skin"
+          },
+          {
+            "name": "BODY_Pale",
+            "prompt": "pale skin",
+            "negative_prompt": "tanned skin"
+          },
+          {
+            "name": "BODY_Shortstack",
+            "prompt": "shortstack",
+            "negative_prompt": "tall"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "tanned skin",
+      "expected_warnings": []
+    },
+    {
+      "id": "slice_exclude",
+      "input": "{sg:body:-Tanned}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned skin",
+            "negative_prompt": "pale skin"
+          },
+          {
+            "name": "BODY_Pale",
+            "prompt": "pale skin",
+            "negative_prompt": "tanned skin"
+          },
+          {
+            "name": "BODY_Shortstack",
+            "prompt": "shortstack",
+            "negative_prompt": "tall"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "pale skin",
+      "expected_warnings": []
+    },
+    {
+      "id": "prefix_glob",
+      "input": "{sg:body:Male_*}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Male_Average",
+            "prompt": "male avg",
+            "negative_prompt": "n_ma"
+          },
+          {
+            "name": "BODY_Male_BBC",
+            "prompt": "male bbc",
+            "negative_prompt": "n_mb"
+          },
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned",
+            "negative_prompt": "n_t"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "male avg",
+      "expected_warnings": []
+    },
+    {
+      "id": "all_names_missing_fallback",
+      "input": "{sg:body:Ghost,Missing}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned skin",
+            "negative_prompt": "pale skin"
+          },
+          {
+            "name": "BODY_Pale",
+            "prompt": "pale skin",
+            "negative_prompt": "tanned skin"
+          },
+          {
+            "name": "BODY_Shortstack",
+            "prompt": "shortstack",
+            "negative_prompt": "tall"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "shortstack",
+      "expected_warnings": []
+    },
+    {
+      "id": "unknown_category",
+      "input": "{sg:missing}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned skin",
+            "negative_prompt": "pale skin"
+          },
+          {
+            "name": "BODY_Pale",
+            "prompt": "pale skin",
+            "negative_prompt": "tanned skin"
+          },
+          {
+            "name": "BODY_Shortstack",
+            "prompt": "shortstack",
+            "negative_prompt": "tall"
+          }
+        ]
+      },
+      "seed": 0,
+      "expected_output": "",
+      "expected_warnings": [
+        "[Style Grid] nested {sg:} unresolved after 3 passes; stripping leftovers"
+      ]
+    },
+    {
+      "id": "empty_category",
+      "input": "{sg:body}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": []
+      },
+      "seed": 0,
+      "expected_output": "",
+      "expected_warnings": [
+        "[Style Grid] nested {sg:} unresolved after 3 passes; stripping leftovers"
+      ]
+    },
+    {
+      "id": "nested",
+      "input": "{sg:body}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Wrap",
+            "prompt": "wrap {sg:accessory}",
+            "negative_prompt": "neg wrap"
+          }
+        ],
+        "accessory": [
+          {
+            "name": "ACCESSORY_X",
+            "prompt": "ax",
+            "negative_prompt": "nax"
+          },
+          {
+            "name": "ACCESSORY_Y",
+            "prompt": "ay",
+            "negative_prompt": "nay"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "wrap ax",
+      "expected_warnings": []
+    },
+    {
+      "id": "depth_exceeded_nesting",
+      "input": "{sg:a}",
+      "field": "pos",
+      "styles_fixture": {
+        "a": [
+          {
+            "name": "A_1",
+            "prompt": "{sg:b}",
+            "negative_prompt": ""
+          }
+        ],
+        "b": [
+          {
+            "name": "B_1",
+            "prompt": "{sg:c}",
+            "negative_prompt": ""
+          }
+        ],
+        "c": [
+          {
+            "name": "C_1",
+            "prompt": "{sg:d}",
+            "negative_prompt": ""
+          }
+        ],
+        "d": [
+          {
+            "name": "D_1",
+            "prompt": "deep",
+            "negative_prompt": ""
+          }
+        ]
+      },
+      "seed": 0,
+      "expected_output": "",
+      "expected_warnings": [
+        "[Style Grid] nested {sg:} unresolved after 3 passes; stripping leftovers"
+      ]
+    },
+    {
+      "id": "empty_field_pos",
+      "input": "{sg:body}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Empty",
+            "prompt": "",
+            "negative_prompt": "neg kept"
+          }
+        ]
+      },
+      "seed": 0,
+      "expected_output": "",
+      "expected_warnings": []
+    },
+    {
+      "id": "empty_field_neg",
+      "input": "{sg:body}",
+      "field": "neg",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Empty",
+            "prompt": "pos kept",
+            "negative_prompt": ""
+          }
+        ]
+      },
+      "seed": 0,
+      "expected_output": "",
+      "expected_warnings": []
+    },
+    {
+      "id": "case_insensitive_category",
+      "input": "{sg:BODY}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_Tanned",
+            "prompt": "tanned skin",
+            "negative_prompt": "pale skin"
+          },
+          {
+            "name": "BODY_Pale",
+            "prompt": "pale skin",
+            "negative_prompt": "tanned skin"
+          },
+          {
+            "name": "BODY_Shortstack",
+            "prompt": "shortstack",
+            "negative_prompt": "tall"
+          }
+        ]
+      },
+      "seed": 42,
+      "expected_output": "shortstack",
+      "expected_warnings": []
+    },
+    {
+      "id": "source_filtered_pool",
+      "input": "{sg:body}",
+      "field": "pos",
+      "styles_fixture": {
+        "body": [
+          {
+            "name": "BODY_FromA",
+            "prompt": "from_a",
+            "negative_prompt": "n_a",
+            "source": "pack_a.csv"
+          }
+        ]
+      },
+      "seed": 0,
+      "expected_output": "from_a",
+      "expected_warnings": []
+    }
+  ]
+}

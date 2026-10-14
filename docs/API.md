@@ -42,9 +42,10 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 | Spec grammar | Implemented by `select_slice`: comma-separated entries; each entry is a style-name suffix with the category prefix omitted, optionally `-`-prefixed to exclude and/or `*`-suffixed as a prefix glob. Full names are reconstructed as `CATEGORY_suffix` and compared case-insensitively. |
 | Resolution | Include entries are unioned first (all candidates when there are no include entries); then excludes subtract. |
 | Lookup | Token category is lowercased; map key is lowercased category from loaded styles. |
-| Replacement | One random style from the resolved pool; inserts that style’s CSV **`prompt`** field. |
+| Replacement | One random style from the resolved pool. Field follows the prompt side: positive → CSV **`prompt`**; negative → CSV **`negative_prompt`** (`field=` passed by `scripts/style_grid.py`). |
+| Empty field | Empty **`negative_prompt`** strips the token (replace with `""`). Empty **`prompt`** leaves the raw token unchanged. |
 | Empty slice pool | Falls back to the full category (so a stale/missing-name token still generates). |
-| No match | Unknown category: original `{sg:…}` text is kept. |
+| No match | **Unknown category:** original `{sg:…}` / `{sgd:…}` text is kept as raw text. |
 
 `parse_sg_token` and `select_slice` are module-level in `stylegrid/wildcards.py` and are the **single source of truth**. The frontend’s `resolveSliceNames` in `ui/src/lib/wildcardSlice.ts` mirrors their semantics purely to compute chip labels and must be kept in sync if the grammar changes. Shared cases live in `tests/fixtures/slice_grammar.json` and are asserted by `tests/test_slice_grammar_parity.py` (Python) and `ui/src/lib/wildcardSlice.parity.test.ts` (Vitest).
 
@@ -605,7 +606,7 @@ Success:
 ## POST /backup
 
 **Method:** POST  
-**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`. Paths that are not regular files on disk are **skipped** (no error — missing optional files do not abort the run). Archive/folder members use **collision-safe relative names** (`styles/…`, `samples/…`, or `external/…`) so same-basename CSVs from different directories do not overwrite each other.
+**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`, plus `data/presets.json` when present. Does **not** back up `usage.json`, `category_order.json`, or `thumbnails/`. Paths that are not regular files on disk are **skipped** (no error — missing optional files do not abort the run). Archive/folder members use **collision-safe relative names** (`styles/…`, `samples/…`, or `external/…`) so same-basename CSVs from different directories do not overwrite each other. There is no restore API — restore by copying files back manually (see README § Manual restore from Backup).
 
 **Parameters:**
 

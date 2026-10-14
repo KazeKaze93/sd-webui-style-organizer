@@ -688,7 +688,7 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 ## GET /export
 
 **Method:** GET  
-**Description:** Exports styles, presets, usage, and export timestamp.
+**Description:** Exports styles, presets, usage, favorites, recent, and export timestamp.
 
 **Parameters:**
 
@@ -706,6 +706,8 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 | `styles`      | array[object] | Flat list from all loaded CSV sources. |
 | `presets`     | object        | Presets map.                           |
 | `usage`       | object        | Usage map.                             |
+| `favorites`   | array[string] | Favorite style row keys.               |
+| `recent`      | array[string] | Recent style row keys (max 10).        |
 | `exported_at` | string        | Timestamp (`YYYY-MM-DDTHH:MM:SS`).     |
 
 
@@ -714,7 +716,7 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 ## POST /import
 
 **Method:** POST  
-**Description:** Imports presets into storage and optionally writes imported styles into a new CSV file.
+**Description:** Imports presets into storage, optionally replaces favorites/recent lists, and optionally writes imported styles into a new CSV file.
 
 **Parameters:**
 
@@ -722,6 +724,8 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 | name      | in   | required | type          | description                                                 |
 | --------- | ---- | -------- | ------------- | ----------------------------------------------------------- |
 | `presets` | body | No       | object        | Preset map merged into existing presets.                    |
+| `favorites` | body | No     | array[string] | Replaces `data/favorites.json` when present.              |
+| `recent`  | body | No       | array[string] | Replaces `data/recent.json` when present (capped at 10).  |
 | `styles`  | body | No       | array[object] | Styles to write into `styles/imported_YYYYMMDD_HHMMSS.csv`. |
 
 

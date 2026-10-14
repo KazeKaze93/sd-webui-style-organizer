@@ -151,3 +151,39 @@ def test_recent_save_and_get_route(fav_client):
     r2 = fav_client.get("/style_grid/recent")
     assert r2.status_code == 200
     assert r2.json() == {"items": keys, "persisted": True}
+
+
+def test_export_and_import_include_favorites_recent(fav_client, fav_recent_env):
+    _sg_data, fav_path, recent_path = fav_recent_env
+    fav_key = "styles.csv\0Test Style A"
+    recent_key = "styles.csv\0Test Style B"
+    assert fav_client.post("/style_grid/favorites/save", json={"items": [fav_key]}).status_code == 200
+    assert fav_client.post("/style_grid/recent/save", json={"items": [recent_key]}).status_code == 200
+
+    exported = fav_client.get("/style_grid/export").json()
+    assert exported["favorites"] == [fav_key]
+    assert exported["recent"] == [recent_key]
+    assert "exported_at" in exported
+
+    # Wipe server files, then import the export payload.
+    fav_path.unlink()
+    recent_path.unlink()
+    assert fav_client.get("/style_grid/favorites").json()["persisted"] is False
+
+    r_imp = fav_client.post(
+        "/style_grid/import",
+        json={
+            "favorites": exported["favorites"],
+            "recent": exported["recent"],
+        },
+    )
+    assert r_imp.status_code == 200
+    assert r_imp.json().get("ok") is True
+    assert fav_client.get("/style_grid/favorites").json() == {
+        "items": [fav_key],
+        "persisted": True,
+    }
+    assert fav_client.get("/style_grid/recent").json() == {
+        "items": [recent_key],
+        "persisted": True,
+    }

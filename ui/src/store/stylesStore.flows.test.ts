@@ -261,6 +261,55 @@ describe('characterization: main Style Grid flows', () => {
       ).toBe(false)
       expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites')).toBe(true)
     })
+
+    it('keeps sg_v2_favorites / sg_v2_recent when server is unmigrated and migrate fails', async () => {
+      const key = `${FILE_A}\0BODY_Ears`
+      localStorage.setItem('sg_v2_favorites', JSON.stringify([key]))
+      localStorage.setItem('sg_v2_recent', JSON.stringify([key]))
+
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (
+          (url === '/style_grid/favorites' || url === '/style_grid/recent') &&
+          (!init || !init.method || init.method === 'GET')
+        ) {
+          return mockJsonResponse({ items: [], persisted: false })
+        }
+        if (url.endsWith('/migrate')) {
+          return mockJsonResponse({ ok: false, error: 'unavailable' }, { ok: false, status: 503 })
+        }
+        return mockJsonResponse({ ok: false }, { ok: false })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      await useStylesStore.getState().hydrateFavoritesRecent()
+      expect(useStylesStore.getState().favorites.has(key)).toBe(true)
+      expect(useStylesStore.getState().recentNames).toEqual([key])
+      expect(localStorage.getItem('sg_v2_favorites')).toBe(JSON.stringify([key]))
+      expect(localStorage.getItem('sg_v2_recent')).toBe(JSON.stringify([key]))
+    })
+
+    it('removes legacy keys when server already reports persisted', async () => {
+      const key = `${FILE_A}\0BODY_Ears`
+      localStorage.setItem('sg_v2_favorites', JSON.stringify([key]))
+      localStorage.setItem('sg_v2_recent', JSON.stringify([key]))
+
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input)
+        if (url === '/style_grid/favorites' || url === '/style_grid/recent') {
+          return mockJsonResponse({ items: [key], persisted: true })
+        }
+        return mockJsonResponse({ ok: false }, { ok: false })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      await useStylesStore.getState().hydrateFavoritesRecent()
+      expect(localStorage.getItem('sg_v2_favorites')).toBeNull()
+      expect(localStorage.getItem('sg_v2_recent')).toBeNull()
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/migrate')),
+      ).toBe(false)
+    })
   })
 
   describe('presets save / rename / delete', () => {

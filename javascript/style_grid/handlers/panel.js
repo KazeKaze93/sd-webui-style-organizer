@@ -26,6 +26,7 @@ import {
 import {
     syncWildcards,
 } from "./wildcards.js";
+import { postToFrame } from "../post-message.js";
 
 let _pollInterval = null;
 
@@ -174,11 +175,11 @@ function refreshPanel(tabName, opts) {
                             : strippedForToast.length + " styles are no longer in the library; their text was removed from the prompt.";
                         var frGone = state[tabName] && state[tabName].sgFrame;
                         if (frGone && frGone.contentWindow) {
-                            frGone.contentWindow.postMessage({
+                            postToFrame(frGone, {
                                 type: "SG_TOAST",
                                 message: toastMsg,
                                 variant: "info"
-                            }, "*");
+                            });
                         }
                     }
                 }
@@ -190,11 +191,11 @@ function refreshPanel(tabName, opts) {
         }).catch(function () {
             var frRef = state[tabName] && state[tabName].sgFrame;
             if (frRef && frRef.contentWindow) {
-                frRef.contentWindow.postMessage({
+                postToFrame(frRef, {
                     type: "SG_TOAST",
                     message: "Refresh failed",
                     variant: "error"
-                }, "*");
+                });
             }
         });
     }
@@ -227,10 +228,10 @@ function startPolling() {
                             if (frame && frame.contentWindow) {
                                 // Full list for v2: dedupe by name only in iframe when "All sources" (selectFilteredStyles).
                                 var v2styles = Object.values(state[t].categories).flat();
-                                frame.contentWindow.postMessage({
+                                postToFrame(frame, {
                                     type: "SG_STYLES_UPDATE",
                                     styles: v2styles
-                                }, "*");
+                                });
                             }
                         });
                     });

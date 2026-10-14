@@ -11,6 +11,7 @@ import {
     _thumbVersions,
     _saveThumbVersions,
 } from "../state.js";
+import { postToFrame } from "../post-message.js";
 
 function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
         var resolvedSource = sourceFile || state[tabName].selectedSourceFile || "";
@@ -24,11 +25,11 @@ function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
                     var failStartMsg = "Generation failed: " + (r.error || "missing job_id");
                     var frFailStart = state[tabName] && state[tabName].sgFrame;
                     if (frFailStart && frFailStart.contentWindow) {
-                        frFailStart.contentWindow.postMessage({
+                        postToFrame(frFailStart, {
                             type: "SG_TOAST",
                             message: failStartMsg,
                             variant: "error"
-                        }, "*");
+                        });
                     }
                     if (typeof onProgress === "function") {
                         onProgress("error");
@@ -40,11 +41,11 @@ function generateThumbnail(tabName, styleName, onDone, onProgress, sourceFile) {
             .catch(function () {
                 var frFailCatch = state[tabName] && state[tabName].sgFrame;
                 if (frFailCatch && frFailCatch.contentWindow) {
-                    frFailCatch.contentWindow.postMessage({
+                    postToFrame(frFailCatch, {
                         type: "SG_TOAST",
                         message: "Generation failed",
                         variant: "error"
-                    }, "*");
+                    });
                 }
                 if (typeof onProgress === "function") {
                     onProgress("error");
@@ -56,11 +57,11 @@ function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, 
         if (attempts > 60) {
             var frTimeout = state[tabName] && state[tabName].sgFrame;
             if (frTimeout && frTimeout.contentWindow) {
-                frTimeout.contentWindow.postMessage({
+                postToFrame(frTimeout, {
                     type: "SG_TOAST",
                     message: "Generation timed out",
                     variant: "error"
-                }, "*");
+                });
             }
             if (typeof onProgress === "function") {
                 onProgress("error");
@@ -73,11 +74,11 @@ function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, 
                 if (!r || r.detail === "Not Found" || r.status === undefined) {
                     var frNotFound = state[tabName] && state[tabName].sgFrame;
                     if (frNotFound && frNotFound.contentWindow) {
-                        frNotFound.contentWindow.postMessage({
+                        postToFrame(frNotFound, {
                             type: "SG_TOAST",
                             message: "Generation endpoint not found",
                             variant: "error"
-                        }, "*");
+                        });
                     }
                     if (typeof onProgress === "function") {
                         onProgress("error");
@@ -100,11 +101,11 @@ function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, 
                         : ("Generation failed: " + (r.message || "unknown"));
                     var frFailPoll = state[tabName] && state[tabName].sgFrame;
                     if (frFailPoll && frFailPoll.contentWindow) {
-                        frFailPoll.contentWindow.postMessage({
+                        postToFrame(frFailPoll, {
                             type: "SG_TOAST",
                             message: failPollMsg,
                             variant: "error"
-                        }, "*");
+                        });
                     }
                     if (typeof onProgress === "function") {
                         onProgress("error");
@@ -120,11 +121,11 @@ function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, 
                     var unknownMsg = "Unknown generation status: " + r.status;
                     var frUnknown = state[tabName] && state[tabName].sgFrame;
                     if (frUnknown && frUnknown.contentWindow) {
-                        frUnknown.contentWindow.postMessage({
+                        postToFrame(frUnknown, {
                             type: "SG_TOAST",
                             message: unknownMsg,
                             variant: "error"
-                        }, "*");
+                        });
                     }
                     if (typeof onProgress === "function") {
                         onProgress("error");
@@ -134,11 +135,11 @@ function pollGenerationStatus(tabName, styleName, attempts, onDone, onProgress, 
             .catch(function () {
                 var frUnavailable = state[tabName] && state[tabName].sgFrame;
                 if (frUnavailable && frUnavailable.contentWindow) {
-                    frUnavailable.contentWindow.postMessage({
+                    postToFrame(frUnavailable, {
                         type: "SG_TOAST",
                         message: "Generation status unavailable",
                         variant: "error"
-                    }, "*");
+                    });
                 }
                 if (typeof onProgress === "function") {
                     onProgress("error");
@@ -170,33 +171,33 @@ function uploadThumbnail(tabName, styleName, sourceFile) {
                             _saveThumbVersions();
                             var fr = state[tabName] && state[tabName].sgFrame;
                             if (fr && fr.contentWindow) {
-                                fr.contentWindow.postMessage({
+                                postToFrame(fr, {
                                     type: "SG_THUMB_DONE",
                                     styleId: styleName,
                                     version: _thumbVersions[uploadThumbKey],
                                     source_file: resolvedSource,
-                                }, "*");
+                                });
                             }
                         } else {
                             var failMsg = "Upload failed: " + (r.error || "?");
                             var frFail = state[tabName] && state[tabName].sgFrame;
                             if (frFail && frFail.contentWindow) {
-                                frFail.contentWindow.postMessage({
+                                postToFrame(frFail, {
                                     type: "SG_TOAST",
                                     message: failMsg,
                                     variant: "error"
-                                }, "*");
+                                });
                             }
                         }
                     })
                     .catch(function () {
                         var frCatch = state[tabName] && state[tabName].sgFrame;
                         if (frCatch && frCatch.contentWindow) {
-                            frCatch.contentWindow.postMessage({
+                            postToFrame(frCatch, {
                                 type: "SG_TOAST",
                                 message: "Upload failed",
                                 variant: "error"
-                            }, "*");
+                            });
                         }
                     });
             };

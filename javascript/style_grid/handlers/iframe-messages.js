@@ -49,14 +49,17 @@ import {
     buildThemeMessage,
     detectHostThemeMode,
 } from "../theme.js";
+import {
+    postToFrame,
+    isTrustedIframeEvent,
+    parseFrameMessage,
+} from "../post-message.js";
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
-            if (!e.data || !e.data.type) return;
-            if (!e.data.type.startsWith("SG_")) return;
-            // Two iframes (txt2img / img2img) each register this listener; only handle messages from THIS frame.
-            // Otherwise the other tab's handler runs with wrong tab closure → e.g. batch uses All while iframe shows a chosen source.
-            if (e.source !== frame.contentWindow) return;
-            const msg = e.data;
+            // Same-origin + this iframe's contentWindow only (two tabs each register a listener).
+            if (!isTrustedIframeEvent(e, frame)) return;
+            const msg = parseFrameMessage(e.data);
+            if (!msg) return;
 
             function refreshAndNotifyFrame() {
                 fetch("/style_grid/styles")
@@ -70,10 +73,10 @@ function installIframeMessageBridge(tab, frame) {
                             state[tab].categories[cat].push(s);
                         });
                         if (frame && frame.contentWindow) {
-                            frame.contentWindow.postMessage({
+                            postToFrame(frame, {
                                 type: "SG_STYLES_UPDATE",
                                 styles: allStyles
-                            }, "*");
+                            });
                         }
                     });
             }
@@ -97,7 +100,7 @@ function installIframeMessageBridge(tab, frame) {
             }
             if (msg.type === "SG_READY") {
                 // Fresh detect at READY time - do not reuse a mode cached at iframe creation.
-                frame.contentWindow.postMessage(buildThemeMessage(detectHostThemeMode()), "*");
+                postToFrame(frame, buildThemeMessage(detectHostThemeMode()));
                 if (state[tab].sgV2HostInitSent) return;
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
@@ -112,11 +115,11 @@ function installIframeMessageBridge(tab, frame) {
                             pushStyleIntoCategories(state[tab].categories, s);
                         });
                         migrateFavoritesInMemory(tab);
-                        frame.contentWindow.postMessage({
+                        postToFrame(frame, {
                             type: "SG_INIT",
                             tab: tab,
                             styles: allStyles,
-                        }, "*");
+                        });
                         state[tab].sgV2HostInitSent = true;
                     })
                     .catch(function () {});
@@ -184,10 +187,10 @@ function installIframeMessageBridge(tab, frame) {
                             state[tab].categories[cat].push(s);
                         });
                         if (frame.contentWindow) {
-                            frame.contentWindow.postMessage({
+                            postToFrame(frame, {
                                 type: "SG_STYLES_UPDATE",
                                 styles: allStyles
-                            }, "*");
+                            });
                         }
                     });
             }
@@ -337,11 +340,11 @@ function installIframeMessageBridge(tab, frame) {
                         .catch(function () {
                             var frLoad = state[tab] && state[tab].sgFrame;
                             if (frLoad && frLoad.contentWindow) {
-                                frLoad.contentWindow.postMessage({
+                                postToFrame(frLoad, {
                                     type: "SG_TOAST",
                                     message: "Could not load styles for batch generation",
                                     variant: "error"
-                                }, "*");
+                                });
                             }
                         });
                 }
@@ -350,36 +353,36 @@ function installIframeMessageBridge(tab, frame) {
                 var genSource = msg.source || state[tab].selectedSourceFile || "";
                 generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
                     if (frame.contentWindow) {
-                        frame.contentWindow.postMessage({
+                        postToFrame(frame, {
                             type: "SG_THUMB_PROGRESS",
                             status: status,
                             styleId: msg.styleId,
                             progress: progressValue,
-                        }, "*");
+                        });
                         if (status === "done") {
-                            frame.contentWindow.postMessage({
+                            postToFrame(frame, {
                                 type: "SG_THUMB_PROGRESS",
                                 status: "done",
                                 styleId: msg.styleId,
                                 progress: 100,
-                            }, "*");
+                            });
                             setTimeout(function () {
                                 if (frame && frame.contentWindow) {
-                                    frame.contentWindow.postMessage({
+                                    postToFrame(frame, {
                                         type: "SG_THUMB_DONE",
                                         styleId: msg.styleId,
                                         version: Date.now(),
                                         source_file: genSource,
-                                    }, "*");
+                                    });
                                 }
                             }, 300);
                         }
                         if (status === "error") {
-                            frame.contentWindow.postMessage({
+                            postToFrame(frame, {
                                 type: "SG_THUMB_PROGRESS",
                                 status: "error",
                                 styleId: msg.styleId,
-                            }, "*");
+                            });
                         }
                     }
                 }, genSource);

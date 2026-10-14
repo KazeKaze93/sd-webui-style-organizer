@@ -20,6 +20,7 @@ import {
 import {
     syncWildcards,
 } from "./wildcards.js";
+import { postToFrame } from "../post-message.js";
 
 function syncSourceInput(tab) {
         var src = state[tab].selectedSourceFile || "";
@@ -222,7 +223,7 @@ function unapplyStyle(tabName, styleName, sourceFile) {
 function postClearSelectionToIframes(tabName) {
         var fr = document.getElementById("sg-frame-" + tabName);
         if (fr && fr.contentWindow) {
-            fr.contentWindow.postMessage({ type: "SG_CLEAR_SELECTION" }, "*");
+            postToFrame(fr, { type: "SG_CLEAR_SELECTION" });
         }
     }
 

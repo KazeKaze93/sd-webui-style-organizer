@@ -358,16 +358,9 @@ export const StyleCard = memo(function StyleCard({
                         return
                       }
                       const version = String(Date.now())
+                      // Local bump only — do not window.postMessage (would fail
+                      // host-origin/source guards; App listens for host SG_THUMB_DONE).
                       useStylesStore.getState().bumpThumbVersion(key, version)
-                      window.postMessage(
-                        {
-                          type: 'SG_THUMB_DONE',
-                          styleId: name,
-                          version,
-                          source_file: source_file || '',
-                        },
-                        '*',
-                      )
                       useStylesStore.setState((s) => ({
                         styles: s.styles.map((row) =>
                           styleRowKey(row) === key

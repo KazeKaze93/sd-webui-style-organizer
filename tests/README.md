@@ -22,7 +22,7 @@ Root `npm test` / `npm run check` run this suite (not the UI Vitest suite).
 
 ## Manual JS helpers
 
-Open `tests/test_js.html` in a browser (`file://`). It loads helpers from `javascript/sg_prompt_utils.js` (Forge also auto-injects that file) and includes brace-aware `splitTopLevelCommas` cases for slice tokens such as `{sg:cat:A,B}`. The same helper body must stay in sync with the copy inside `javascript/style_grid.js` — both files ship.
+Open `tests/test_js.html` in a browser (`file://`). It loads helpers from `javascript/sg_prompt_utils.js` (Forge also auto-injects that file) and includes brace-aware `splitTopLevelCommas` cases for slice tokens such as `{sg:cat:A,B}`. The same helper body must stay in sync with **`javascript/style_grid/prompt-utils.js`** (host single source; `sg_prompt_utils.js` is the legacy ESM bridge) — both files ship.
 
 ## UI (React / Vitest)
 

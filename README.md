@@ -1,6 +1,6 @@
-# Style Grid for Forge
+# Style Grid for Stable Diffusion WebUI (Forge, reForge, A1111)
 
-Style Grid replaces the default style dropdown with a fast, visual interface for browsing, selecting, and applying styles in all major Stable Diffusion WebUI builds.
+Style Grid replaces the default style dropdown with a fast, visual interface for browsing, selecting, and applying styles in Stable Diffusion WebUI hosts that load extension `javascript/*.mjs` as ES modules (Forge, reForge, and AUTOMATIC1111 — see **Requirements**).
 
 It supports:
 - category-based browsing
@@ -42,17 +42,25 @@ Older hosts that only inject `*.js` as classic scripts will not run this extensi
 ## Installation
 
 ### Install from URL (recommended)
-1. Open **Extensions** in Forge.
+1. Open **Extensions** in your WebUI (Forge, reForge, or A1111).
 2. Go to **Install from URL**.
 3. Paste this repository URL and install.
-4. Restart Forge UI.
+4. Restart the UI.
 
 ### Manual install
+
+Clone into the host’s `extensions/` folder (folder name `sd-webui-style-organizer`), then restart the UI:
+
+| Host | Extensions path |
+|------|-----------------|
+| **Forge** | `stable-diffusion-webui-forge/extensions/` |
+| **reForge** | `stable-diffusion-webui-reForge/extensions/` (or your reForge root’s `extensions/`) |
+| **AUTOMATIC1111** | `stable-diffusion-webui/extensions/` |
+
 ```bash
-cd /path/to/stable-diffusion-webui-forge/extensions
+cd /path/to/<webui-root>/extensions
 git clone <this-repository-url> sd-webui-style-organizer
 ```
-Restart Forge UI after cloning.
 
 ---
 
@@ -158,10 +166,14 @@ The small tab badge in the panel header shows the active host context.
 - **Syntax (whole category):** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `stylegrid/wildcards.py`).
 - **Syntax (slice):** `{sg:<category>:<spec>}`. Spec entries are comma-separated **style-name suffixes without the category prefix** — e.g. `{sg:body:Tanned,Shortstack}`, not `BODY_Tanned`. A leading `-` excludes (`{sg:body:-Tanned}` = whole category minus that style); a trailing `*` is a prefix glob (`{sg:body:Male_*}`).
 - **Slice resolution:** include entries are **unioned** first, then excludes **subtract**. If every listed name is missing from the CSV, the token **falls back to the whole category** rather than breaking the prompt. The UI writes whichever form is shortest (so selecting almost an entire category often produces a compact exclude token); the resolver understands all forms regardless.
-- **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal Forge prompt.
-- **What gets inserted:** one **random** style from the resolved pool (whole category or slice); the replacement text is that style’s **`prompt`** field from CSV (not `negative_prompt`). Category matching is **case-insensitive**.
+- **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal WebUI prompt.
+- **What gets inserted:** one **random** style from the resolved pool (whole category or slice). Which CSV field is used depends on **where the token sits**:
+  - In the **positive** prompt → the style’s **`prompt`** field.
+  - In the **negative** prompt → the style’s **`negative_prompt`** field.
+  Category matching is **case-insensitive**.
+- **Empty fields:** if the chosen field is empty, behaviour differs by side — an empty **`negative_prompt`** **strips** the token (replaces it with nothing); an empty **`prompt`** leaves the raw `{sg:…}` / `{sgd:…}` text unchanged.
 - **Source-aware pool:** if a specific CSV is selected in the source filter, wildcard replacement picks styles only from that source; with **All Sources**, it uses the merged style pool.
-- **Where you can put it:** positive or negative prompt box — **both strings are scanned**. If the category is unknown or empty, the `{sg:…}` text is **left as-is** (no error).
+- **Where you can put it:** positive or negative prompt box — **both strings are scanned**. **Unknown category:** the token is left as raw text (no error).
 - **Chips:** the selected bar shows each active `{sg:…}` as a chip. Slice chips display the **real** number of styles the token can resolve to, with those style names in the tooltip.
 
 ![Wildcard chips — slice chip `category (N)` beside a plain whole-category chip, with matching `{sg:…}` tokens in the prompt](docs/screenshots/wildcard-slice-chips.png)
@@ -267,7 +279,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 | Control | What it does |
 |---|---|
-| Backup CSV | Creates CSV backup snapshot(s) under `data/backups/`, keeping directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
+| Backup CSV | Creates a timestamped snapshot under `data/backups/` of **loaded style CSV files + `data/presets.json` only** (folder + `.zip`). Does **not** include `usage.json`, `category_order.json`, or `thumbnails/`. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. There is **no Restore button** in the UI — restore manually (see below). Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup`). |
 | Import/Export | Export/import styles, presets, usage. Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
 | Clear all selected styles | Clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
 | Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
@@ -315,7 +327,7 @@ Generated files are stored in `data/`:
 | `data/presets.json` | Saved presets |
 | `data/usage.json` | Usage counters |
 | `data/category_order.json` | Persisted category order |
-| `data/backups/` | CSV backups |
+| `data/backups/` | Timestamped backups of style CSVs + `presets.json` (folder + `.zip`) |
 | `data/thumbnails/` | Thumbnail image cache (CSV styles) |
 | `data/lora_titles.json` | Cached CivitAI LoRA titles (by `modelId`) |
 
@@ -326,6 +338,19 @@ Optional local config (not committed):
 | `config/lora_roots.json` | Extra LoRA scan roots / optional `max_depth` (see `.example`) |
 
 Local UI state is also stored in browser localStorage (active source, favorites, recent, compact/collapse preferences).
+
+> **Warning — Favorites / Recent:** Favorites and Recent live in **browser localStorage**. They are **not** included in Export or Backup, and are **lost** if you change browser, clear site data, or switch WebUI profile / port / origin.
+
+> **Warning — `data/` location:** The `data/` directory lives **inside this extension folder**. Deleting or reinstalling the extension **deletes** presets, usage counters, category order, thumbnails, LoRA title cache, and backups. **Copy `data/` elsewhere before reinstalling** if you want to keep them.
+
+### Manual restore from Backup
+
+There is no in-UI restore. To restore a Backup snapshot:
+
+1. Open the matching folder (or extract the `.zip`) under `data/backups/<timestamp>/`.
+2. Copy the backed-up CSV files back to their original locations (`styles/…`, `samples/…`, or the external paths encoded under `external/…`).
+3. Copy `presets.json` from the snapshot over `data/presets.json` (restart or reload styles afterward).
+4. Anything not in the snapshot (`usage.json`, `category_order.json`, `thumbnails/`, Favorites/Recent) must be restored from your own copies if you saved them separately.
 
 ---
 

@@ -17,6 +17,7 @@ import {
 import {
     loadThumbnailList,
 } from "./panel.js";
+import { postToFrame } from "../post-message.js";
 
 var _batchState = { running: false, cancelled: false, skipped: false, jobId: null };
 
@@ -24,11 +25,11 @@ function startBatchThumbnails(tabName, catName, styles) {
        if (_batchState.running) {
            var frBusy = state[tabName] && state[tabName].sgFrame;
            if (frBusy && frBusy.contentWindow) {
-               frBusy.contentWindow.postMessage({
+               postToFrame(frBusy, {
                    type: "SG_TOAST",
                    message: "Batch generation already running",
                    variant: "error"
-               }, "*");
+               });
            }
            return;
        }
@@ -39,11 +40,11 @@ function startBatchThumbnails(tabName, catName, styles) {
        if (queue.length === 0) {
            var frEmpty = state[tabName] && state[tabName].sgFrame;
            if (frEmpty && frEmpty.contentWindow) {
-               frEmpty.contentWindow.postMessage({
+               postToFrame(frEmpty, {
                    type: "SG_TOAST",
                    message: "All styles already have previews",
                    variant: "info"
-               }, "*");
+               });
            }
            return;
        }
@@ -137,11 +138,11 @@ function startBatchThumbnails(tabName, catName, styles) {
                if (skipped > 0) msg += ", " + skipped + " skipped";
                var frDone = state[tabName] && state[tabName].sgFrame;
                if (frDone && frDone.contentWindow) {
-                   frDone.contentWindow.postMessage({
+                   postToFrame(frDone, {
                        type: "SG_TOAST",
                        message: msg,
                        variant: "info"
-                   }, "*");
+                   });
                }
                loadThumbnailList(tabName);
                return;
@@ -176,11 +177,11 @@ function startBatchThumbnails(tabName, catName, styles) {
                    var cancelMsg = "Cancelled. " + done + "/" + total + " completed.";
                    var frCancel = state[tabName2] && state[tabName2].sgFrame;
                    if (frCancel && frCancel.contentWindow) {
-                       frCancel.contentWindow.postMessage({
+                       postToFrame(frCancel, {
                            type: "SG_TOAST",
                            message: cancelMsg,
                            variant: "info"
-                       }, "*");
+                       });
                    }
                    loadThumbnailList(tabName2);
                });

@@ -24,6 +24,10 @@ import {
     applyStyleImmediate,
     unapplyStyle,
 } from "./style_grid/events.js";
+import {
+    bridgeOrigin,
+    parseFrameMessage,
+} from "./style_grid/post-message.js";
 import "./style_grid/prompt-utils-bridge.js";
 
 "use strict";
@@ -36,7 +40,9 @@ installHostKeyboardA11y();
 // sync aria-expanded or restore focus. Defer so that hide runs first, then fix up.
 // If a host overlay is open, undo the panel hide (Escape must dismiss overlay first).
 window.addEventListener("message", function (e) {
-    if (!e.data || e.data.type !== "SG_CLOSE_REQUEST") return;
+    if (e.origin !== bridgeOrigin()) return;
+    var closeMsg = parseFrameMessage(e.data);
+    if (!closeMsg || closeMsg.type !== "SG_CLOSE_REQUEST") return;
     var src = e.source;
     setTimeout(function () {
         ["txt2img", "img2img"].forEach(function (t) {

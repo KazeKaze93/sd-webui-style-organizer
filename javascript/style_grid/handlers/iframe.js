@@ -19,6 +19,7 @@ import {
     detectHostThemeMode,
     watchHostThemeMode,
 } from "../theme.js";
+import { postToFrame } from "../post-message.js";
 
 const THEME_DARK_FALLBACK = "dark";
 
@@ -36,7 +37,7 @@ function initSGFrame(tab) {
             initialTheme = detectHostThemeMode();
             watchHostThemeMode(function (mode) {
                 if (frame.contentWindow) {
-                    frame.contentWindow.postMessage(buildThemeMessage(mode), "*");
+                    postToFrame(frame, buildThemeMessage(mode));
                 }
             });
         } catch (err) {
@@ -95,11 +96,11 @@ function initSGFrame(tab) {
                             pushStyleIntoCategories(state[tab].categories, s);
                         });
                         if (frame.contentWindow) {
-                            frame.contentWindow.postMessage({
+                            postToFrame(frame, {
                                 type: "SG_INIT",
                                 tab: tab,
                                 styles: allStyles,
-                            }, "*");
+                            });
                         }
                     });
             }, 500);

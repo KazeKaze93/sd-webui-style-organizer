@@ -11,6 +11,7 @@ import {
     state,
     remapStyleNameReferences,
 } from "./state.js";
+import { postToFrame } from "./post-message.js";
 
 /** Late-bound host actions (filled by events.js to avoid cycles). */
 export const hooks = {
@@ -230,11 +231,11 @@ function installHostKeyboardA11y() {
 function postPanelToast(tabName, message) {
         var fr = state[tabName] && state[tabName].sgFrame;
         if (fr && fr.contentWindow) {
-            fr.contentWindow.postMessage({
+            postToFrame(fr, {
                 type: "SG_TOAST",
                 message: message,
                 variant: "error"
-            }, "*");
+            });
         }
     }
 
@@ -356,11 +357,11 @@ function openStyleEditor(tabName, existingStyle, sourceFile) {
                     var msg = (err && err.message) ? err.message : "Save failed";
                     var frSave = state[tabName] && state[tabName].sgFrame;
                     if (frSave && frSave.contentWindow) {
-                        frSave.contentWindow.postMessage({
+                        postToFrame(frSave, {
                             type: "SG_TOAST",
                             message: msg,
                             variant: "error"
-                        }, "*");
+                        });
                     }
                 });
             }
@@ -432,11 +433,11 @@ function deleteStyle(tabName, styleName, source, onDeleted) {
                     .catch(function () {
                         var frDel = state[tabName] && state[tabName].sgFrame;
                         if (frDel && frDel.contentWindow) {
-                            frDel.contentWindow.postMessage({
+                            postToFrame(frDel, {
                                 type: "SG_TOAST",
                                 message: "Delete failed",
                                 variant: "error"
-                            }, "*");
+                            });
                         }
                     });
             }
@@ -517,11 +518,11 @@ function moveToCategory(tabName, style, onDone) {
                     var msg = (err && err.message) ? err.message : "Move failed";
                     var frMove = state[tabName] && state[tabName].sgFrame;
                     if (frMove && frMove.contentWindow) {
-                        frMove.contentWindow.postMessage({
+                        postToFrame(frMove, {
                             type: "SG_TOAST",
                             message: msg,
                             variant: "error"
-                        }, "*");
+                        });
                     }
                 });
             }
@@ -811,11 +812,11 @@ function postSGInitToFrame(tabName) {
                 var styles = Array.isArray(data)
                     ? data
                     : Object.values(data.categories || {}).flat();
-                fr.contentWindow.postMessage({
+                postToFrame(fr, {
                     type: "SG_INIT",
                     tab: tabName,
                     styles: styles,
-                }, "*");
+                });
                 state[tabName].sgV2HostInitSent = true;
             })
             .catch(function () {});

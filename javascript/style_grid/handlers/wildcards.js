@@ -8,6 +8,7 @@ import {
 import {
     qs,
 } from "../render.js";
+import { postToFrame } from "../post-message.js";
 
 var WILDCARD_KIND_DICE = "sg";
 var WILDCARD_KIND_DECK = "sgd";
@@ -78,7 +79,7 @@ function syncWildcards(tabName) {
         });
         var frame = document.getElementById("sg-frame-" + tabName);
         if (frame && frame.contentWindow) {
-            frame.contentWindow.postMessage({ type: "SG_WILDCARDS_ACTIVE", categories: categories }, "*");
+            postToFrame(frame, { type: "SG_WILDCARDS_ACTIVE", categories: categories });
         }
     }
 

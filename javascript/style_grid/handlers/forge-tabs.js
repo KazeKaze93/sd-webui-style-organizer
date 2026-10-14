@@ -7,6 +7,7 @@ import {
 import {
     hooks,
 } from "../render.js";
+import { postToFrame } from "../post-message.js";
 
 var _sgForgeTabSyncInstalled = false;
 var _sgForgeTabsObserver = null;
@@ -73,7 +74,7 @@ function postForgeHostTabToV2Frames(hostTab) {
         ["txt2img", "img2img"].forEach(function (t) {
             var fr = state[t] && state[t].sgFrame;
             if (fr && fr.contentWindow) {
-                fr.contentWindow.postMessage({ type: "SG_HOST_TAB", tab: hostTab }, "*");
+                postToFrame(fr, { type: "SG_HOST_TAB", tab: hostTab });
             }
         });
     }

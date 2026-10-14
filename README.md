@@ -167,13 +167,12 @@ The small tab badge in the panel header shows the active host context.
 - **Syntax (slice):** `{sg:<category>:<spec>}`. Spec entries are comma-separated **style-name suffixes without the category prefix** — e.g. `{sg:body:Tanned,Shortstack}`, not `BODY_Tanned`. A leading `-` excludes (`{sg:body:-Tanned}` = whole category minus that style); a trailing `*` is a prefix glob (`{sg:body:Male_*}`).
 - **Slice resolution:** include entries are **unioned** first, then excludes **subtract**. If every listed name is missing from the CSV, the token **falls back to the whole category** rather than breaking the prompt. The UI writes whichever form is shortest (so selecting almost an entire category often produces a compact exclude token); the resolver understands all forms regardless.
 - **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal WebUI prompt.
-- **What gets inserted:** one **random** style from the resolved pool (whole category or slice). Which CSV field is used depends on **where the token sits**:
-  - In the **positive** prompt → the style’s **`prompt`** field.
-  - In the **negative** prompt → the style’s **`negative_prompt`** field.
-  Category matching is **case-insensitive**.
-- **Empty fields:** if the chosen field is empty, behaviour differs by side — an empty **`negative_prompt`** **strips** the token (replaces it with nothing); an empty **`prompt`** leaves the raw `{sg:…}` / `{sgd:…}` text unchanged.
+- **What gets inserted:** one **random** style from the resolved pool (whole category or slice). A wildcard in the positive field pulls the style’s `prompt`; in the negative field it pulls `negative_prompt`. Category matching is **case-insensitive**.
+- **Empty fields:** an empty chosen field resolves to an empty string (the token is not kept), on both the positive and negative sides.
+- **Nesting depth:** nested `{sg:…}` / `{sgd:…}` tokens resolve in up to **3** passes. Leftovers after that are stripped with a warning.
 - **Source-aware pool:** if a specific CSV is selected in the source filter, wildcard replacement picks styles only from that source; with **All Sources**, it uses the merged style pool.
-- **Where you can put it:** positive or negative prompt box — **both strings are scanned**. **Unknown category:** the token is left as raw text (no error).
+- **Where you can put it:** positive or negative prompt box — **both strings are scanned**.
+- **Unknown category:** the raw token is left in place through nested passes, then stripped with a warning.
 - **Chips:** the selected bar shows each active `{sg:…}` as a chip. Slice chips display the **real** number of styles the token can resolve to, with those style names in the tooltip.
 
 ![Wildcard chips — slice chip `category (N)` beside a plain whole-category chip, with matching `{sg:…}` tokens in the prompt](docs/screenshots/wildcard-slice-chips.png)

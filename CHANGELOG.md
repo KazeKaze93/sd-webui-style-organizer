@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- **Favorites and Recent** persist in `data/favorites.json` / `data/recent.json` (server) instead of browser localStorage. On first load, legacy `sg_v2_favorites` / `sg_v2_recent` keys are migrated once when the server files are absent.
+
 ## [5.3.0] - 2026-10-14
 
 ### Changed

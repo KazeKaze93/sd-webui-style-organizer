@@ -435,10 +435,12 @@ interface StylesStore {
   collapsedCategories: Set<string>
   compactMode: boolean
   themeMode: ThemeMode
-  /** Favorite style row keys (styleRowKey) persisted in localStorage. */
+  /** Favorite style row keys (styleRowKey) persisted in data/favorites.json. */
   favorites: Set<string>
-  /** Most recently applied style row keys (styleRowKey, max 10). */
+  /** Most recently applied style row keys (styleRowKey, max 10) in data/recent.json. */
   recentNames: string[]
+  /** True after the first server hydrate (migrate-once + load) finishes. */
+  favoritesRecentHydrated: boolean
   /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
   /** Usage counters loaded/persisted via backend API. */
@@ -501,6 +503,12 @@ interface StylesStore {
   toggleFavorite: (style: StyleIdentity) => void
   isFavorite: (style: StyleIdentity) => boolean
   addToRecent: (style: StyleIdentity) => void
+  /**
+   * Load favorites/recent from the server. When the server file is absent and
+   * legacy `sg_v2_*` localStorage keys have data, push them once (migrate),
+   * then treat the server as source of truth.
+   */
+  hydrateFavoritesRecent: () => Promise<void>
   fetchPresets: () => Promise<void>
   savePreset: (
     name: string,
@@ -600,8 +608,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   collapsedCategories: new Set(),
   compactMode: false,
   themeMode: 'dark',
-  favorites: new Set(loadStringArrayFromLs('sg_v2_favorites')),
-  recentNames: loadStringArrayFromLs('sg_v2_recent'),
+  favorites: new Set(),
+  recentNames: [],
+  favoritesRecentHydrated: false,
   presets: {},
   presetsCorrupt: null,
   activePresetName: null,
@@ -637,11 +646,19 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       nextFavs.length !== prevFavs.length || nextFavs.some((k, i) => k !== prevFavs[i])
     const recentChanged =
       nextRecent.length !== prevRecent.length || nextRecent.some((k, i) => k !== prevRecent[i])
-    if (favsChanged) {
-      localStorage.setItem('sg_v2_favorites', JSON.stringify(nextFavs))
+    if (favsChanged && get().favoritesRecentHydrated) {
+      try {
+        void styleGridPost('/style_grid/favorites/save', { items: nextFavs }).catch(() => {})
+      } catch {
+        // fetch unavailable
+      }
     }
-    if (recentChanged) {
-      localStorage.setItem('sg_v2_recent', JSON.stringify(nextRecent))
+    if (recentChanged && get().favoritesRecentHydrated) {
+      try {
+        void styleGridPost('/style_grid/recent/save', { items: nextRecent }).catch(() => {})
+      } catch {
+        // fetch unavailable
+      }
     }
 
     set({
@@ -748,8 +765,13 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const favs = new Set(get().favorites)
     if (favs.has(key)) favs.delete(key)
     else favs.add(key)
-    localStorage.setItem('sg_v2_favorites', JSON.stringify([...favs]))
+    const items = [...favs]
     set({ favorites: favs })
+    try {
+      void styleGridPost('/style_grid/favorites/save', { items }).catch(() => {})
+    } catch {
+      // fetch unavailable (unit tests / offline)
+    }
   },
   isFavorite: (style) => get().favorites.has(styleRowKey(style)),
   addToRecent: (style) => {
@@ -758,8 +780,67 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     // Already at head — keep the same array ref (Sidebar Recent badge skips no-op).
     if (prev[0] === key) return
     const recent = [key, ...prev.filter((n) => n !== key)].slice(0, 10)
-    localStorage.setItem('sg_v2_recent', JSON.stringify(recent))
     set({ recentNames: recent })
+    try {
+      void styleGridPost('/style_grid/recent/save', { items: recent }).catch(() => {})
+    } catch {
+      // fetch unavailable (unit tests / offline)
+    }
+  },
+  hydrateFavoritesRecent: async () => {
+    const clearLegacyLs = () => {
+      try {
+        localStorage.removeItem('sg_v2_favorites')
+        localStorage.removeItem('sg_v2_recent')
+      } catch {
+        // ignore unavailable storage
+      }
+    }
+
+    const hydrateOne = async (
+      getUrl: string,
+      migrateUrl: string,
+      lsKey: 'sg_v2_favorites' | 'sg_v2_recent',
+    ): Promise<string[]> => {
+      try {
+        const r = await fetch(getUrl)
+        if (!r.ok) return loadStringArrayFromLs(lsKey)
+        const body = (await r.json().catch(() => null)) as {
+          items?: unknown
+          persisted?: unknown
+        } | null
+        const serverItems = Array.isArray(body?.items)
+          ? body.items.filter((x): x is string => typeof x === 'string' && x.length > 0)
+          : []
+        const persisted = body?.persisted === true
+        if (persisted) return serverItems
+
+        const legacy = loadStringArrayFromLs(lsKey)
+        if (legacy.length === 0) return []
+
+        const mig = await styleGridPost(migrateUrl, { items: legacy })
+        const migBody = (await mig.json().catch(() => null)) as {
+          items?: unknown
+        } | null
+        if (Array.isArray(migBody?.items)) {
+          return migBody.items.filter((x): x is string => typeof x === 'string' && x.length > 0)
+        }
+        return legacy
+      } catch {
+        return loadStringArrayFromLs(lsKey)
+      }
+    }
+
+    const [favItems, recentItems] = await Promise.all([
+      hydrateOne('/style_grid/favorites', '/style_grid/favorites/migrate', 'sg_v2_favorites'),
+      hydrateOne('/style_grid/recent', '/style_grid/recent/migrate', 'sg_v2_recent'),
+    ])
+    clearLegacyLs()
+    set({
+      favorites: new Set(favItems),
+      recentNames: recentItems.slice(0, 10),
+      favoritesRecentHydrated: true,
+    })
   },
 
   toggleStyle: (style) => {

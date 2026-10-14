@@ -745,6 +745,34 @@ Success:
 | --------------------- | ------------------------------------- |
 | `order` is not a list | `{ "error": "order must be a list" }` |
 
+## GET /favorites · GET /recent
+
+**Method:** GET  
+**Description:** Returns server-persisted favorites or recent style row keys (`source_file + "\\0" + name`) from `data/favorites.json` / `data/recent.json`.
+
+**Response:**
+
+| field       | type    | description |
+| ----------- | ------- | ----------- |
+| `items`     | array[string] | Ordered keys (recent capped at 10). |
+| `persisted` | boolean | `true` when the JSON file exists on disk (even if `items` is empty). |
+
+Missing file → `{ "items": [], "persisted": false }` (HTTP 200). Corrupt file → HTTP **409** `corrupt_data`.
+
+## POST /favorites/save · POST /recent/save
+
+**Method:** POST  
+**Description:** Replace the on-disk list. Body: `{ "items": ["…"] }`. Recent is capped at 10 unique keys.
+
+**Response:** `{ "ok": true, "items": […] }`
+
+## POST /favorites/migrate · POST /recent/migrate
+
+**Method:** POST  
+**Description:** One-shot localStorage → server migration. Writes `{ "items": […] }` **only when the target file is absent**. If the file already exists, returns the current server list with `migrated: false` (does not overwrite).
+
+**Response:** `{ "ok": true, "migrated": boolean, "items": […] }`
+
 ## LoRA
 
 Synthetic LoRA styles are produced by `stylegrid/lora_scan.py` and merged into `/styles`. Marker string: `__style_grid_lora__`. Optional title enrichment: `stylegrid/lora_titles.py`. LoRA scan status is included in the `/styles` ETag inputs via `lora_scan_status()`.

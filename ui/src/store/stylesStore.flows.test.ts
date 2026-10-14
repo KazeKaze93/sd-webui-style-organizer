@@ -50,6 +50,7 @@ function resetStore() {
     usageCounts: {},
     favorites: new Set(),
     recentNames: [],
+    favoritesRecentHydrated: false,
     presets: {},
     presetsCorrupt: null,
     activePresetName: null,
@@ -185,20 +186,80 @@ describe('characterization: main Style Grid flows', () => {
   })
 
   describe('favorites', () => {
-    it('toggleFavorite persists identity keys to localStorage', () => {
+    it('toggleFavorite persists identity keys via server save', () => {
+      const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ ok: true, items: [] }))
+      vi.stubGlobal('fetch', fetchMock)
+
       const a = row('BODY_Ears', FILE_A)
       useStylesStore.getState().setStyles([a], 'txt2img')
       useStylesStore.getState().toggleFavorite(a)
 
       const key = styleRowKey(a)
       expect(useStylesStore.getState().favorites.has(key)).toBe(true)
-      expect(JSON.parse(localStorage.getItem('sg_v2_favorites') || '[]')).toEqual([
-        key,
-      ])
+      expect(fetchMock).toHaveBeenCalled()
+      const [url, init] = fetchMock.mock.calls[0]
+      expect(url).toBe('/style_grid/favorites/save')
+      expect(JSON.parse(String((init as RequestInit).body))).toEqual({ items: [key] })
 
       useStylesStore.getState().toggleFavorite(a)
       expect(useStylesStore.getState().favorites.has(key)).toBe(false)
-      expect(JSON.parse(localStorage.getItem('sg_v2_favorites') || '[]')).toEqual([])
+      const [, init2] = fetchMock.mock.calls[1]
+      expect(JSON.parse(String((init2 as RequestInit).body))).toEqual({ items: [] })
+    })
+  })
+
+  describe('hydrateFavoritesRecent', () => {
+    it('migrates localStorage once when server files are absent, then reads server', async () => {
+      const key = `${FILE_A}\0BODY_Ears`
+      localStorage.setItem('sg_v2_favorites', JSON.stringify([key]))
+      localStorage.setItem('sg_v2_recent', JSON.stringify([key]))
+
+      let favoritesPersisted = false
+      let recentPersisted = false
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url === '/style_grid/favorites' && (!init || !init.method || init.method === 'GET')) {
+          return mockJsonResponse({
+            items: favoritesPersisted ? [key] : [],
+            persisted: favoritesPersisted,
+          })
+        }
+        if (url === '/style_grid/recent' && (!init || !init.method || init.method === 'GET')) {
+          return mockJsonResponse({
+            items: recentPersisted ? [key] : [],
+            persisted: recentPersisted,
+          })
+        }
+        if (url === '/style_grid/favorites/migrate') {
+          favoritesPersisted = true
+          return mockJsonResponse({ ok: true, migrated: true, items: [key] })
+        }
+        if (url === '/style_grid/recent/migrate') {
+          recentPersisted = true
+          return mockJsonResponse({ ok: true, migrated: true, items: [key] })
+        }
+        return mockJsonResponse({ ok: false }, { ok: false })
+      })
+      vi.stubGlobal('fetch', fetchMock)
+
+      await useStylesStore.getState().hydrateFavoritesRecent()
+      expect(useStylesStore.getState().favorites.has(key)).toBe(true)
+      expect(useStylesStore.getState().recentNames).toEqual([key])
+      expect(useStylesStore.getState().favoritesRecentHydrated).toBe(true)
+      expect(localStorage.getItem('sg_v2_favorites')).toBeNull()
+      expect(localStorage.getItem('sg_v2_recent')).toBeNull()
+      expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites/migrate')).toBe(
+        true,
+      )
+
+      // Subsequent hydrate: server already persisted — no second migrate.
+      fetchMock.mockClear()
+      await useStylesStore.getState().hydrateFavoritesRecent()
+      expect(useStylesStore.getState().favorites.has(key)).toBe(true)
+      expect(
+        fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites/migrate'),
+      ).toBe(false)
+      expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites')).toBe(true)
     })
   })
 

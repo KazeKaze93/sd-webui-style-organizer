@@ -14,6 +14,45 @@ if git grep -I -l $'\r' -- ui/dist ; then
   exit 1
 fi
 
+echo "pre-push: sg_wildcard_golden SHA256 vs Comfy sibling"
+python - <<'PY'
+from __future__ import annotations
+
+import hashlib
+import sys
+from pathlib import Path
+
+LOCAL = Path("tests/fixtures/sg_wildcard_golden.json")
+# Same sibling-checkout pattern as tests/test_safe_persistence.py SHA256 gate.
+SIBLING = Path(
+    r"D:\SD\Packages\ComfyUI\custom_nodes"
+    r"\sd-comfyui-style-organizer\tests\fixtures\sg_wildcard_golden.json"
+)
+SIBLING_REPO = "sd-comfyui-style-organizer"
+
+if not LOCAL.is_file():
+    print(f"pre-push: missing {LOCAL}", file=sys.stderr)
+    sys.exit(1)
+if not SIBLING.is_file():
+    print(
+        f"pre-push: sibling golden not present at {SIBLING}; "
+        f"skip cross-repo check (need local {SIBLING_REPO} checkout)",
+        file=sys.stderr,
+    )
+    sys.exit(0)
+
+local_digest = hashlib.sha256(LOCAL.read_bytes()).hexdigest()
+sibling_digest = hashlib.sha256(SIBLING.read_bytes()).hexdigest()
+if local_digest != sibling_digest:
+    print(
+        f"pre-push: sg_wildcard_golden.json SHA256 drift vs {SIBLING_REPO} "
+        f"(local={local_digest}, sibling={sibling_digest})",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+print(f"pre-push: sg_wildcard_golden SHA256 matches {SIBLING_REPO}")
+PY
+
 echo "pre-push: root lint"
 npm run lint
 

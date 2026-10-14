@@ -96,7 +96,7 @@ sequenceDiagram
 
   F->>H: SG_READY
   H->>API: GET /style_grid/styles
-  API-->>H: categories + usage
+  API-->>H: categories + presets
   H->>F: SG_INIT (styles array)
   Note over F: Tab identity from SG_INIT only; SG_HOST_TAB ignored for per-frame tab
   F->>H: SG_APPLY (styleId + source_file) / SG_UNAPPLY / actions
@@ -126,7 +126,7 @@ sequenceDiagram
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
-**Backup / Restore (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host opens the **Backup / Restore** modal (`showBackupRestore`). Create uses **`apiPost("/style_grid/backup", { include_thumbnails })`**; list uses **`GET /style_grid/backups`**; restore uses **`POST /style_grid/restore`** (automatic safety snapshot first). Members include CSVs plus `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, `recent.json` (thumbnails opt-in). See `docs/API.md` § POST `/backup` / `/restore`.
+**Backup / Restore (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host opens the **Backup / Restore** modal (`showBackupRestore`). Create uses **`apiPost("/style_grid/backup", { include_thumbnails })`**; list uses **`GET /style_grid/backups`**; restore uses **`POST /style_grid/restore`** (automatic safety snapshot first). Members include CSVs plus `presets.json`, `category_order.json`, `favorites.json`, `recent.json` (thumbnails opt-in). See `docs/API.md` § POST `/backup` / `/restore`.
 
 **Mutating host requests:** Host `POST` / `DELETE` go through `apiPost` / `apiDelete` in `javascript/style_grid/api.js` (shared headers + JSON parse). Panel thumbnail delete uses `styleGridDelete` in `ui/src/lib/styleGridFetch.ts`. Do not call raw `fetch(..., { method: "POST"|"DELETE" })` from `javascript/style_grid/` for mutating routes.
 
@@ -145,7 +145,6 @@ A full-screen CSV table editor was prototyped and later removed; edit styles via
 ## Data and Persistence
 
 - `data/presets.json`: presets storage.
-- `data/usage.json`: usage counters.
 - `data/category_order.json`: backend-persisted category order.
 - `data/thumbnails/`: thumbnail files (CSV styles).
 - `data/backups/`: CSV backups.
@@ -154,11 +153,11 @@ A full-screen CSV table editor was prototyped and later removed; edit styles via
 
 Client-side localStorage keys are also used for UI state (`favorites` / `recent` as name+source composite keys, per-tab source filter, collapsed categories, etc.).
 
-## Persistence (presets / usage / CSV)
+## Persistence (presets / CSV)
 
 - `safe_persistence.load_json_object(..., require_object_values=True)` treats wrong-shape maps (non-object values) as `CorruptDataError`, same as parse failure.
-- `load_presets` / `load_usage` never write. Legacy preset shapes are normalized only in memory; persist via `save_presets`.
-- Per-file reentrant locks (`locked_path`) wrap load→modify→save for presets, usage, and CSV CRUD. Route RMW holds the presets lock across both calls.
+- `load_presets` never writes. Legacy preset shapes are normalized only in memory; persist via `save_presets`.
+- Per-file reentrant locks (`locked_path`) wrap load→modify→save for presets and CSV CRUD. Route RMW holds the presets lock across both calls.
 - Atomic writes rotate `.bak` / `.bak.2` / `.bak.3`. Keep the three repo copies of `safe_persistence.py` byte-identical.
 
 ## Write-route / Gradio auth

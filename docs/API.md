@@ -58,7 +58,7 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 ## GET /styles
 
 **Method:** GET  
-**Description:** Returns categorized styles and usage counters, with ETag support. The style list from `get_cached_styles()` is CSV styles plus scanned LoRA synthetic rows (`stylegrid/lora_scan.py`).
+**Description:** Returns categorized styles and presets, with ETag support. The style list from `get_cached_styles()` is CSV styles plus scanned LoRA synthetic rows (`stylegrid/lora_scan.py`).
 
 **Parameters:**
 
@@ -76,7 +76,6 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 | field        | type   | description                                     |
 | ------------ | ------ | ----------------------------------------------- |
 | `categories` | object | Map of category name -> array of style objects. |
-| `usage`      | object | Per-style usage stats map.                      |
 | `presets`    | object | Saved presets map (same shape as GET `/presets`). |
 
 
@@ -123,52 +122,6 @@ Style object fields include:
 | field     | type    | description                         |
 | --------- | ------- | ----------------------------------- |
 | `changed` | boolean | True if CSV set or content changed. |
-
-
-**Error cases:** None explicitly returned as `{error}`.
-
-## GET /usage
-
-**Method:** GET  
-**Description:** Returns usage statistics storage as-is.
-
-**Parameters:**
-
-
-| name   | in    | required | type | description    |
-| ------ | ----- | -------- | ---- | -------------- |
-| (none) | query | No       | -    | No parameters. |
-
-
-**Response:**
-
-
-| field          | type   | description                                                                     |
-| -------------- | ------ | ------------------------------------------------------------------------------- |
-| `<style_name>` | object | Dynamic keys; each value typically includes `count`, `last_used`, `first_used`. |
-
-
-**Error cases:** None explicitly returned as `{error}`.
-
-## POST /usage/increment
-
-**Method:** POST  
-**Description:** Increments usage counters for the provided style names. Writes are serialized with a `threading.Lock` so concurrent live-apply POSTs cannot lose counts.
-
-**Parameters:**
-
-
-| name     | in   | required | type          | description                                                  |
-| -------- | ---- | -------- | ------------- | ------------------------------------------------------------ |
-| `styles` | body | No       | array[string] | Style names to increment; defaults to empty list if omitted. |
-
-
-**Response:**
-
-
-| field | type    | description                            |
-| ----- | ------- | -------------------------------------- |
-| `ok`  | boolean | Always `true` after handler execution. |
 
 
 **Error cases:** None explicitly returned as `{error}`.
@@ -620,7 +573,7 @@ Success:
 ## POST /backup
 
 **Method:** POST  
-**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`, plus metadata JSON when present: `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, `recent.json`. Optional body flag `include_thumbnails` also copies `data/thumbnails/`. Paths that are not regular files on disk are **skipped**. Archive/folder members use **collision-safe relative names** (`styles/…`, `samples/…`, `external/…`, or bare metadata basenames).
+**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`, plus metadata JSON when present: `presets.json`, `category_order.json`, `favorites.json`, `recent.json`. Optional body flag `include_thumbnails` also copies `data/thumbnails/`. Paths that are not regular files on disk are **skipped**. Archive/folder members use **collision-safe relative names** (`styles/…`, `samples/…`, `external/…`, or bare metadata basenames).
 
 **Parameters:**
 
@@ -690,7 +643,7 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 ## GET /export
 
 **Method:** GET  
-**Description:** Exports styles, presets, usage, favorites, recent, and export timestamp.
+**Description:** Exports styles, presets, favorites, recent, and export timestamp.
 
 **Parameters:**
 
@@ -707,7 +660,6 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 | ------------- | ------------- | -------------------------------------- |
 | `styles`      | array[object] | Flat list from all loaded CSV sources. |
 | `presets`     | object        | Presets map.                           |
-| `usage`       | object        | Usage map.                             |
 | `favorites`   | array[string] | Favorite style row keys.               |
 | `recent`      | array[string] | Recent style row keys (max 10).        |
 | `exported_at` | string        | Timestamp (`YYYY-MM-DDTHH:MM:SS`).     |

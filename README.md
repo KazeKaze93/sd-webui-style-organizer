@@ -278,8 +278,8 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 | Control | What it does |
 |---|---|
-| Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under `data/backups/` (folder + `.zip`) of loaded style CSVs plus `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
-| Import/Export | Export/import styles, presets, **favorites**, and **recent** (export JSON also includes `usage`; import does not apply `usage`). Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
+| Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under `data/backups/` (folder + `.zip`) of loaded style CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
+| Import/Export | Export/import styles, presets, **favorites**, and **recent**. Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
 | Clear all selected styles | Clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
 | Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
 | Collapse all / Expand all | One control: **Collapse all** when every category is expanded; **Expand all** when any category is collapsed. |
@@ -324,7 +324,6 @@ Generated files are stored in `data/`:
 | File/Folder | Purpose |
 |---|---|
 | `data/presets.json` | Saved presets |
-| `data/usage.json` | Usage counters |
 | `data/category_order.json` | Persisted category order |
 | `data/favorites.json` | Favorited style row keys (name + source) |
 | `data/recent.json` | Recently applied style row keys (max 10) |
@@ -340,11 +339,11 @@ Optional local config (not committed):
 
 Local UI chrome still uses browser localStorage (active source, compact/collapse preferences, thumbnail cache-bust versions). Favorites and Recent are **server-side** under `data/`. On first open after upgrade, legacy `sg_v2_favorites` / `sg_v2_recent` localStorage keys are migrated once when the server files are absent.
 
-**Export / Import** JSON includes styles, presets, usage, **favorites**, and **recent**.
+**Export / Import** JSON includes styles, presets, **favorites**, and **recent**.
 
-**Backup / Restore** (toolbar): creates snapshots under `data/backups/` that include CSVs plus `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, and `recent.json`. Thumbnails are opt-in (size shown in the dialog). Restore picks a snapshot and creates an automatic safety backup of the current state first.
+**Backup / Restore** (toolbar): creates snapshots under `data/backups/` that include CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json`. Thumbnails are opt-in (size shown in the dialog). Restore picks a snapshot and creates an automatic safety backup of the current state first.
 
-> **Warning — `data/` location:** The `data/` directory lives **inside this extension folder**. Deleting or reinstalling the extension **deletes** presets, favorites, recent, usage counters, category order, thumbnails, LoRA title cache, and backups. **Copy `data/` elsewhere before reinstalling** if you want to keep them.
+> **Warning — `data/` location:** The `data/` directory lives **inside this extension folder**. Deleting or reinstalling the extension **deletes** presets, favorites, recent, category order, thumbnails, LoRA title cache, and backups. **Copy `data/` elsewhere before reinstalling** if you want to keep them.
 
 ---
 

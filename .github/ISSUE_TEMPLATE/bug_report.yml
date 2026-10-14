@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a defect in Style Grid (sd-webui-style-organizer)
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Fill in every section you can — host build and console log matter most.
+
+  - type: input
+    id: host-build
+    attributes:
+      label: Host build + version
+      description: e.g. Forge / reForge / A1111 and the exact version or commit (Help → About, or `git describe` in the WebUI root).
+      placeholder: "reForge 1.x / commit abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: extension-version
+    attributes:
+      label: Extension version
+      description: Style Grid tag or commit (`git -C extensions/sd-webui-style-organizer describe --tags --always`).
+      placeholder: "v2.x.x or abc1234"
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser
+      description: Browser name and version used for the Gradio UI.
+      placeholder: "Chrome 131 / Firefox 133 / Edge 131"
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal numbered steps. Note txt2img vs img2img and any source/CSV involved.
+      placeholder: |
+        1. Open Style Grid on txt2img
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: console-log
+    attributes:
+      label: Console log
+      description: Relevant DevTools console (and terminal) errors. Redact local paths if you prefer.
+      render: shell
+    validations:
+      required: true

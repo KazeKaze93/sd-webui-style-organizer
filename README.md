@@ -235,7 +235,7 @@ Click **outside** the menu to close it (moving the pointer off the menu does **n
 
 **Generating a preview**
 
-- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview (SD)**. The host runs an SD render and saves an image under `data/thumbnails/` (see **Data and Persistence**).
+- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview (SD)**. The host runs an SD render and saves an image under user-data `thumbnails/` (see **Data and Persistence**).
 - **Per category:** use the **category** context menu → **Generate previews…** (see §5).
 
 After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.
@@ -278,13 +278,13 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 | Control | What it does |
 |---|---|
-| Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under `data/backups/` (folder + `.zip`) of loaded style CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
+| Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under the user-data `backups/` folder (folder + `.zip`) of loaded style CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
 | Import/Export | Export/import styles, presets, **favorites**, and **recent**. Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
 | Clear all selected styles | Clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
 | Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
 | Collapse all / Expand all | One control: **Collapse all** when every category is expanded; **Expand all** when any category is collapsed. |
 | New style | Creates a style in the **currently selected CSV**. Disabled until a specific (non–read-only) source is selected — tooltip explains why. |
-| Fetch LoRA titles | Visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under `data/lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
+| Fetch LoRA titles | Visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under user-data `lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
 
 ![Fetch LoRA titles — toolbar tooltip in LoRA view](docs/screenshots/lora-fetch-titles.png)
 
@@ -319,31 +319,34 @@ Style Grid can show installed LoRAs as style cards so they search, favorite, and
 
 ## Data and Persistence
 
-Generated files are stored in `data/`:
+User-writable files live under the WebUI data directory
+(`shared.cmd_opts.data_path` / `--data-dir`), in a `style_grid/` subdirectory
+(typically `<WebUI>/style_grid/` when using the default data dir). If the host
+API is unavailable, the extension falls back to `<extension>/data/`.
 
 | File/Folder | Purpose |
 |---|---|
-| `data/presets.json` | Saved presets |
-| `data/category_order.json` | Persisted category order |
-| `data/favorites.json` | Favorited style row keys (name + source) |
-| `data/recent.json` | Recently applied style row keys (max 10) |
-| `data/backups/` | Timestamped backups of style CSVs + metadata JSON (folder + `.zip`); thumbnails optional |
-| `data/thumbnails/` | Thumbnail image cache (CSV styles) |
-| `data/lora_titles.json` | Cached CivitAI LoRA titles (by `modelId`) |
+| `presets.json` | Saved presets |
+| `category_order.json` | Persisted category order |
+| `favorites.json` | Favorited style row keys (name + source) |
+| `recent.json` | Recently applied style row keys (max 10) |
+| `backups/` | Timestamped backups of style CSVs + metadata JSON (folder + `.zip`); thumbnails optional |
+| `thumbnails/` | Thumbnail image cache (CSV styles) |
+| `lora_titles.json` | Cached CivitAI LoRA titles (by `modelId`) |
 
-Optional local config (not committed):
+Optional local config (not committed; still under the extension folder):
 
 | File | Purpose |
 |---|---|
 | `config/lora_roots.json` | Extra LoRA scan roots / optional `max_depth` (see `.example`) |
 
-Local UI chrome still uses browser localStorage (active source, compact/collapse preferences, thumbnail cache-bust versions). Favorites and Recent are **server-side** under `data/`. On first open after upgrade, legacy `sg_v2_favorites` / `sg_v2_recent` localStorage keys are migrated once when the server files are absent.
+Local UI chrome still uses browser localStorage (active source, compact/collapse preferences, thumbnail cache-bust versions). Favorites and Recent are **server-side** under the user data root. On first open after upgrade, legacy `sg_v2_favorites` / `sg_v2_recent` localStorage keys are migrated once when the server files are absent.
 
 **Export / Import** JSON includes styles, presets, **favorites**, and **recent**.
 
-**Backup / Restore** (toolbar): creates snapshots under `data/backups/` that include CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json`. Thumbnails are opt-in (size shown in the dialog). Restore picks a snapshot and creates an automatic safety backup of the current state first.
+**Backup / Restore** (toolbar): creates snapshots under `backups/` that include CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json`. Thumbnails are opt-in (size shown in the dialog). Restore picks a snapshot and creates an automatic safety backup of the current state first.
 
-> **Warning — `data/` location:** The `data/` directory lives **inside this extension folder**. Deleting or reinstalling the extension **deletes** presets, favorites, recent, category order, thumbnails, LoRA title cache, and backups. **Copy `data/` elsewhere before reinstalling** if you want to keep them.
+> **Data location:** User data lives under the WebUI data directory (`style_grid/`), so **data survives reinstall since this version**. On first launch after upgrade, an existing `<extension>/data/` tree is **copied** once into the new root (marker file prevents a second copy). The old `<extension>/data/` folder is **not** auto-deleted.
 
 ---
 
@@ -383,7 +386,7 @@ Corrupt `presets.json` (or similar data files) returns HTTP **409** and refuses 
 | Styles missing | CSV location/encoding/header correctness. |
 | Source picker not shown | Must be in `All Sources`, and style must exist in multiple CSVs. |
 | Order seems wrong | Check active source and category order persistence rules. |
-| Thumbnails not appearing | Verify generation/upload status and `data/thumbnails/` permissions. CSV preview URLs and generate/upload/delete **must** include `source` (`source_file`). Generation is async by `job_id` — wait for completion / check cancel. LoRA cards only show sibling preview files on disk. |
+| Thumbnails not appearing | Verify generation/upload status and user-data `thumbnails/` permissions. CSV preview URLs and generate/upload/delete **must** include `source` (`source_file`). Generation is async by `job_id` — wait for completion / check cancel. LoRA cards only show sibling preview files on disk. |
 | **🧬 LoRA** missing in sidebar | No scanned models yet — check Forge LoRA folder / `config/lora_roots.json`, then reload / reopen the Style Grid panel so `/styles` rescans. |
 | LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
 | Import fails with “names that already exist” | Rename or remove colliding styles in the export, or delete/rename the existing library entries first. LoRA synthetic names are excluded from the collision check. |

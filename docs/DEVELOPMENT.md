@@ -144,12 +144,15 @@ A full-screen CSV table editor was prototyped and later removed; edit styles via
 
 ## Data and Persistence
 
-- `data/presets.json`: presets storage.
-- `data/category_order.json`: backend-persisted category order.
-- `data/thumbnails/`: thumbnail files (CSV styles).
-- `data/backups/`: CSV backups.
-- `data/lora_titles.json`: CivitAI title cache keyed by `modelId` (created on first successful/failed fetch).
-- `config/lora_roots.json`: optional user LoRA roots (gitignored; see `.example`).
+User data root: `resolve_user_data_dir()` → `<shared.cmd_opts.data_path>/style_grid`, with fallback to `<extension>/data` when the host API is missing. Legacy `<extension>/data/` is copied once (never deleted); `usage.json` is skipped.
+
+- `presets.json`: presets storage.
+- `category_order.json`: backend-persisted category order.
+- `favorites.json` / `recent.json`: server-side favorites / recent.
+- `thumbnails/`: thumbnail files (CSV styles).
+- `backups/`: CSV backups.
+- `lora_titles.json`: CivitAI title cache keyed by `modelId` (created on first successful/failed fetch).
+- `config/lora_roots.json`: optional user LoRA roots (gitignored; see `.example`) — still under the extension folder.
 
 Client-side localStorage keys are also used for UI state (`favorites` / `recent` as name+source composite keys, per-tab source filter, collapsed categories, etc.).
 

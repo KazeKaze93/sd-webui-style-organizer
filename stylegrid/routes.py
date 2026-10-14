@@ -26,7 +26,7 @@ from stylegrid.cache import (
     styles_cache_hashes,
 )
 from stylegrid.config import (
-    DATA_DIR,
+    CATEGORY_ORDER_FILE,
     EXT_DIR,
     PRESETS_FILE,
     get_all_styles_file_paths,
@@ -213,9 +213,8 @@ def _register_style_routes(app):
         order = data.get("order", [])
         if not isinstance(order, list):
             return {"error": "order must be a list"}
-        order_file = os.path.join(DATA_DIR, "category_order.json")
         write_atomic(
-            order_file,
+            CATEGORY_ORDER_FILE,
             json.dumps(order, indent=2, ensure_ascii=False) + "\n",
         )
         return {"ok": True}

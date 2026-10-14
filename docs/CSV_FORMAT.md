@@ -68,14 +68,17 @@ Category wildcard insertion and resolution:
 | Step | Behavior |
 |---|---|
 | Injection from UI | Right-click a **sidebar** category → insert whole-category `{sg:<category_lowercase>}`, or **Select styles for wildcard…** to build a slice token. (The in-grid category-header menu was removed.) |
-| Whole category | `{sg:<category>}` — e.g. `{sg:furry_body}`. |
+| Whole category | `{sg:<category>}` — e.g. `{sg:furry_body}`. Same forms exist for shuffle tokens `{sgd:…}`. |
 | Slice | `{sg:<category>:<spec>}`. Spec is a comma-separated list of style-name **suffixes** (category prefix omitted): plain include, `-` exclude, trailing `*` glob. |
-| Resolution | At generation time, `resolve_sg_wildcards` in `stylegrid/wildcards.py` (via `scripts/style_grid.py`) replaces `{sg:…}` tokens using regex `\{sg:([^}]+)\}`. Capture splits on the **first** `:`; `select_slice` unions includes then subtracts excludes. |
+| Resolution | At generation time, `resolve_sg_wildcards` in `stylegrid/wildcards.py` (via `scripts/style_grid.py`) replaces `{sg:…}` / `{sgd:…}` tokens using regex `\{sg:([^}]+)\}`. Capture splits on the **first** `:`; `select_slice` unions includes then subtracts excludes. |
 | Empty slice pool | Falls back to the full category so a stale/missing-name token still generates. |
 | Match key | Token category is lowercased and looked up in `styles_by_category` (also keyed by lowercased category). |
 | Source filter | When an active CSV source is set, the pool is filtered with `normalize_source_path` against each style’s `source_file`. |
-| Replacement value | One random style from the resolved pool; replaced with that style's `prompt`. |
-| No matches | Unknown category: token is left unchanged. |
+| Replacement value | One random style from the resolved pool. Positive field → that style’s **`prompt`**; negative field → **`negative_prompt`**. |
+| Empty field | An empty chosen field resolves to an empty string (the token is not kept), on both the positive and negative sides. |
+| Nesting depth | Nested `{sg:…}` / `{sgd:…}` tokens resolve in up to **`_MAX_PASSES` = 3** passes. Leftovers after that are stripped with a warning. |
+| Empty category | Category present but with no styles: raw token is left through nested passes, then stripped to an empty string with a warning. |
+| Unknown category | Raw token is left in place through nested passes, then stripped with a warning (not left in the final prompt). |
 
 Note: `{CATEGORY_NAME}` (without `sg:`) is not handled by this resolver. Frontend chip labels use `resolveSliceNames` in `ui/src/lib/wildcardSlice.ts`, kept in parity with `select_slice` via `tests/fixtures/slice_grammar.json`.
 

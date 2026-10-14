@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 # Pinned floor — raise when the suite grows; never lower without an intentional cull.
-MIN_TESTS = 174
+MIN_TESTS = 175
 
 
 def main() -> int:

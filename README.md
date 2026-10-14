@@ -327,7 +327,9 @@ Generated files are stored in `data/`:
 | `data/presets.json` | Saved presets |
 | `data/usage.json` | Usage counters |
 | `data/category_order.json` | Persisted category order |
-| `data/backups/` | Timestamped backups of style CSVs + `presets.json` (folder + `.zip`) |
+| `data/favorites.json` | Favorited style row keys (name + source) |
+| `data/recent.json` | Recently applied style row keys (max 10) |
+| `data/backups/` | Timestamped backups of style CSVs + metadata JSON (folder + `.zip`); thumbnails optional |
 | `data/thumbnails/` | Thumbnail image cache (CSV styles) |
 | `data/lora_titles.json` | Cached CivitAI LoRA titles (by `modelId`) |
 
@@ -337,20 +339,13 @@ Optional local config (not committed):
 |---|---|
 | `config/lora_roots.json` | Extra LoRA scan roots / optional `max_depth` (see `.example`) |
 
-Local UI state is also stored in browser localStorage (active source, favorites, recent, compact/collapse preferences).
+Local UI chrome still uses browser localStorage (active source, compact/collapse preferences, thumbnail cache-bust versions). Favorites and Recent are **server-side** under `data/`. On first open after upgrade, legacy `sg_v2_favorites` / `sg_v2_recent` localStorage keys are migrated once when the server files are absent.
 
-> **Warning — Favorites / Recent:** Favorites and Recent live in **browser localStorage**. They are **not** included in Export or Backup, and are **lost** if you change browser, clear site data, or switch WebUI profile / port / origin.
+**Export / Import** JSON includes styles, presets, usage, **favorites**, and **recent**.
 
-> **Warning — `data/` location:** The `data/` directory lives **inside this extension folder**. Deleting or reinstalling the extension **deletes** presets, usage counters, category order, thumbnails, LoRA title cache, and backups. **Copy `data/` elsewhere before reinstalling** if you want to keep them.
+**Backup / Restore** (toolbar): creates snapshots under `data/backups/` that include CSVs plus `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, and `recent.json`. Thumbnails are opt-in (size shown in the dialog). Restore picks a snapshot and creates an automatic safety backup of the current state first.
 
-### Manual restore from Backup
-
-There is no in-UI restore. To restore a Backup snapshot:
-
-1. Open the matching folder (or extract the `.zip`) under `data/backups/<timestamp>/`.
-2. Copy the backed-up CSV files back to their original locations (`styles/…`, `samples/…`, or the external paths encoded under `external/…`).
-3. Copy `presets.json` from the snapshot over `data/presets.json` (restart or reload styles afterward).
-4. Anything not in the snapshot (`usage.json`, `category_order.json`, `thumbnails/`, Favorites/Recent) must be restored from your own copies if you saved them separately.
+> **Warning — `data/` location:** The `data/` directory lives **inside this extension folder**. Deleting or reinstalling the extension **deletes** presets, favorites, recent, usage counters, category order, thumbnails, LoRA title cache, and backups. **Copy `data/` elsewhere before reinstalling** if you want to keep them.
 
 ---
 

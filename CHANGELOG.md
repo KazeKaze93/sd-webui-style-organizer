@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `GET /style_grid/backups`, `POST /style_grid/restore`, and optional `include_thumbnails` on `POST /style_grid/backup`.
+- **Export / Import** include favorites and recent lists.
 
 ## [5.3.0] - 2026-10-14
 

@@ -108,10 +108,14 @@ def _register_style_routes(app):
     @app.get("/style_grid/export")
     async def api_export():
         try:
+            favorites, _fav_persisted = load_favorites()
+            recent, _recent_persisted = load_recent()
             return {
                 "styles": load_all_styles(),
                 "presets": load_presets(),
                 "usage": load_usage(),
+                "favorites": favorites,
+                "recent": recent,
                 "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             }
         except CorruptDataError as exc:
@@ -146,6 +150,16 @@ def _register_style_routes(app):
                     p = load_presets()
                     p.update(data["presets"])
                     save_presets(p)
+            except CorruptDataError as exc:
+                return _corrupt_response(exc)
+        if "favorites" in data:
+            try:
+                save_favorites(data.get("favorites") or [])
+            except CorruptDataError as exc:
+                return _corrupt_response(exc)
+        if "recent" in data:
+            try:
+                save_recent(data.get("recent") or [])
             except CorruptDataError as exc:
                 return _corrupt_response(exc)
         if "styles" in data and data["styles"]:

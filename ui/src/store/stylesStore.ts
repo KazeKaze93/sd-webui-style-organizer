@@ -788,10 +788,15 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   hydrateFavoritesRecent: async () => {
-    const clearLegacyLs = () => {
+    /**
+     * Only remove migration-source LS keys after the server confirms persistence
+     * (`persisted: true` on GET, or a successful migrate POST). Never wipe
+     * `sg_v2_favorites` / `sg_v2_recent` while they are still the only copy.
+     */
+    const removeLegacyKey = (lsKey: string, canRemove: boolean) => {
+      if (!canRemove) return
       try {
-        localStorage.removeItem('sg_v2_favorites')
-        localStorage.removeItem('sg_v2_recent')
+        localStorage.removeItem(lsKey)
       } catch {
         // ignore unavailable storage
       }
@@ -801,10 +806,12 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       getUrl: string,
       migrateUrl: string,
       lsKey: 'sg_v2_favorites' | 'sg_v2_recent',
-    ): Promise<string[]> => {
+    ): Promise<{ items: string[]; canRemoveLegacy: boolean }> => {
       try {
         const r = await fetch(getUrl)
-        if (!r.ok) return loadStringArrayFromLs(lsKey)
+        if (!r.ok) {
+          return { items: loadStringArrayFromLs(lsKey), canRemoveLegacy: false }
+        }
         const body = (await r.json().catch(() => null)) as {
           items?: unknown
           persisted?: unknown
@@ -813,32 +820,48 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
           ? body.items.filter((x): x is string => typeof x === 'string' && x.length > 0)
           : []
         const persisted = body?.persisted === true
-        if (persisted) return serverItems
+        if (persisted) {
+          return { items: serverItems, canRemoveLegacy: true }
+        }
 
         const legacy = loadStringArrayFromLs(lsKey)
-        if (legacy.length === 0) return []
+        if (legacy.length === 0) {
+          // Nothing to migrate; safe to treat as already pruned.
+          return { items: [], canRemoveLegacy: true }
+        }
 
         const mig = await styleGridPost(migrateUrl, { items: legacy })
+        if (!mig.ok) {
+          return { items: legacy, canRemoveLegacy: false }
+        }
         const migBody = (await mig.json().catch(() => null)) as {
           items?: unknown
+          migrated?: unknown
         } | null
         if (Array.isArray(migBody?.items)) {
-          return migBody.items.filter((x): x is string => typeof x === 'string' && x.length > 0)
+          return {
+            items: migBody.items.filter((x): x is string => typeof x === 'string' && x.length > 0),
+            canRemoveLegacy: true,
+          }
         }
-        return legacy
+        if (migBody?.migrated === true) {
+          return { items: legacy, canRemoveLegacy: true }
+        }
+        return { items: legacy, canRemoveLegacy: false }
       } catch {
-        return loadStringArrayFromLs(lsKey)
+        return { items: loadStringArrayFromLs(lsKey), canRemoveLegacy: false }
       }
     }
 
-    const [favItems, recentItems] = await Promise.all([
+    const [fav, recent] = await Promise.all([
       hydrateOne('/style_grid/favorites', '/style_grid/favorites/migrate', 'sg_v2_favorites'),
       hydrateOne('/style_grid/recent', '/style_grid/recent/migrate', 'sg_v2_recent'),
     ])
-    clearLegacyLs()
+    removeLegacyKey('sg_v2_favorites', fav.canRemoveLegacy)
+    removeLegacyKey('sg_v2_recent', recent.canRemoveLegacy)
     set({
-      favorites: new Set(favItems),
-      recentNames: recentItems.slice(0, 10),
+      favorites: new Set(fav.items),
+      recentNames: recent.items.slice(0, 10),
       favoritesRecentHydrated: true,
     })
   },

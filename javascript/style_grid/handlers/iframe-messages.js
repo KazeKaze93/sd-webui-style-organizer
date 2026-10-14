@@ -19,6 +19,7 @@ import {
     deleteStyle,
     moveToCategory,
     showExportImport,
+    showBackupRestore,
     syncSelectionChrome,
     anySGFrameVisible,
     setHostPageScrollLock,
@@ -48,10 +49,6 @@ import {
     buildThemeMessage,
     detectHostThemeMode,
 } from "../theme.js";
-import {
-    apiPost,
-} from "../api.js";
-
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
             if (!e.data || !e.data.type) return;
@@ -171,30 +168,7 @@ function installIframeMessageBridge(tab, frame) {
             }
 
             if (msg.type === "SG_BACKUP") {
-                apiPost("/style_grid/backup", {})
-                    .then(function (data) {
-                        if (frame.contentWindow) {
-                            var failed = data.error || data.ok === false;
-                            frame.contentWindow.postMessage({
-                                type: "SG_TOAST",
-                                message: data.error
-                                    ? ("Backup failed: " + data.error)
-                                    : data.ok === false
-                                        ? "Nothing to backup (no CSV files found)"
-                                        : "💾 Backup created",
-                                variant: failed ? "error" : "success"
-                            }, "*");
-                        }
-                    })
-                    .catch(function (err) {
-                        if (frame.contentWindow) {
-                            frame.contentWindow.postMessage({
-                                type: "SG_TOAST",
-                                message: "Backup request failed: " + (err && err.message ? err.message : String(err)),
-                                variant: "error"
-                            }, "*");
-                        }
-                    });
+                showBackupRestore(tab);
             }
             if (msg.type === "SG_REFRESH") {
                 refreshPanel(tab);

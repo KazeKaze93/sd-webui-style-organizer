@@ -603,17 +603,29 @@ Success:
 | No matching CSV row | `{ "ok": false, "error": "Style not found" }` | 404 |
 
 
+## GET /backups
+
+**Method:** GET  
+**Description:** Lists timestamped snapshots under `data/backups/` (newest first) and reports the current `data/thumbnails/` byte size (for the opt-in thumbnails checkbox).
+
+**Response:**
+
+| field | type | description |
+| ----- | ---- | ----------- |
+| `backups` | array[object] | `{ name, has_dir, has_zip, size, members, has_thumbnails }` |
+| `thumbnails_bytes` | number | Total size of files under `data/thumbnails/`. |
+
 ## POST /backup
 
 **Method:** POST  
-**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`, plus `data/presets.json` when present. Does **not** back up `usage.json`, `category_order.json`, or `thumbnails/`. Paths that are not regular files on disk are **skipped** (no error — missing optional files do not abort the run). Archive/folder members use **collision-safe relative names** (`styles/…`, `samples/…`, or `external/…`) so same-basename CSVs from different directories do not overwrite each other. There is no restore API — restore by copying files back manually (see README § Manual restore from Backup).
+**Description:** Creates a timestamped backup of styles CSV files returned by `get_all_styles_file_paths()`, plus metadata JSON when present: `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, `recent.json`. Optional body flag `include_thumbnails` also copies `data/thumbnails/`. Paths that are not regular files on disk are **skipped**. Archive/folder members use **collision-safe relative names** (`styles/…`, `samples/…`, `external/…`, or bare metadata basenames).
 
 **Parameters:**
 
 
 | name   | in   | required | type   | description          |
 | ------ | ---- | -------- | ------ | -------------------- |
-| (none) | body | No       | object | Empty body accepted. |
+| `include_thumbnails` | body | No | boolean | When `true`, include `thumbnails/` (can be large). |
 
 
 **Response:**
@@ -624,6 +636,9 @@ Success (at least one file copied):
 | field | type    | description |
 | ----- | ------- | ----------- |
 | `ok`  | boolean | `true`.     |
+| `snapshot` | string | Timestamp folder/zip basename. |
+| `members` | array[string] | Relative member paths written. |
+| `thumbnails_bytes` | number | Bytes copied from thumbnails (0 if not included). |
 
 
 No files copied (all paths missing or list empty):
@@ -632,6 +647,9 @@ No files copied (all paths missing or list empty):
 | field | type    | description |
 | ----- | ------- | ----------- |
 | `ok`  | boolean | `false`.    |
+| `snapshot` | null | — |
+| `members` | array | Empty. |
+| `thumbnails_bytes` | number | `0`. |
 
 
 On unexpected failure while copying (exception in `backup_csv_files()`):
@@ -650,7 +668,22 @@ On unexpected failure while copying (exception in `backup_csv_files()`):
 | Exception during backup I/O  | `{ "error": "<message>" }` (HTTP 200). |
 
 
-The host UI (`SG_BACKUP` in `javascript/style_grid.mjs`) should treat `{ "error": … }`, `{ "ok": false }`, non-success HTTP status, and network/parse errors and show a toast — it does not assume JSON-only success.
+The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this route and lists/restores via `/backups` and `/restore`.
+
+## POST /restore
+
+**Method:** POST  
+**Description:** Restores CSVs and metadata (and `thumbnails/` when present in the snapshot) from a chosen backup. Creates an automatic **safety** backup of the current state first (`…_safety`). Extension-relative members (`styles/…`, `samples/…`) and metadata basenames are restored; `external/…` members are skipped (drive letter was stripped at backup time).
+
+**Parameters:**
+
+| name | in | required | type | description |
+| ---- | -- | -------- | ---- | ----------- |
+| `snapshot` | body | Yes | string | Snapshot basename (`YYYYMMDD_HHMMSS` or `…_safety`). Alias: `name`. |
+
+**Response (success):** `{ "ok": true, "snapshot", "safety_snapshot", "restored": [...], "skipped": [...] }`
+
+**Error cases:** missing/invalid name → **400**; snapshot not found → **404**.
 
 ## GET /export
 

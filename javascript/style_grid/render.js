@@ -639,6 +639,153 @@ function showExportImport(tabName) {
         enhanceHostOverlay(overlay);
     }
 
+function formatBytes(n) {
+        var num = Number(n) || 0;
+        if (num < 1024) return num + " B";
+        if (num < 1024 * 1024) return (num / 1024).toFixed(1) + " KB";
+        return (num / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+function showBackupRestore(tabName) {
+        const overlay = el("div", { className: "sg-editor-overlay" });
+        const modal = el("div", { className: "sg-editor-modal" });
+        var brTitle = el("h3", { className: "sg-editor-title", textContent: "💾 Backup / Restore" });
+        decorateEditorModal(modal, brTitle);
+        modal.appendChild(brTitle);
+
+        const statusEl = el("p", { className: "sg-editor-label", textContent: "Loading snapshots…" });
+        const listEl = el("div", { className: "sg-editor-list" });
+        const thumbsLabel = el("label", {
+            className: "sg-editor-label",
+            textContent: "Include thumbnails (large)",
+        });
+        const thumbsCheck = el("input", { type: "checkbox" });
+        thumbsLabel.insertBefore(thumbsCheck, thumbsLabel.firstChild);
+        const thumbsSizeEl = el("span", {
+            className: "sg-editor-label",
+            textContent: "",
+            style: "margin-left:8px;opacity:0.8;",
+        });
+        thumbsLabel.appendChild(thumbsSizeEl);
+
+        function setStatus(text) {
+            statusEl.textContent = text || "";
+        }
+
+        function reloadList() {
+            setStatus("Loading snapshots…");
+            listEl.innerHTML = "";
+            return apiGet("/style_grid/backups")
+                .then(function (data) {
+                    var bytes = data && data.thumbnails_bytes;
+                    thumbsSizeEl.textContent = bytes
+                        ? " (~" + formatBytes(bytes) + ")"
+                        : " (empty)";
+                    var backups = (data && data.backups) || [];
+                    if (!backups.length) {
+                        setStatus("No backups yet.");
+                        return;
+                    }
+                    setStatus(backups.length + " snapshot(s):");
+                    backups.forEach(function (b) {
+                        var row = el("div", {
+                            className: "sg-editor-label",
+                            style: "display:flex;align-items:center;gap:8px;margin:6px 0;flex-wrap:wrap;",
+                        });
+                        var meta = b.name
+                            + " · " + formatBytes(b.size || 0)
+                            + (b.has_thumbnails ? " · thumbs" : "");
+                        row.appendChild(el("span", { textContent: meta, style: "flex:1;min-width:12rem;" }));
+                        row.appendChild(el("button", {
+                            className: "sg-btn sg-btn-secondary",
+                            textContent: "Restore",
+                            onClick: function () {
+                                if (!window.confirm(
+                                    "Restore snapshot " + b.name + "?\n"
+                                    + "A safety backup of the current state is created first."
+                                )) return;
+                                setStatus("Restoring " + b.name + "…");
+                                apiPost("/style_grid/restore", { snapshot: b.name })
+                                    .then(function (body) {
+                                        if (body && body.error) {
+                                            return Promise.reject(new Error(body.error));
+                                        }
+                                        setStatus(
+                                            "Restored " + b.name
+                                            + (body.safety_snapshot
+                                                ? (" (safety: " + body.safety_snapshot + ")")
+                                                : "")
+                                        );
+                                        hooks.refreshPanel(tabName);
+                                        var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
+                                        if (typeof notify === "function") notify();
+                                        return reloadList();
+                                    })
+                                    .catch(function (err) {
+                                        setStatus("Restore failed: " + ((err && err.message) || String(err)));
+                                    });
+                            },
+                        }));
+                        listEl.appendChild(row);
+                    });
+                })
+                .catch(function (err) {
+                    setStatus("Could not list backups: " + ((err && err.message) || String(err)));
+                });
+        }
+
+        const btnCreate = el("button", {
+            className: "sg-btn sg-btn-primary",
+            textContent: "Create backup now",
+            onClick: function () {
+                setStatus("Creating backup…");
+                apiPost("/style_grid/backup", { include_thumbnails: !!thumbsCheck.checked })
+                    .then(function (data) {
+                        if (data && data.error) {
+                            return Promise.reject(new Error(data.error));
+                        }
+                        if (data && data.ok === false) {
+                            setStatus("Nothing to backup (no files found)");
+                            postPanelToast(tabName, "Nothing to backup (no files found)");
+                            return reloadList();
+                        }
+                        setStatus("Backup created" + (data.snapshot ? (": " + data.snapshot) : ""));
+                        postPanelToast(tabName, "💾 Backup created");
+                        return reloadList();
+                    })
+                    .catch(function (err) {
+                        var msg = "Backup failed: " + ((err && err.message) || String(err));
+                        setStatus(msg);
+                        postPanelToast(tabName, msg);
+                    });
+            },
+        });
+
+        modal.appendChild(btnCreate);
+        modal.appendChild(thumbsLabel);
+        modal.appendChild(statusEl);
+        modal.appendChild(listEl);
+        modal.appendChild(el("button", {
+            className: "sg-btn sg-btn-secondary",
+            textContent: "Close",
+            onClick: function () { overlay.remove(); },
+        }));
+        overlay.appendChild(modal);
+        var backupOverlayMouseDownTarget = null;
+        overlay.addEventListener("mousedown", function (e) {
+            backupOverlayMouseDownTarget = e.target;
+        });
+        overlay.addEventListener("click", function (e) {
+            if (backupOverlayMouseDownTarget === overlay || backupOverlayMouseDownTarget === e.currentTarget) {
+                overlay.remove();
+            }
+            backupOverlayMouseDownTarget = null;
+        });
+        document.body.appendChild(overlay);
+        enhanceHostOverlay(overlay);
+        reloadList();
+    }
+
 function syncSelectionChrome(tabName) {
         let order = state[tabName].selectedOrder || [];
         order = order.filter(function (n) { return state[tabName].selected.has(n); });
@@ -816,6 +963,7 @@ export {
     deleteStyle,
     moveToCategory,
     showExportImport,
+    showBackupRestore,
     syncSelectionChrome,
     postSGInitToFrame,
     anySGFrameVisible,

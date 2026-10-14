@@ -126,7 +126,7 @@ sequenceDiagram
 
 **Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
 
-**Backup (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host routes through **`apiPost("/style_grid/backup", {})`** (JSON helpers + write token headers), and maps `{ error }`, `{ ok: false }`, and thrown errors to **`SG_TOAST`**. Backup members keep directory distinction (`styles/` vs `samples/` vs `external/…`). See `docs/API.md` § POST `/backup`.
+**Backup / Restore (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host opens the **Backup / Restore** modal (`showBackupRestore`). Create uses **`apiPost("/style_grid/backup", { include_thumbnails })`**; list uses **`GET /style_grid/backups`**; restore uses **`POST /style_grid/restore`** (automatic safety snapshot first). Members include CSVs plus `presets.json`, `usage.json`, `category_order.json`, `favorites.json`, `recent.json` (thumbnails opt-in). See `docs/API.md` § POST `/backup` / `/restore`.
 
 **Mutating host requests:** Host `POST` / `DELETE` go through `apiPost` / `apiDelete` in `javascript/style_grid/api.js` (shared headers + JSON parse). Panel thumbnail delete uses `styleGridDelete` in `ui/src/lib/styleGridFetch.ts`. Do not call raw `fetch(..., { method: "POST"|"DELETE" })` from `javascript/style_grid/` for mutating routes.
 

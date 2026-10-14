@@ -1,17 +1,21 @@
 """Presets, usage stats, favorites/recent, CSV backups (JSON / filesystem under data/)."""
 
+import io
 import os
+import re
 import shutil
 import time
 import zipfile
 
 from stylegrid.config import (
     BACKUP_DIR,
+    CATEGORY_ORDER_FILE,
     EXT_DIR,
     FAVORITES_FILE,
     PRESETS_FILE,
     RECENT_FILE,
     RECENT_MAX,
+    THUMBNAILS_DIR,
     USAGE_FILE,
     get_all_styles_file_paths,
 )
@@ -21,6 +25,7 @@ from stylegrid.safe_persistence import (
     cleanup_stale_tmp,
     load_json_object,
     locked_path,
+    write_atomic,
     write_json_atomic,
 )
 from stylegrid.wildcards import TOKEN_SGD
@@ -45,6 +50,10 @@ __all__ = [
     "save_recent",
     "migrate_recent_once",
     "backup_csv_files",
+    "list_backups",
+    "restore_from_backup",
+    "thumbnails_dir_size",
+    "metadata_backup_files",
 ]
 
 
@@ -372,6 +381,23 @@ def migrate_usage_on_rename(old_name, new_name):
         save_usage(usage)
 
 
+def metadata_backup_files():
+    """Basename → absolute path for data/ JSON files included in every backup.
+
+    Resolved at call time so tests can monkeypatch the path constants.
+    """
+    return (
+        ("presets.json", PRESETS_FILE),
+        ("usage.json", USAGE_FILE),
+        ("category_order.json", CATEGORY_ORDER_FILE),
+        ("favorites.json", FAVORITES_FILE),
+        ("recent.json", RECENT_FILE),
+    )
+
+
+_SNAPSHOT_NAME_RE = re.compile(r"^\d{8}_\d{6}(_[A-Za-z0-9]+)?$")
+
+
 def _backup_rel_name(fp):
     """Collision-safe relative path for backup zip/folder members."""
     abs_fp = os.path.abspath(fp)
@@ -388,49 +414,264 @@ def _backup_rel_name(fp):
     return "external/" + sanitized
 
 
-def backup_csv_files():
-    ts = time.strftime("%Y%m%d_%H%M%S")
+def thumbnails_dir_size():
+    """Total byte size of files under ``data/thumbnails/`` (0 if missing)."""
+    total = 0
+    if not os.path.isdir(THUMBNAILS_DIR):
+        return 0
+    for root, _dirs, files in os.walk(THUMBNAILS_DIR):
+        for name in files:
+            fp = os.path.join(root, name)
+            try:
+                total += os.path.getsize(fp)
+            except OSError:
+                continue
+    return total
+
+
+def _copy_into_backup(backup_subdir, src, arcname, members):
+    """Copy *src* file into the backup folder; append *arcname* to *members*."""
+    dest = os.path.join(backup_subdir, *arcname.split("/"))
+    dest_dir = os.path.dirname(dest)
+    if dest_dir:
+        os.makedirs(dest_dir, exist_ok=True)
+    shutil.copy2(src, dest)
+    members.append(arcname)
+
+
+def _prune_old_backups():
+    if not os.path.isdir(BACKUP_DIR):
+        return
+    backups = sorted(os.listdir(BACKUP_DIR))
+    while len(backups) > 20:
+        old_name = backups.pop(0)
+        old_path = os.path.join(BACKUP_DIR, old_name)
+        if os.path.isdir(old_path):
+            shutil.rmtree(old_path, ignore_errors=True)
+        elif os.path.isfile(old_path) and old_name.endswith(".zip"):
+            try:
+                os.remove(old_path)
+            except OSError:
+                pass
+
+
+def backup_csv_files(include_thumbnails=False, *, snapshot_name=None):
+    """Create a timestamped backup of CSVs + metadata JSON (+ optional thumbnails).
+
+    Returns ``{"ok": bool, "snapshot": str|None, "members": list[str],
+    "thumbnails_bytes": int}``.
+    """
+    ts = snapshot_name or time.strftime("%Y%m%d_%H%M%S")
+    if not _SNAPSHOT_NAME_RE.match(ts):
+        raise ValueError(f"invalid snapshot name: {ts!r}")
     backup_subdir = os.path.join(BACKUP_DIR, ts)
-    backed_up = False
+    members = []
+    thumbnails_bytes = 0
+
+    os.makedirs(BACKUP_DIR, exist_ok=True)
 
     for fp in get_all_styles_file_paths():
         if not os.path.isfile(fp):
             continue
-        if not backed_up:
+        if not members:
             os.makedirs(backup_subdir, exist_ok=True)
-            backed_up = True
-        rel = _backup_rel_name(fp)
-        dest = os.path.join(backup_subdir, *rel.split("/"))
+        _copy_into_backup(backup_subdir, fp, _backup_rel_name(fp), members)
+
+    for arcname, path in metadata_backup_files():
+        if not os.path.isfile(path):
+            continue
+        if not members:
+            os.makedirs(backup_subdir, exist_ok=True)
+        _copy_into_backup(backup_subdir, path, arcname, members)
+
+    if include_thumbnails and os.path.isdir(THUMBNAILS_DIR):
+        for root, _dirs, files in os.walk(THUMBNAILS_DIR):
+            for name in files:
+                fp = os.path.join(root, name)
+                if not os.path.isfile(fp):
+                    continue
+                rel_inside = os.path.relpath(fp, THUMBNAILS_DIR).replace("\\", "/")
+                arcname = f"thumbnails/{rel_inside}"
+                if not members:
+                    os.makedirs(backup_subdir, exist_ok=True)
+                _copy_into_backup(backup_subdir, fp, arcname, members)
+                try:
+                    thumbnails_bytes += os.path.getsize(fp)
+                except OSError:
+                    pass
+
+    if members:
+        zip_path = backup_subdir + ".zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for arcname in members:
+                src = os.path.join(backup_subdir, *arcname.split("/"))
+                zf.write(src, arcname=arcname)
+
+    _prune_old_backups()
+    return {
+        "ok": bool(members),
+        "snapshot": ts if members else None,
+        "members": members,
+        "thumbnails_bytes": thumbnails_bytes,
+    }
+
+
+def list_backups():
+    """Return newest-first snapshot descriptors under ``data/backups/``."""
+    if not os.path.isdir(BACKUP_DIR):
+        return []
+    names = set()
+    for entry in os.listdir(BACKUP_DIR):
+        base = entry[:-4] if entry.endswith(".zip") else entry
+        if _SNAPSHOT_NAME_RE.match(base):
+            names.add(base)
+    out = []
+    for name in sorted(names, reverse=True):
+        dir_path = os.path.join(BACKUP_DIR, name)
+        zip_path = dir_path + ".zip"
+        has_dir = os.path.isdir(dir_path)
+        has_zip = os.path.isfile(zip_path)
+        members = []
+        if has_dir:
+            for root, _dirs, files in os.walk(dir_path):
+                for fname in files:
+                    fp = os.path.join(root, fname)
+                    members.append(os.path.relpath(fp, dir_path).replace("\\", "/"))
+        elif has_zip:
+            try:
+                with zipfile.ZipFile(zip_path, "r") as zf:
+                    members = [i.filename for i in zf.infolist() if not i.is_dir()]
+            except (OSError, zipfile.BadZipFile):
+                members = []
+        size = 0
+        if has_dir:
+            for root, _dirs, files in os.walk(dir_path):
+                for fname in files:
+                    try:
+                        size += os.path.getsize(os.path.join(root, fname))
+                    except OSError:
+                        pass
+        elif has_zip:
+            try:
+                size = os.path.getsize(zip_path)
+            except OSError:
+                size = 0
+        out.append(
+            {
+                "name": name,
+                "has_dir": has_dir,
+                "has_zip": has_zip,
+                "size": size,
+                "members": sorted(members),
+                "has_thumbnails": any(m.startswith("thumbnails/") for m in members),
+            }
+        )
+    return out
+
+
+def _safe_snapshot_paths(snapshot_name):
+    """Validate *snapshot_name* and return ``(dir_path, zip_path)`` under BACKUP_DIR."""
+    if not isinstance(snapshot_name, str) or not _SNAPSHOT_NAME_RE.match(snapshot_name):
+        raise ValueError("invalid snapshot name")
+    dir_path = os.path.abspath(os.path.join(BACKUP_DIR, snapshot_name))
+    backup_root = os.path.abspath(BACKUP_DIR)
+    if os.path.normcase(os.path.commonpath([dir_path, backup_root])) != os.path.normcase(
+        backup_root
+    ):
+        raise ValueError("invalid snapshot name")
+    if dir_path == backup_root:
+        raise ValueError("invalid snapshot name")
+    return dir_path, dir_path + ".zip"
+
+
+def _iter_snapshot_members(snapshot_name):
+    """Yield ``(arcname, open_binary_callable)`` for each file in the snapshot."""
+    dir_path, zip_path = _safe_snapshot_paths(snapshot_name)
+    if os.path.isdir(dir_path):
+        for root, _dirs, files in os.walk(dir_path):
+            for fname in files:
+                fp = os.path.join(root, fname)
+                arcname = os.path.relpath(fp, dir_path).replace("\\", "/")
+
+                def _opener(path=fp):
+                    return open(path, "rb")
+
+                yield arcname, _opener
+        return
+    if os.path.isfile(zip_path):
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                data = zf.read(info.filename)
+
+                def _opener(blob=data):
+                    return io.BytesIO(blob)
+
+                yield info.filename, _opener
+        return
+    raise FileNotFoundError(f"snapshot not found: {snapshot_name}")
+
+
+def _resolve_restore_dest(arcname):
+    """Map a backup member name to an absolute destination path, or None to skip."""
+    meta = {name: path for name, path in metadata_backup_files()}
+    if arcname in meta:
+        return meta[arcname]
+    if arcname.startswith("thumbnails/"):
+        rel = arcname[len("thumbnails/") :]
+        if not rel or ".." in rel.split("/"):
+            return None
+        return os.path.join(THUMBNAILS_DIR, *rel.split("/"))
+    if arcname.startswith("external/"):
+        # Drive letter was stripped at backup time — cannot restore safely.
+        return None
+    # Extension-relative paths (styles/…, samples/…).
+    if ".." in arcname.split("/"):
+        return None
+    return os.path.join(EXT_DIR, *arcname.split("/"))
+
+
+def restore_from_backup(snapshot_name, *, create_safety=True):
+    """Restore CSVs + metadata (+ thumbnails if present) from a backup snapshot.
+
+    Creates an automatic safety backup of the current state first (unless
+    *create_safety* is false). Returns a result dict.
+    """
+    # Ensure snapshot exists before creating a safety backup.
+    dir_path, zip_path = _safe_snapshot_paths(snapshot_name)
+    if not os.path.isdir(dir_path) and not os.path.isfile(zip_path):
+        raise FileNotFoundError(f"snapshot not found: {snapshot_name}")
+
+    safety = None
+    if create_safety:
+        safety_name = time.strftime("%Y%m%d_%H%M%S") + "_safety"
+        # Avoid colliding with the snapshot being restored if names match.
+        if safety_name == snapshot_name or safety_name.removesuffix("_safety") == snapshot_name:
+            safety_name = time.strftime("%Y%m%d_%H%M%S") + "_safety2"
+        safety = backup_csv_files(include_thumbnails=False, snapshot_name=safety_name)
+
+    restored = []
+    skipped = []
+    # Materialize members first so zip handles stay valid.
+    members = list(_iter_snapshot_members(snapshot_name))
+    for arcname, opener in members:
+        dest = _resolve_restore_dest(arcname)
+        if dest is None:
+            skipped.append(arcname)
+            continue
         dest_dir = os.path.dirname(dest)
         if dest_dir:
             os.makedirs(dest_dir, exist_ok=True)
-        shutil.copy2(fp, dest)
+        with opener() as src_f:
+            data = src_f.read()
+        write_atomic(dest, data)
+        restored.append(arcname)
 
-    if os.path.isfile(PRESETS_FILE):
-        if not backed_up:
-            os.makedirs(backup_subdir, exist_ok=True)
-            backed_up = True
-        shutil.copy2(PRESETS_FILE, os.path.join(backup_subdir, "presets.json"))
-
-    if backed_up:
-        zip_path = backup_subdir + ".zip"
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for fp in get_all_styles_file_paths():
-                if os.path.isfile(fp):
-                    zf.write(fp, arcname=_backup_rel_name(fp))
-            if os.path.isfile(PRESETS_FILE):
-                zf.write(PRESETS_FILE, arcname="presets.json")
-
-    if os.path.isdir(BACKUP_DIR):
-        backups = sorted(os.listdir(BACKUP_DIR))
-        while len(backups) > 20:
-            old_name = backups.pop(0)
-            old_path = os.path.join(BACKUP_DIR, old_name)
-            if os.path.isdir(old_path):
-                shutil.rmtree(old_path, ignore_errors=True)
-            elif os.path.isfile(old_path) and old_name.endswith(".zip"):
-                try:
-                    os.remove(old_path)
-                except Exception:
-                    pass
-    return backed_up
+    return {
+        "ok": True,
+        "snapshot": snapshot_name,
+        "safety_snapshot": (safety or {}).get("snapshot"),
+        "restored": restored,
+        "skipped": skipped,
+    }

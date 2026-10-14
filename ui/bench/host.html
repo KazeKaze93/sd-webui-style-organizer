@@ -34,20 +34,52 @@
           initAcked: false,
         }
 
+        /** Mirror `bridgeOrigin` from javascript/style_grid/post-message.js */
+        function bridgeOrigin() {
+          return window.location.origin
+        }
+
+        /**
+         * Mirror `isTrustedIframeEvent` from javascript/style_grid/post-message.js
+         * @param {MessageEvent} event
+         * @param {HTMLIFrameElement | null} frame
+         */
+        function isTrustedIframeEvent(event, frame) {
+          if (!event || !frame || !frame.contentWindow) return false
+          if (event.origin !== bridgeOrigin()) return false
+          if (event.source !== frame.contentWindow) return false
+          return true
+        }
+
+        /**
+         * Minimal mirror of `parseFrameMessage` for the only type this host handles.
+         * @param {unknown} data
+         * @returns {{ type: 'SG_READY' } | null}
+         */
+        function parseReadyMessage(data) {
+          if (!data || typeof data !== 'object' || Array.isArray(data)) return null
+          const type = /** @type {{ type?: unknown }} */ (data).type
+          if (typeof type !== 'string' || !type.startsWith('SG_')) return null
+          if (type !== 'SG_READY') return null
+          return { type: 'SG_READY' }
+        }
+
         window.addEventListener('message', (event) => {
-          const data = event.data
-          if (!data || typeof data.type !== 'string') return
-          if (data.type !== 'SG_READY') return
+          if (!isTrustedIframeEvent(event, panel)) return
+          const msg = parseReadyMessage(event.data)
+          if (!msg) return
           if (window.__BENCH_HOST__.initSentAt != null) return
 
           window.__BENCH_HOST__.readyAt = performance.now()
           const styles = Array.isArray(bench.styles) ? bench.styles : []
           const tab = typeof bench.tab === 'string' ? bench.tab : 'txt2img'
-          const msg = { type: 'SG_INIT', tab, styles }
+          const initMsg = { type: 'SG_INIT', tab, styles }
 
           window.__BENCH_HOST__.initSentAt = performance.now()
           window.__BENCH_HOST__.initSentAtMs = Date.now()
-          panel.contentWindow.postMessage(msg, '*')
+          if (panel.contentWindow) {
+            panel.contentWindow.postMessage(initMsg, bridgeOrigin())
+          }
           window.__BENCH_HOST__.initAcked = true
         })
       })()

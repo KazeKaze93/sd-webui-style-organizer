@@ -66,7 +66,7 @@ async function main() {
     `[layout] sizes=${args.sizes.join(',')} vite=${viteMode} proveFail=${args.proveFail}`,
   )
   console.log(
-    '[layout] tip note: StyleCard usage UI already removed + fixed height on working tree; ' +
+    '[layout] tip note: StyleCard fixed height on working tree; ' +
       'expect GREEN on live tip. Use --prove-fail to validate the FAIL path via inflated cards.',
   )
 
@@ -96,7 +96,7 @@ async function main() {
         await sleep(100)
 
         console.log(
-          `[layout] fixture N=${n} usage=${bench.fixture?.meta?.usageKeys ?? 0} ` +
+          `[layout] fixture N=${n} ` +
             `favs=${bench.fixture?.meta?.favoriteCount ?? 0} ` +
             `selected=${bench.fixture?.meta?.selectedCount ?? 0}`,
         )
@@ -124,7 +124,7 @@ async function main() {
     sizes: args.sizes,
     viteMode,
     tipAlreadyFixed:
-      'StyleCard usage counter removed + fixed height (CARD wave already on working tree)',
+      'StyleCard fixed height (CARD wave already on working tree)',
     proveFail: args.proveFail,
     ok: allOk && failPathOk,
     layoutOk: allOk,

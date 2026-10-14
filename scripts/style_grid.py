@@ -13,7 +13,7 @@ from modules.processing import StableDiffusionProcessing  # type: ignore[reportM
 
 from stylegrid.cache import get_cached_styles
 from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
-from stylegrid.data_files import load_presets, load_usage
+from stylegrid.data_files import load_presets
 from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.prompt_ops import dedup_prompt
 from stylegrid.routes import register_api
@@ -70,7 +70,6 @@ class StyleGridScript(scripts.Script):
         categories = categorize_styles(styles)
         styles_json = json.dumps({
             "categories": categories,
-            "usage": load_usage(),
             "presets": load_presets(),
         }, ensure_ascii=False)
         write_token = get_session_token() if is_public_bind() else ""

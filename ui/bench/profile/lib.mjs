@@ -193,26 +193,14 @@ export async function startVite(port = 5173, opts = {}) {
 
 /**
  * @param {import('playwright').Page} page
- * @param {{ usageCounts?: Record<string, number> }} [fixture]
+ * @param {Record<string, unknown>} [fixture]
  */
 export async function installRouteStubs(page, fixture = {}) {
-  const usageCounts = fixture.usageCounts && typeof fixture.usageCounts === 'object'
-    ? fixture.usageCounts
-    : {}
-
   await page.route('**/style_grid/**', async (route) => {
     const req = route.request()
     const url = req.url()
     const method = req.method()
 
-    if (url.includes('/style_grid/usage') && method === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(usageCounts),
-      })
-      return
-    }
     if (url.includes('/style_grid/presets') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -259,13 +247,13 @@ export async function installRouteStubs(page, fixture = {}) {
  */
 export async function openBench(browser, baseUrl, n, opts = {}) {
   const fixture = buildBenchFixture(n)
-  const { styles, usageCounts, favorites, selected } = fixture
+  const { styles, favorites, selected } = fixture
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   })
   const page = await context.newPage()
-  await installRouteStubs(page, { usageCounts })
+  await installRouteStubs(page)
 
   await page.addInitScript((payload) => {
     window.__BENCH__ = payload
@@ -277,7 +265,7 @@ export async function openBench(browser, baseUrl, n, opts = {}) {
         // ignore quota / private-mode
       }
     }
-  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
+  }, { styles, favorites, selected, tab: 'txt2img', n })
 
   const hostClient = await page.context().newCDPSession(page)
   await hostClient.send('Target.setAutoAttach', {

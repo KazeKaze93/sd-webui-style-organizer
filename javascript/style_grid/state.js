@@ -15,7 +15,6 @@ function createTabState() {
             selectedSource: "All",
             /** Normalized path (forward slashes) when known — matches V2 `source_file`; same basename can exist in multiple dirs */
             selectedSourceFile: null,
-            usage: {},
             presets: {},
             userPromptBase: "",
             userPromptBaseNeg: "",

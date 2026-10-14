@@ -30,7 +30,6 @@ def backup_env(tmp_path, monkeypatch):
     )
 
     presets = data_dir / "presets.json"
-    usage = data_dir / "usage.json"
     cat_order = data_dir / "category_order.json"
     favorites = data_dir / "favorites.json"
     recent = data_dir / "recent.json"
@@ -48,7 +47,6 @@ def backup_env(tmp_path, monkeypatch):
         + "\n",
         encoding="utf-8",
     )
-    usage.write_text(json.dumps({"A": {"count": 3, "last_used": None, "first_used": None}}) + "\n", encoding="utf-8")
     cat_order.write_text(json.dumps(["BASE", "BODY"]) + "\n", encoding="utf-8")
     favorites.write_text(json.dumps({"items": ["styles/pack.csv\0A"]}) + "\n", encoding="utf-8")
     recent.write_text(json.dumps({"items": ["styles/pack.csv\0A"]}) + "\n", encoding="utf-8")
@@ -59,7 +57,6 @@ def backup_env(tmp_path, monkeypatch):
     monkeypatch.setattr(sg_data, "EXT_DIR", str(tmp_path))
     monkeypatch.setattr(sg_data, "BACKUP_DIR", str(backup_dir))
     monkeypatch.setattr(sg_data, "PRESETS_FILE", str(presets))
-    monkeypatch.setattr(sg_data, "USAGE_FILE", str(usage))
     monkeypatch.setattr(sg_data, "CATEGORY_ORDER_FILE", str(cat_order))
     monkeypatch.setattr(sg_data, "FAVORITES_FILE", str(favorites))
     monkeypatch.setattr(sg_data, "RECENT_FILE", str(recent))
@@ -73,7 +70,6 @@ def backup_env(tmp_path, monkeypatch):
         "tmp": tmp_path,
         "csv": csv_path,
         "presets": presets,
-        "usage": usage,
         "cat_order": cat_order,
         "favorites": favorites,
         "recent": recent,
@@ -90,12 +86,12 @@ def test_backup_includes_metadata_members(backup_env):
     assert any(m.endswith("pack.csv") or m == "styles/pack.csv" for m in members)
     for name in (
         "presets.json",
-        "usage.json",
         "category_order.json",
         "favorites.json",
         "recent.json",
     ):
         assert name in members
+    assert "usage.json" not in members
     assert not any(m.startswith("thumbnails/") for m in members)
     assert result["thumbnails_bytes"] == 0
 

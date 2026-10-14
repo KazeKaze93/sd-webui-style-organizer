@@ -47,7 +47,6 @@ function resetStore() {
     sources: [],
     selectedStyles: [],
     conflicts: [],
-    usageCounts: {},
     favorites: new Set(),
     recentNames: [],
     favoritesRecentHydrated: false,

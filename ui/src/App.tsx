@@ -289,7 +289,6 @@ export default function App() {
   }, [setThemeMode])
 
   useEffect(() => {
-    useStylesStore.getState().loadUsage()
     void useStylesStore.getState().hydrateFavoritesRecent()
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_THEME') {

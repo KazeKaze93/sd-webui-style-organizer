@@ -59,8 +59,8 @@ GOLDEN_CASES = [
     ("plain", "prefix {sg:accessory} suffix", "prompt", "prefix ring suffix"),
     ("slice", "{sg:body:Tanned,Shortstack}", "prompt", "tanned skin"),
     ("repeated", "{sg:accessory} and {sg:accessory}", "prompt", "ring and hat"),
-    ("unknown", "{sg:missing}", "prompt", "{sg:missing}"),
-    ("empty_prompt", "{sg:empty}", "prompt", "{sg:empty}"),
+    ("unknown", "{sg:missing}", "prompt", ""),
+    ("empty_prompt", "{sg:empty}", "prompt", ""),
     ("negative", "{sg:accessory}", "negative_prompt", "bad ring"),
 ]
 
@@ -108,7 +108,8 @@ def test_dice_isolation_from_sgd_and_global_rng_untouched():
     assert random.getstate() == before
 
 
-def test_replacement_text_is_not_rescanned():
+def test_nested_sgd_without_deck_strips_after_max_passes():
+    """Injected `{sgd:…}` without a deck stays unresolved, then is stripped."""
     styles = {
         "a": [
             {
@@ -121,7 +122,7 @@ def test_replacement_text_is_not_rescanned():
         "b": [
             {
                 "name": "B_NEST",
-                "prompt": "{sg:b}",
+                "prompt": "leaf",
                 "negative_prompt": "",
                 "source_file": "/b.csv",
             }
@@ -129,10 +130,10 @@ def test_replacement_text_is_not_rescanned():
     }
     random.seed(1)
     dice_out = resolve_sg_wildcards("{sg:a}", styles)
-    assert dice_out == "{sgd:b}"
+    assert dice_out == ""
 
     deck_out = resolve_sg_wildcards("{sgd:b}", styles, deck=DeckContext(5, 0))
-    assert deck_out == "{sg:b}"
+    assert deck_out == "leaf"
 
 
 def test_no_repeats_within_epoch():
@@ -222,11 +223,9 @@ def test_positive_and_negative_pair_to_same_style():
 
 def test_deck_fallbacks():
     styles = {"cat": _cat_styles(3)}
-    assert resolve_sg_wildcards("{sgd:cat}", styles, deck=None) == "{sgd:cat}"
-    assert (
-        resolve_sg_wildcards("{sgd:missing}", styles, deck=DeckContext(1, 0))
-        == "{sgd:missing}"
-    )
+    # No deck / unknown category: keep raw through passes, then strip.
+    assert resolve_sg_wildcards("{sgd:cat}", styles, deck=None) == ""
+    assert resolve_sg_wildcards("{sgd:missing}", styles, deck=DeckContext(1, 0)) == ""
     out = resolve_sg_wildcards(
         "{sgd:cat:Ghost,Missing}", styles, deck=DeckContext(1, 0)
     )

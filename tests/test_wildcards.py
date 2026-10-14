@@ -1,10 +1,35 @@
 """Tests for stylegrid.wildcards.resolve_sg_wildcards (generation-time {sg:...} tokens).
 
-Also covers parse_sg_token and select_slice for optional {sg:category:spec} slice specs.
+Also covers parse_sg_token and select_slice for optional {sg:category:spec} slice specs,
+plus the shared Comfy/WebUI golden fixture.
 """
+from __future__ import annotations
+
+import json
+import logging
+import random
+from pathlib import Path
 from unittest.mock import patch
 
-from stylegrid.wildcards import parse_sg_token, resolve_sg_wildcards, select_slice
+import pytest
+
+from stylegrid.wildcards import (
+    _MAX_PASSES,
+    parse_sg_token,
+    resolve_sg_wildcards,
+    select_slice,
+)
+
+_GOLDEN_PATH = Path(__file__).resolve().parent / "fixtures" / "sg_wildcard_golden.json"
+_FIELD_BY_CASE = {"pos": "prompt", "neg": "negative_prompt"}
+
+
+def _load_golden():
+    with _GOLDEN_PATH.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+GOLDEN = _load_golden()
 
 
 def _styles_from_names(names):
@@ -24,9 +49,14 @@ def test_replaces_with_random_style_prompt():
         )
 
 
-def test_unknown_category_leaves_token():
+def test_unknown_category_strips_token_after_max_passes_with_warning(caplog):
     styles_by = {"animal": [{"prompt": "x"}]}
-    assert resolve_sg_wildcards("{sg:missing}", styles_by) == "{sg:missing}"
+    with caplog.at_level(logging.WARNING, logger="StyleGrid"):
+        assert resolve_sg_wildcards("{sg:missing}", styles_by) == ""
+    assert any(
+        "nested {sg:} unresolved after" in rec.message and "stripping leftovers" in rec.message
+        for rec in caplog.records
+    )
 
 
 def test_category_match_is_case_insensitive():
@@ -35,10 +65,10 @@ def test_category_match_is_case_insensitive():
         assert resolve_sg_wildcards("{sg:ACCESSORY}", styles_by) == "low"
 
 
-def test_empty_prompt_falls_back_to_original_token():
+def test_empty_prompt_resolves_to_empty_string():
     styles_by = {"x": [{"prompt": ""}]}
     with patch("stylegrid.wildcards.random.choice", lambda seq: seq[0]):
-        assert resolve_sg_wildcards("{sg:x}", styles_by) == "{sg:x}"
+        assert resolve_sg_wildcards("{sg:x}", styles_by) == ""
 
 
 def test_parse_sg_token_plain_category_returns_no_spec():
@@ -147,3 +177,52 @@ def test_plain_sg_token_behaves_as_before():
 
     assert seen["pool"] is styles_by["accessory"]
     assert result == "prefix picked_prompt suffix"
+
+
+# --- Golden fixture (shared R2/R3 resolver contract) ---------------------------
+
+
+def test_max_passes_is_three():
+    assert _MAX_PASSES == 3
+
+
+def test_sg_wildcard_golden_fixture_is_well_formed():
+    assert GOLDEN["cases"]
+    required = {
+        "id",
+        "input",
+        "field",
+        "styles_fixture",
+        "seed",
+        "expected_output",
+        "expected_warnings",
+    }
+    ids = []
+    for case in GOLDEN["cases"]:
+        assert required <= set(case)
+        assert case["field"] in _FIELD_BY_CASE
+        assert isinstance(case["styles_fixture"], dict)
+        assert isinstance(case["seed"], int)
+        assert isinstance(case["expected_output"], str)
+        assert isinstance(case["expected_warnings"], list)
+        ids.append(case["id"])
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.parametrize(
+    "case",
+    GOLDEN["cases"],
+    ids=[case["id"] for case in GOLDEN["cases"]],
+)
+def test_sg_wildcard_golden_case(case, caplog):
+    field = _FIELD_BY_CASE[case["field"]]
+    with caplog.at_level(logging.WARNING, logger="StyleGrid"):
+        result = resolve_sg_wildcards(
+            case["input"],
+            case["styles_fixture"],
+            field=field,
+            rng=random.Random(case["seed"]),
+        )
+    assert result == case["expected_output"]
+    warnings = [rec.getMessage() for rec in caplog.records if rec.name == "StyleGrid"]
+    assert warnings == case["expected_warnings"]

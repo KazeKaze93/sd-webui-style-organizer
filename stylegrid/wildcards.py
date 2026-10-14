@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import re
 from collections.abc import Sequence
@@ -9,11 +10,14 @@ from dataclasses import dataclass
 
 from stylegrid.deck import deck_position
 
+logger = logging.getLogger("StyleGrid")
+
 TOKEN_SG = "sg"
 TOKEN_SGD = "sgd"
 TOKEN_PATTERN = re.compile(r"\{(sgd?):([^}]+)\}")
 SPEC_ENTRY_SEPARATOR = ","
 DECK_ID_SEPARATOR = "|"
+_MAX_PASSES = 3
 
 
 @dataclass(frozen=True)
@@ -137,13 +141,9 @@ def _count_sgd_occurrences(prompt: str) -> dict[tuple[str, str], int]:
     return totals
 
 
-def _field_value(style: dict, field: str, raw_token: str) -> str:
-    value = style.get(field, "")
-    if value:
-        return value
-    # Empty negative field is a successful resolve to nothing — do not leave the
-    # raw token sitting in the negative prompt. Positive behaviour is unchanged.
-    return raw_token if field == "prompt" else ""
+def _field_value(style: dict, field: str) -> str:
+    # Empty field is a successful resolve to nothing — do not keep the raw token.
+    return style.get(field, "") or ""
 
 
 def resolve_sg_wildcards(
@@ -151,53 +151,69 @@ def resolve_sg_wildcards(
     styles_by_category,
     field="prompt",
     *,
+    rng=None,
     deck: DeckContext | None = None,
 ):
     """Replace `{sg:CATEGORY}` / `{sgd:CATEGORY}` tokens with style fields.
 
     ``field`` selects which side of the picked style is used (e.g. ``"prompt"``
-    or ``"negative_prompt"``).
+    or ``"negative_prompt"``). Nested tokens resolve up to ``_MAX_PASSES`` (3);
+    leftovers are stripped with a warning.
 
     Optional slice: ``{sg:CATEGORY:spec}`` / ``{sgd:CATEGORY:spec}`` where
     ``spec`` is a comma-separated include/exclude/glob list (see
-    ``select_slice``). Empty slices fall back to the full category. Unknown
-    categories leave the raw token unchanged.
+    ``select_slice``). Empty slices fall back to the full category. Unknown or
+    empty categories keep the raw token through nested passes, then strip with a
+    warning. An empty style field resolves to an empty string (token is not kept).
 
     When ``deck`` is provided, ``{sgd:...}`` draws without replacement via
-    ``deck_position``. ``{sg:...}`` always uses ``random.choice``.
+    ``deck_position``. ``{sg:...}`` uses ``rng.choice`` when ``rng`` is set,
+    otherwise the module ``random`` RNG.
     """
-    sgd_totals = _count_sgd_occurrences(prompt)
-    sgd_running: dict[tuple[str, str], int] = {}
+    picker = rng or random
+    text = prompt
+    for _ in range(_MAX_PASSES):
+        if not TOKEN_PATTERN.search(text):
+            return text
+        sgd_totals = _count_sgd_occurrences(text)
+        sgd_running: dict[tuple[str, str], int] = {}
 
-    def replacer(m):
-        kind = m.group(1)
-        inner = m.group(2)
-        category, spec = parse_sg_token(inner)
-        candidates = styles_by_category.get(category)
+        def replacer(m):
+            kind = m.group(1)
+            inner = m.group(2)
+            category, spec = parse_sg_token(inner)
+            candidates = styles_by_category.get(category)
 
-        if kind == TOKEN_SG:
-            if not candidates:
+            if kind == TOKEN_SG:
+                if not candidates:
+                    return m.group(0)
+                pool = select_slice(candidates, category, spec) if spec else candidates
+                if not pool:
+                    pool = candidates
+                style = picker.choice(pool)
+                return _field_value(style, field)
+
+            # Deck branch (sgd)
+            if deck is None or not candidates:
                 return m.group(0)
             pool = select_slice(candidates, category, spec) if spec else candidates
             if not pool:
                 pool = candidates
-            style = random.choice(pool)
-            return _field_value(style, field, m.group(0))
+            deck_pool = build_deck_pool(pool)
+            deck_id = f"{category}{DECK_ID_SEPARATOR}{normalize_deck_spec(spec)}"
+            key = (category, normalize_deck_spec(spec))
+            occurrence_m = sgd_totals[key]
+            k = sgd_running.get(key, 0)
+            sgd_running[key] = k + 1
+            counter = deck.image_index * occurrence_m + k
+            style = deck_pool[deck_position(len(deck_pool), deck.base_seed, deck_id, counter)]
+            return _field_value(style, field)
 
-        # Deck branch (sgd)
-        if deck is None or not candidates:
-            return m.group(0)
-        pool = select_slice(candidates, category, spec) if spec else candidates
-        if not pool:
-            pool = candidates
-        deck_pool = build_deck_pool(pool)
-        deck_id = f"{category}{DECK_ID_SEPARATOR}{normalize_deck_spec(spec)}"
-        key = (category, normalize_deck_spec(spec))
-        occurrence_m = sgd_totals[key]
-        k = sgd_running.get(key, 0)
-        sgd_running[key] = k + 1
-        counter = deck.image_index * occurrence_m + k
-        style = deck_pool[deck_position(len(deck_pool), deck.base_seed, deck_id, counter)]
-        return _field_value(style, field, m.group(0))
-
-    return TOKEN_PATTERN.sub(replacer, prompt)
+        text = TOKEN_PATTERN.sub(replacer, text)
+    if TOKEN_PATTERN.search(text):
+        logger.warning(
+            "[Style Grid] nested {sg:} unresolved after %d passes; stripping leftovers",
+            _MAX_PASSES,
+        )
+        text = TOKEN_PATTERN.sub("", text)
+    return text

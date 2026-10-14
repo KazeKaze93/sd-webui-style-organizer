@@ -65,13 +65,13 @@ function parseArgs(argv) {
  */
 async function openKeysBench(browser, baseUrl, n) {
   const fixture = buildBenchFixture(n)
-  const { styles, usageCounts, favorites, selected } = fixture
+  const { styles, favorites, selected } = fixture
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   })
   const page = await context.newPage()
-  await installRouteStubs(page, { usageCounts })
+  await installRouteStubs(page)
 
   await page.addInitScript((payload) => {
     window.__BENCH__ = payload
@@ -89,7 +89,7 @@ async function openKeysBench(browser, baseUrl, n) {
     } catch {
       // ignore
     }
-  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
+  }, { styles, favorites, selected, tab: 'txt2img', n })
 
   await page.goto(`${baseUrl}/bench/host.html?n=${n}&keys=1`, {
     waitUntil: 'domcontentloaded',

@@ -163,6 +163,7 @@ def test_export_and_import_include_favorites_recent(fav_client, fav_recent_env):
     exported = fav_client.get("/style_grid/export").json()
     assert exported["favorites"] == [fav_key]
     assert exported["recent"] == [recent_key]
+    assert "usage" not in exported
     assert "exported_at" in exported
 
     # Wipe server files, then import the export payload.
@@ -187,3 +188,38 @@ def test_export_and_import_include_favorites_recent(fav_client, fav_recent_env):
         "items": [recent_key],
         "persisted": True,
     }
+
+
+def test_import_ignores_legacy_usage_key(fav_client, fav_recent_env):
+    """Old export JSON with a usage map still imports favorites/recent successfully."""
+    _sg_data, fav_path, recent_path = fav_recent_env
+    fav_key = "styles.csv\0Test Style A"
+    recent_key = "styles.csv\0Test Style B"
+    fav_path.unlink(missing_ok=True)
+    recent_path.unlink(missing_ok=True)
+
+    r_imp = fav_client.post(
+        "/style_grid/import",
+        json={
+            "favorites": [fav_key],
+            "recent": [recent_key],
+            "usage": {
+                "Legacy Style": {
+                    "count": 99,
+                    "last_used": "2026-01-01T00:00:00",
+                    "first_used": "2025-01-01T00:00:00",
+                }
+            },
+        },
+    )
+    assert r_imp.status_code == 200
+    assert r_imp.json().get("ok") is True
+    assert fav_client.get("/style_grid/favorites").json() == {
+        "items": [fav_key],
+        "persisted": True,
+    }
+    assert fav_client.get("/style_grid/recent").json() == {
+        "items": [recent_key],
+        "persisted": True,
+    }
+    assert not (fav_path.parent / "usage.json").exists()

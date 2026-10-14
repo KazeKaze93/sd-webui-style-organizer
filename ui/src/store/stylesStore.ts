@@ -443,8 +443,6 @@ interface StylesStore {
   favoritesRecentHydrated: boolean
   /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
-  /** Usage counters loaded/persisted via backend API. */
-  usageCounts: Record<string, number>
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
   /** Saved style presets from backend (`GET /style_grid/presets`). */
@@ -497,8 +495,6 @@ interface StylesStore {
   clearSliceSelection: () => void
   showToast: (message: string, variant?: 'success' | 'error' | 'info') => void
   detectConflicts: () => void
-  loadUsage: () => Promise<void>
-  incrementUsage: (name: string) => void
   setCategoryOrder: (order: string[]) => void
   toggleFavorite: (style: StyleIdentity) => void
   isFavorite: (style: StyleIdentity) => boolean
@@ -601,7 +597,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   duplicatesByName: new Map(),
   thumbVersions: loadThumbVersionsFromLs(),
   conflicts: [],
-  usageCounts: {},
   categoryOrder: JSON.parse(
     localStorage.getItem('sg_v2_category_order') || '[]'
   ) as string[],
@@ -898,7 +893,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         },
       })
       get().addToRecent(style)
-      get().incrementUsage(style.name)
       sendToHost({
         type: 'SG_APPLY',
         styleId: style.name,
@@ -1026,32 +1020,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       }
     }
     set({ conflicts })
-  },
-  loadUsage: async () => {
-    try {
-      const r = await fetch('/style_grid/usage')
-      const data = await r.json()
-      const usageCounts: Record<string, number> = {}
-      if (data && typeof data === 'object' && !Array.isArray(data)) {
-        for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-          if (typeof value === 'number') {
-            usageCounts[key] = value
-          } else if (value && typeof value === 'object' && 'count' in value) {
-            const count = (value as { count: unknown }).count
-            usageCounts[key] = typeof count === 'number' ? count : 0
-          }
-        }
-      }
-      set({ usageCounts })
-    } catch {
-      // ignore usage load errors
-    }
-  },
-  incrementUsage: (name: string) => {
-    const counts = { ...get().usageCounts }
-    counts[name] = (counts[name] || 0) + 1
-    set({ usageCounts: counts })
-    styleGridPost('/style_grid/usage/increment', { styles: [name] }).catch(() => {})
   },
   fetchPresets: async () => {
     const parse = (raw: unknown): Record<string, PresetRecord> =>
@@ -1265,7 +1233,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   loadPreset: (name) => {
     const preset = get().presets[name]
     if (!preset) return
-    const { styles, showToast, incrementUsage, detectConflicts, addToRecent } = get()
+    const { styles, showToast, detectConflicts, addToRecent } = get()
 
     const members = resolvePresetMembers(preset.styles ?? [], styles)
     const found = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
@@ -1283,7 +1251,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       if (selectedKeys.has(rowKey)) continue
       selectedKeys.add(rowKey)
       selected.push(m.style)
-      incrementUsage(m.style.name)
       addToRecent(m.style)
       sendToHost({
         type: 'SG_APPLY',

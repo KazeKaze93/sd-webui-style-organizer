@@ -35,7 +35,6 @@ function loadStyles(tabName) {
         if (!dataEl || !dataEl.value) return {};
         try {
             const data = JSON.parse(dataEl.value);
-            state[tabName].usage = data.usage || {};
             state[tabName].presets = data.presets || {};
             return data.categories || {};
         } catch (_) { return {}; }
@@ -75,13 +74,12 @@ function refreshPanel(tabName, opts) {
             }
             const dataEl = qs("#style_grid_data_" + tabName + " textarea");
             if (dataEl) {
-                const full = { categories: data.categories || {}, usage: data.usage || {}, presets: state[tabName].presets };
+                const full = { categories: data.categories || {}, presets: state[tabName].presets };
                 setPromptValue(dataEl, JSON.stringify(full));
             }
             // Save selection before host-state sync + apply-restore (no legacy panel rebuild).
             const savedSelection = new Set(state[tabName].selected);
             state[tabName].categories = data.categories || {};
-            state[tabName].usage = data.usage || {};
             syncPanelHostState(tabName);
             // Restore selection
             savedSelection.forEach(function (n) {

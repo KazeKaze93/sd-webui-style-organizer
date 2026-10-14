@@ -276,26 +276,14 @@ async function startVite(port, opts = { mode: 'preview' }) {
 
 /**
  * @param {import('playwright').Page} page
- * @param {{ usageCounts?: Record<string, number> }} [fixture]
+ * @param {Record<string, unknown>} [fixture]
  */
 async function installRouteStubs(page, fixture = {}) {
-  const usageCounts = fixture.usageCounts && typeof fixture.usageCounts === 'object'
-    ? fixture.usageCounts
-    : {}
-
   await page.route('**/style_grid/**', async (route) => {
     const req = route.request()
     const url = req.url()
     const method = req.method()
 
-    if (url.includes('/style_grid/usage') && method === 'GET') {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(usageCounts),
-      })
-      return
-    }
     if (url.includes('/style_grid/presets') && method === 'GET') {
       await route.fulfill({
         status: 200,
@@ -569,13 +557,13 @@ async function measureRun(page, frame, n) {
  */
 async function runOne(browser, baseUrl, n, headed) {
   const fixture = buildBenchFixture(n)
-  const { styles, usageCounts, favorites, selected } = fixture
+  const { styles, favorites, selected } = fixture
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   })
   const page = await context.newPage()
-  await installRouteStubs(page, { usageCounts })
+  await installRouteStubs(page)
 
   await page.addInitScript((payload) => {
     window.__BENCH__ = payload
@@ -586,7 +574,7 @@ async function runOne(browser, baseUrl, n, headed) {
         // ignore
       }
     }
-  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
+  }, { styles, favorites, selected, tab: 'txt2img', n })
 
   await setCpuThrottle(page, CPU_RATE)
 
@@ -635,13 +623,13 @@ async function runOne(browser, baseUrl, n, headed) {
  */
 async function runLayoutPass(browser, baseUrl, n) {
   const fixture = buildBenchFixture(n)
-  const { styles, usageCounts, favorites, selected } = fixture
+  const { styles, favorites, selected } = fixture
   const context = await browser.newContext({
     viewport: VIEWPORT,
     deviceScaleFactor: 1,
   })
   const page = await context.newPage()
-  await installRouteStubs(page, { usageCounts })
+  await installRouteStubs(page)
   await page.addInitScript((payload) => {
     window.__BENCH__ = payload
     if (Array.isArray(payload.favorites) && payload.favorites.length > 0) {
@@ -651,7 +639,7 @@ async function runLayoutPass(browser, baseUrl, n) {
         // ignore
       }
     }
-  }, { styles, favorites, usageCounts, selected, tab: 'txt2img', n })
+  }, { styles, favorites, selected, tab: 'txt2img', n })
 
   await page.goto(`${baseUrl}/bench/host.html?n=${n}&layout=1`, {
     waitUntil: 'domcontentloaded',

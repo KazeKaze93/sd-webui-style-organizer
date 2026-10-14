@@ -8,7 +8,6 @@ from modules import shared  # type: ignore[reportMissingImports]
 EXT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(EXT_DIR, "data")
 PRESETS_FILE = os.path.join(DATA_DIR, "presets.json")
-USAGE_FILE = os.path.join(DATA_DIR, "usage.json")
 CATEGORY_ORDER_FILE = os.path.join(DATA_DIR, "category_order.json")
 FAVORITES_FILE = os.path.join(DATA_DIR, "favorites.json")
 RECENT_FILE = os.path.join(DATA_DIR, "recent.json")

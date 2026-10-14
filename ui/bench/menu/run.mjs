@@ -427,10 +427,6 @@ async function openMenuBench(browser, baseUrl, n, withThumb) {
     const url = route.request().url()
     const method = route.request().method()
 
-    if (url.includes('/style_grid/usage') && method === 'GET') {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
-      return
-    }
     if (url.includes('/style_grid/presets') && method === 'GET') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
       return

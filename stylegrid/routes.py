@@ -43,15 +43,12 @@ from stylegrid.csv_io import (
 from stylegrid.data_files import (
     CorruptDataError,
     backup_csv_files,
-    increment_usage,
     list_backups,
     load_favorites,
     load_presets,
     load_recent,
-    load_usage,
     migrate_favorites_once,
     migrate_recent_once,
-    migrate_usage_on_rename,
     preset_styles_payload_ok,
     restore_from_backup,
     save_favorites,
@@ -92,7 +89,6 @@ def _register_style_routes(app):
         try:
             payload = {
                 "categories": categories,
-                "usage": load_usage(),
                 "presets": load_presets(),
             }
         except CorruptDataError as exc:
@@ -113,7 +109,6 @@ def _register_style_routes(app):
             return {
                 "styles": load_all_styles(),
                 "presets": load_presets(),
-                "usage": load_usage(),
                 "favorites": favorites,
                 "recent": recent,
                 "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -123,6 +118,7 @@ def _register_style_routes(app):
 
     @app.post("/style_grid/import")
     async def api_import(request: Request):
+        # Old exports may include a legacy "usage" key; it is ignored intentionally.
         raw = await request.body()
         if not raw:
             return {"ok": True}
@@ -335,18 +331,6 @@ def _register_preset_routes(app):
         except CorruptDataError as exc:
             return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
-
-def _register_usage_routes(app):
-    """Register usage stats routes."""
-    @app.get("/style_grid/usage")
-    async def get_usage_route():
-        return load_usage()
-
-    @app.post("/style_grid/usage/increment")
-    async def api_increment(data: dict):
-        increment_usage(data.get("styles", []))
-        return {"ok": True}
-
 
 def _items_payload(items, persisted):
     return {"items": items, "persisted": persisted}
@@ -614,11 +598,6 @@ def _register_crud_routes(app):
             )
         except Exception:
             pass
-        # Best-effort: same contract — usage key rewrite must not fail or roll back CSV.
-        try:
-            migrate_usage_on_rename(old_name, new_name)
-        except Exception:
-            pass
         return {"ok": True}
 
     @app.get("/style_grid/backups")
@@ -871,7 +850,6 @@ def register_api(demo, app):
     install_write_auth(app)
     _register_style_routes(app)
     _register_preset_routes(app)
-    _register_usage_routes(app)
     _register_favorites_recent_routes(app)
     _register_crud_routes(app)
     _register_thumbnail_routes(app)

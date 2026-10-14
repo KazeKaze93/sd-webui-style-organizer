@@ -1,7 +1,7 @@
 /**
  * Synthetic Style[] + realism sidecar for grid perf / layout benches.
  * 12 categories, 3 sources, ~10% of names duplicated across sources.
- * usageCounts ~25% (1..40), favorites ~5%, 10 selected, names ≤40 chars, long descriptions.
+ * favorites ~5%, 10 selected, names ≤40 chars, long descriptions.
  */
 
 export const CATEGORIES = Object.freeze([
@@ -27,11 +27,6 @@ export const SOURCES = Object.freeze([
 
 /** Fraction of unique base names that also appear under a second source. */
 export const DUPLICATE_NAME_RATIO = 0.1
-
-/** ~25% of styles carry a non-zero usage count (realism / future UI). */
-export const USAGE_RATIO = 0.25
-export const USAGE_MIN = 1
-export const USAGE_MAX = 40
 
 /** ~5% of styles marked favorite via styleRowKey. */
 export const FAVORITE_RATIO = 0.05
@@ -103,23 +98,18 @@ export function generateStyles(n) {
 }
 
 /**
- * Full bench fixture: styles + usage / favorites / selected sidecars.
+ * Full bench fixture: styles + favorites / selected sidecars.
  * @param {number} n
  */
 export function buildBenchFixture(n) {
   const styles = generateStyles(n)
   const rand = mulberry32(0x5e1f ^ n)
 
-  /** @type {Record<string, number>} */
-  const usageCounts = {}
   const favorites = []
   const selected = []
 
   for (let i = 0; i < styles.length; i += 1) {
     const style = styles[i]
-    if (rand() < USAGE_RATIO) {
-      usageCounts[style.name] = USAGE_MIN + Math.floor(rand() * (USAGE_MAX - USAGE_MIN + 1))
-    }
     if (rand() < FAVORITE_RATIO) {
       favorites.push(styleRowKey(style))
     }
@@ -138,15 +128,12 @@ export function buildBenchFixture(n) {
 
   return {
     styles,
-    usageCounts,
     favorites: favSet,
     selected,
     meta: {
       n,
-      usageKeys: Object.keys(usageCounts).length,
       favoriteCount: favSet.length,
       selectedCount: selected.length,
-      usageRatioTarget: USAGE_RATIO,
       favoriteRatioTarget: FAVORITE_RATIO,
     },
   }

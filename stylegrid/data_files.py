@@ -1,4 +1,4 @@
-"""Presets, usage stats, favorites/recent, CSV backups (JSON / filesystem under data/)."""
+"""Presets, favorites/recent, CSV backups (JSON / filesystem under data/)."""
 
 import io
 import os
@@ -16,7 +16,6 @@ from stylegrid.config import (
     RECENT_FILE,
     RECENT_MAX,
     THUMBNAILS_DIR,
-    USAGE_FILE,
     get_all_styles_file_paths,
 )
 from stylegrid.csv_io import load_all_styles
@@ -34,10 +33,6 @@ __all__ = [
     "CorruptDataError",
     "load_presets",
     "save_presets",
-    "load_usage",
-    "save_usage",
-    "increment_usage",
-    "migrate_usage_on_rename",
     "normalize_presets",
     "normalize_preset_entry",
     "normalize_wildcard_entry",
@@ -322,65 +317,6 @@ def preset_styles_payload_ok(styles):
     return True
 
 
-def load_usage():
-    """Load usage.json. Missing → {}; corrupt/wrong-shape/IO → CorruptDataError."""
-    with locked_path(USAGE_FILE):
-        return load_json_object(USAGE_FILE, require_object_values=True)
-
-
-def save_usage(usage):
-    """Atomically write usage. Refuses if existing file is corrupt."""
-    if not isinstance(usage, dict):
-        raise TypeError("usage must be a dict")
-    with locked_path(USAGE_FILE):
-        write_json_atomic(USAGE_FILE, usage, require_object_values=True)
-
-
-def increment_usage(style_names):
-    with locked_path(USAGE_FILE):
-        usage = load_usage()
-        ts = time.strftime("%Y-%m-%dT%H:%M:%S")
-        for name in style_names:
-            if name not in usage:
-                usage[name] = {"count": 0, "last_used": None, "first_used": ts}
-            usage[name]["count"] = usage[name].get("count", 0) + 1
-            usage[name]["last_used"] = ts
-        save_usage(usage)
-
-
-def migrate_usage_on_rename(old_name, new_name):
-    """Move usage stats from old_name to new_name after a successful CSV rename.
-
-    Usage is keyed by style name only ({name: {count, last_used, first_used}}).
-    If new_name already has an entry (residue — rename onto an existing style
-    name is refused by rename_style_in_csv), merge counts and keep the earliest
-    first_used / latest last_used. No-op when old_name has no usage history.
-    """
-    if not old_name or not new_name or old_name == new_name:
-        return
-    with locked_path(USAGE_FILE):
-        usage = load_usage()
-        if old_name not in usage:
-            return
-        old_entry = usage.pop(old_name)
-        if new_name in usage:
-            existing = usage[new_name]
-            first_candidates = [
-                t for t in (existing.get("first_used"), old_entry.get("first_used")) if t
-            ]
-            last_candidates = [
-                t for t in (existing.get("last_used"), old_entry.get("last_used")) if t
-            ]
-            usage[new_name] = {
-                "count": (existing.get("count", 0) or 0) + (old_entry.get("count", 0) or 0),
-                "first_used": min(first_candidates) if first_candidates else None,
-                "last_used": max(last_candidates) if last_candidates else None,
-            }
-        else:
-            usage[new_name] = old_entry
-        save_usage(usage)
-
-
 def metadata_backup_files():
     """Basename → absolute path for data/ JSON files included in every backup.
 
@@ -388,7 +324,6 @@ def metadata_backup_files():
     """
     return (
         ("presets.json", PRESETS_FILE),
-        ("usage.json", USAGE_FILE),
         ("category_order.json", CATEGORY_ORDER_FILE),
         ("favorites.json", FAVORITES_FILE),
         ("recent.json", RECENT_FILE),

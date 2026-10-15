@@ -9,7 +9,7 @@ import json
 import logging
 
 import gradio as gr  # type: ignore[reportMissingImports]
-from modules import script_callbacks, scripts, shared  # type: ignore[reportMissingImports]
+from modules import script_callbacks, scripts  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
 from stylegrid.cache import get_cached_styles

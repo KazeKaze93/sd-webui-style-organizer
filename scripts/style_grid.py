@@ -35,7 +35,7 @@ def _on_ui_settings():
     shared.opts.add_option(
         OPT_STYLE_NEGATIVES,
         shared.OptionInfo(
-            True,
+            False,
             "Add the negative prompt of styles picked by {sg:…} / {sgd:…} placeholders",
             section=("style_grid", "Style Grid"),
             infotext=INFOTEXT_STYLE_NEGATIVES,
@@ -179,7 +179,7 @@ class StyleGridScript(scripts.Script):
         if lora_styles:
             styles_by_cat["lora"] = lora_styles
 
-        apply_negatives = bool(shared.opts.data.get(OPT_STYLE_NEGATIVES, True))
+        apply_negatives = bool(shared.opts.data.get(OPT_STYLE_NEGATIVES, False))
         base_seed = _deck_base_seed(p)
 
         first_pass_raw = list(p.all_prompts)

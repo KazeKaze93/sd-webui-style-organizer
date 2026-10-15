@@ -35,6 +35,34 @@ def _parse(segment: str) -> tuple[str, float] | None:
     return segment, NEUTRAL_WEIGHT
 
 
+def _tag_key(segment: str, parsed: tuple[str, float] | None) -> str:
+    return segment.lower() if parsed is None else parsed[0].lower()
+
+
+def drop_shared_tags(prompt: str, other: str) -> tuple[str, list[str]]:
+    """Remove tags of ``prompt`` that also occur in ``other``.
+
+    Tag identity is the one ``dedup_prompt`` uses. BREAK is always kept.
+    Returns the kept prompt and the dropped segments.
+    """
+    other_keys = set()
+    for raw in other.split(","):
+        seg = raw.strip()
+        if seg:
+            other_keys.add(_tag_key(seg, _parse(seg)))
+    kept: list[str] = []
+    dropped: list[str] = []
+    for raw in prompt.split(","):
+        seg = raw.strip()
+        if not seg:
+            continue
+        if seg.upper() != BREAK_TOKEN and _tag_key(seg, _parse(seg)) in other_keys:
+            dropped.append(seg)
+        else:
+            kept.append(seg)
+    return ", ".join(kept), dropped
+
+
 def dedup_prompt(prompt: str) -> str:
     """Collapse duplicate comma-separated tags.
 
@@ -57,7 +85,7 @@ def dedup_prompt(prompt: str) -> str:
             slots.append(_Slot(seg, None, NEUTRAL_WEIGHT))
             continue
         parsed = _parse(seg)
-        key = seg.lower() if parsed is None else parsed[0].lower()
+        key = _tag_key(seg, parsed)
         if key not in index:
             index[key] = len(slots)
             tag, weight = (None, NEUTRAL_WEIGHT) if parsed is None else parsed

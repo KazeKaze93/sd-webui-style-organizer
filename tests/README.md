@@ -17,6 +17,7 @@ Root `npm test` / `npm run check` run this suite (not the UI Vitest suite).
 | `test_csv_io.py` | `stylegrid.csv_io` parse / save / delete. |
 | `test_routes.py` | FastAPI routes registered by `register_api` (HTTP smoke + save/delete flows). |
 | `test_wildcards.py` | `parse_sg_token`, `select_slice`, `resolve_sg_wildcards` (`{sg:…}` and slice specs). |
+| `test_paired_negatives.py` | `process()` paired negatives: style negatives from positive tokens, negative/hires pairing, seed determinism, tag drop, setting, infotext. |
 | `test_slice_grammar_parity.py` | Parametrized assertions of `select_slice` against `fixtures/slice_grammar.json`. |
 | `fixtures/slice_grammar.json` | Shared grammar fixture (Python + Vitest). Derived from `select_slice` + empty-pool fallback. |
 

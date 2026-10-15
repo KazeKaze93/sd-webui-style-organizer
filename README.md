@@ -167,11 +167,12 @@ The small tab badge in the panel header shows the active host context.
 - **Syntax (slice):** `{sg:<category>:<spec>}`. Spec entries are comma-separated **style-name suffixes without the category prefix** — e.g. `{sg:body:Tanned,Shortstack}`, not `BODY_Tanned`. A leading `-` excludes (`{sg:body:-Tanned}` = whole category minus that style); a trailing `*` is a prefix glob (`{sg:body:Male_*}`).
 - **Slice resolution:** include entries are **unioned** first, then excludes **subtract**. If every listed name is missing from the CSV, the token **falls back to the whole category** rather than breaking the prompt. The UI writes whichever form is shortest (so selecting almost an entire category often produces a compact exclude token); the resolver understands all forms regardless.
 - **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal WebUI prompt.
-- **What gets inserted:** one **random** style from the resolved pool (whole category or slice). A wildcard in the positive field pulls the style’s `prompt`; in the negative field it pulls `negative_prompt`. Category matching is **case-insensitive**.
+- **What gets inserted:** one **random** style from the resolved pool (whole category or slice). A wildcard in the positive field pulls the style’s `prompt`; in the negative field it pulls `negative_prompt`. Category matching is **case-insensitive**. The draw follows the seed: a fixed seed repeats the same picks, seed -1 gives new ones.
+- **The picked style’s negative comes along:** a token in the positive prompt also adds that style’s `negative_prompt` to the same image’s negative, after your own negative text, in token order, then duplicates are merged. A negative tag that also appears in the expanded positive is dropped (written to the log at INFO level). Turn this off in **Settings → Style Grid → Add the negative prompt of styles picked by {sg:…} / {sgd:…} placeholders** (on by default). The infotext records the picks as `Style Grid styles: "NAME (file.csv), …"` and the setting as `Style Grid style negatives: True/False`.
 - **Empty fields:** an empty chosen field resolves to an empty string (the token is not kept), on both the positive and negative sides.
 - **Nesting depth:** nested `{sg:…}` / `{sgd:…}` tokens resolve in up to **3** passes. Leftovers after that are stripped with a warning.
 - **Source-aware pool:** if a specific CSV is selected in the source filter, wildcard replacement picks styles only from that source; with **All Sources**, it uses the merged style pool.
-- **Where you can put it:** positive or negative prompt box — **both strings are scanned**.
+- **Where you can put it:** positive or negative prompt box — **both strings are scanned**. A token in the negative box that also appears in the positive box reuses the positive pick (the k-th occurrence pairs with the k-th one).
 - **Unknown category:** the raw token is left in place through nested passes, then stripped with a warning.
 - **Chips:** the selected bar shows each active `{sg:…}` as a chip. Slice chips display the **real** number of styles the token can resolve to, with those style names in the tooltip.
 
@@ -193,10 +194,10 @@ A **shuffle wildcard** draws styles **without repeats**. Where the random wildca
 - **Insert:** right-click a category and use the *Wildcard: shuffle* group (*Whole category* or *Pick styles...*), or type the token by hand. Shuffle chips have their own icon and can be reordered, removed and saved in presets like any other wildcard.
 - **Scope of uniqueness:** one generation, that is batch count × batch size. A fixed seed repeats the same order, seed -1 gives a new order on every click.
 - **Several tokens:** repeating the same token in one prompt draws a different style for each occurrence.
-- **Positive and negative prompts:** the same shuffle token in both fields resolves to the same style for a given image, as long as it appears the same number of times in each.
+- **Positive and negative prompts:** the same shuffle token in both fields resolves to the same style for a given image.
 - **Duplicates across packs:** styles with identical prompt and negative prompt count once.
-- **Random wildcards are unchanged.** Mixing `{sg:...}` and `{sgd:...}` in one prompt is fine, they do not influence each other.
-- **Hires fix:** the built-in hires pass reuses the first-pass pick. The post-process ✨ button re-reads the prompt field unless the expanded prompt of the selected image is available, so a shuffle token may then resolve to a different style, just as a random wildcard would.
+- **Random wildcards keep their own draw.** Mixing `{sg:...}` and `{sgd:...}` in one prompt is fine, they do not influence each other.
+- **Hires fix:** the built-in hires pass reuses the first-pass pick and negative (a hires prompt override reuses the pick for the tokens it shares with the first pass). The post-process ✨ button re-reads the prompt field unless the expanded prompt of the selected image is available, so a shuffle token may then resolve to a different style, just as a random wildcard would.
 - **Presets:** shuffle chips are saved in presets. Older versions of the extension load such presets as random wildcards.
 
 ### 6) Style card context menu

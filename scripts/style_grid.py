@@ -6,23 +6,44 @@ Implementation lives in the `stylegrid` package; this file is the Forge script e
 """
 
 import json
+import logging
 
 import gradio as gr  # type: ignore[reportMissingImports]
-from modules import script_callbacks, scripts  # type: ignore[reportMissingImports]
+from modules import script_callbacks, scripts, shared  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
 from stylegrid.cache import get_cached_styles
 from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
 from stylegrid.data_files import load_presets
 from stylegrid.lora_scan import LORA_SOURCE
-from stylegrid.prompt_ops import dedup_prompt
+from stylegrid.prompt_ops import dedup_prompt, drop_shared_tags
 from stylegrid.routes import register_api
-from stylegrid.wildcards import DeckContext, resolve_sg_wildcards
+from stylegrid.wildcards import DeckContext, dice_rng, resolve_sg_picks
 from stylegrid.write_auth import WRITE_TOKEN_JS_GLOBAL, get_session_token, is_public_bind
 
 script_callbacks.on_app_started(register_api)
 
+logger = logging.getLogger("StyleGrid")
+
 DECK_FALLBACK_SEED = 0
+OPT_STYLE_NEGATIVES = "style_grid_style_negatives"
+INFOTEXT_STYLE_NEGATIVES = "Style Grid style negatives"
+INFOTEXT_STYLES = "Style Grid styles"
+
+
+def _on_ui_settings():
+    shared.opts.add_option(
+        OPT_STYLE_NEGATIVES,
+        shared.OptionInfo(
+            True,
+            "Add the negative prompt of styles picked by {sg:…} / {sgd:…} placeholders",
+            section=("style_grid", "Style Grid"),
+            infotext=INFOTEXT_STYLE_NEGATIVES,
+        ),
+    )
+
+
+script_callbacks.on_ui_settings(_on_ui_settings)
 
 
 def _deck_base_seed(p) -> int:
@@ -32,6 +53,13 @@ def _deck_base_seed(p) -> int:
     return DECK_FALLBACK_SEED
 
 
+def _resolve_entry(text, styles_by_cat, field, deck, paired=()):
+    """Resolve one prompt string; returns the deduped text and its picks."""
+    rng = dice_rng(deck) if deck is not None else None
+    resolved, picks = resolve_sg_picks(text, styles_by_cat, field, rng=rng, deck=deck, paired=paired)
+    return dedup_prompt(resolved), picks
+
+
 def _resolve_hires_prompts(
     hr_prompts,
     first_pass_raw,
@@ -39,22 +67,53 @@ def _resolve_hires_prompts(
     styles_by_cat,
     field,
     base_seed: int | None = None,
+    first_pass_picks=None,
 ):
-    """Resolve wildcards in a hires-pass prompt list, in place.
+    """Resolve wildcards in a hires-pass prompt list, in place; return each entry's picks.
 
     Forge builds the hires lists in setup_prompts(), before scripts run, and fills
     them from the first-pass prompt when the "Hires prompt" box is left empty. An
     entry that still matches the unresolved first-pass text reuses the first-pass
-    result so both passes draw the same styles; a real override is resolved on its own.
+    result so both passes draw the same styles; a real override is resolved on its
+    own, reusing ``first_pass_picks`` for the tokens it shares with the first pass.
     """
+    hr_picks = []
     for i, text in enumerate(hr_prompts):
+        paired = first_pass_picks[i] if first_pass_picks else []
         if i < len(first_pass_raw) and text == first_pass_raw[i]:
             hr_prompts[i] = first_pass_resolved[i]
+            hr_picks.append(paired)
         else:
             deck = DeckContext(base_seed, i) if base_seed is not None else None
-            hr_prompts[i] = dedup_prompt(
-                resolve_sg_wildcards(text, styles_by_cat, field=field, deck=deck)
+            hr_prompts[i], picks = _resolve_entry(text, styles_by_cat, field, deck, paired)
+            hr_picks.append(picks)
+    return hr_picks
+
+
+def _add_style_negatives(negatives, picks_by_index):
+    """Append the picked styles' negative_prompt after the user's text, in token order."""
+    for i, picks in enumerate(picks_by_index):
+        parts = [negatives[i], *(pick.style.get("negative_prompt") or "" for pick in picks)]
+        negatives[i] = ", ".join(part for part in parts if part)
+
+
+def _drop_positive_tags(negatives, positives, picks_by_index):
+    """A negative tag equal to a tag of the expanded positive would cancel it: drop it."""
+    for i, picks in enumerate(picks_by_index):
+        if not picks:
+            continue
+        negatives[i], dropped = drop_shared_tags(negatives[i], positives[i])
+        if dropped:
+            logger.info(
+                "[Style Grid] image %d: dropped from negative, also in positive: %s",
+                i,
+                ", ".join(dropped),
             )
+
+
+def _styles_infotext(picks):
+    names = [f"{pick.style.get('name', '')} ({pick.style.get('source', '')})" for pick in picks]
+    return ", ".join(names) or None
 
 
 class StyleGridScript(scripts.Script):
@@ -86,7 +145,7 @@ class StyleGridScript(scripts.Script):
         return [source_filter]
 
     def process(self, p: StableDiffusionProcessing, *args):
-        """Resolve {sg:...} wildcards in the prompts at generation time."""
+        """Resolve {sg:...} wildcards at generation time and add the picked styles' negatives."""
         all_styles = list(get_cached_styles())
         categorize_styles(all_styles)
 
@@ -120,37 +179,40 @@ class StyleGridScript(scripts.Script):
         if lora_styles:
             styles_by_cat["lora"] = lora_styles
 
-        first_pass_raw = list(p.all_prompts)
-        first_pass_raw_negative = list(p.all_negative_prompts)
-
+        apply_negatives = bool(shared.opts.data.get(OPT_STYLE_NEGATIVES, True))
         base_seed = _deck_base_seed(p)
 
-        for i in range(len(p.all_prompts)):
-            p.all_prompts[i] = dedup_prompt(
-                resolve_sg_wildcards(
-                    p.all_prompts[i], styles_by_cat, deck=DeckContext(base_seed, i)
-                )
+        first_pass_raw = list(p.all_prompts)
+        first_pass_picks = []
+        for i, text in enumerate(first_pass_raw):
+            p.all_prompts[i], picks = _resolve_entry(
+                text, styles_by_cat, "prompt", DeckContext(base_seed, i)
             )
-        for i in range(len(p.all_negative_prompts)):
-            p.all_negative_prompts[i] = dedup_prompt(
-                resolve_sg_wildcards(
-                    p.all_negative_prompts[i],
-                    styles_by_cat,
-                    field="negative_prompt",
-                    deck=DeckContext(base_seed, i),
-                )
+            first_pass_picks.append(picks)
+
+        if apply_negatives:
+            _add_style_negatives(p.all_negative_prompts, first_pass_picks)
+        first_pass_raw_negative = list(p.all_negative_prompts)
+        for i, text in enumerate(first_pass_raw_negative):
+            p.all_negative_prompts[i], _ = _resolve_entry(
+                text, styles_by_cat, "negative_prompt", DeckContext(base_seed, i), first_pass_picks[i]
             )
+        if apply_negatives:
+            _drop_positive_tags(p.all_negative_prompts, p.all_prompts, first_pass_picks)
 
         # Hires fix samples its second pass from all_hr_prompts / all_hr_negative_prompts;
         # without this the {sg:...} tokens reach the model as literal text. Both lists are
         # None unless hires fix is on (and absent entirely in img2img).
         hr_prompts = getattr(p, "all_hr_prompts", None)
+        hr_picks = first_pass_picks
         if hr_prompts:
-            _resolve_hires_prompts(
-                hr_prompts, first_pass_raw, p.all_prompts, styles_by_cat, "prompt", base_seed
+            hr_picks = _resolve_hires_prompts(
+                hr_prompts, first_pass_raw, p.all_prompts, styles_by_cat, "prompt", base_seed, first_pass_picks
             )
         hr_negative_prompts = getattr(p, "all_hr_negative_prompts", None)
         if hr_negative_prompts:
+            if apply_negatives:
+                _add_style_negatives(hr_negative_prompts, hr_picks)
             _resolve_hires_prompts(
                 hr_negative_prompts,
                 first_pass_raw_negative,
@@ -158,4 +220,12 @@ class StyleGridScript(scripts.Script):
                 styles_by_cat,
                 "negative_prompt",
                 base_seed,
+                hr_picks,
             )
+            if apply_negatives:
+                _drop_positive_tags(hr_negative_prompts, hr_prompts or p.all_prompts, hr_picks)
+
+        extra_params = getattr(p, "extra_generation_params", None)
+        if extra_params is not None and any(first_pass_picks):
+            extra_params[INFOTEXT_STYLES] = [_styles_infotext(picks) for picks in first_pass_picks]
+            extra_params[INFOTEXT_STYLE_NEGATIVES] = apply_negatives

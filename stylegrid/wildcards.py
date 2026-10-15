@@ -26,6 +26,19 @@ class DeckContext:
     image_index: int
 
 
+@dataclass(frozen=True)
+class Pick:
+    """A resolved token. ``key`` is (kind, category, normalized spec)."""
+
+    key: tuple[str, str, str]
+    style: dict
+
+
+def dice_rng(deck: DeckContext) -> random.Random:
+    """RNG for ``{sg:...}`` draws of one image, so a fixed seed repeats the picks."""
+    return random.Random(f"{deck.base_seed}{DECK_ID_SEPARATOR}{deck.image_index}")
+
+
 def parse_sg_token(inner):
     """Parse text between ``{sg:`` / ``{sgd:`` and ``}`` into ``(category, spec)``.
 
@@ -170,11 +183,35 @@ def resolve_sg_wildcards(
     ``deck_position``. ``{sg:...}`` uses ``rng.choice`` when ``rng`` is set,
     otherwise the module ``random`` RNG.
     """
+    return resolve_sg_picks(prompt, styles_by_category, field, rng=rng, deck=deck)[0]
+
+
+def resolve_sg_picks(
+    prompt,
+    styles_by_category,
+    field="prompt",
+    *,
+    rng=None,
+    deck: DeckContext | None = None,
+    paired: Sequence[Pick] = (),
+) -> tuple[str, list[Pick]]:
+    """``resolve_sg_wildcards`` that also returns the picked styles in token order.
+
+    ``paired`` are picks made for another field of the same image (the positive
+    prompt, when resolving the negative): the k-th token with the same kind,
+    category and spec reuses the k-th paired style instead of drawing again.
+    Tokens without a paired style draw as usual.
+    """
     picker = rng or random
+    queues: dict[tuple[str, str, str], list[dict]] = {}
+    for pick in paired:
+        queues.setdefault(pick.key, []).append(pick.style)
+    seen: dict[tuple[str, str, str], int] = {}
+    picks: list[Pick] = []
     text = prompt
     for _ in range(_MAX_PASSES):
         if not TOKEN_PATTERN.search(text):
-            return text
+            return text, picks
         sgd_totals = _count_sgd_occurrences(text)
         sgd_running: dict[tuple[str, str], int] = {}
 
@@ -183,30 +220,30 @@ def resolve_sg_wildcards(
             inner = m.group(2)
             category, spec = parse_sg_token(inner)
             candidates = styles_by_category.get(category)
-
-            if kind == TOKEN_SG:
-                if not candidates:
-                    return m.group(0)
-                pool = select_slice(candidates, category, spec) if spec else candidates
-                if not pool:
-                    pool = candidates
-                style = picker.choice(pool)
-                return _field_value(style, field)
-
-            # Deck branch (sgd)
-            if deck is None or not candidates:
+            if not candidates or (kind == TOKEN_SGD and deck is None):
                 return m.group(0)
             pool = select_slice(candidates, category, spec) if spec else candidates
             if not pool:
                 pool = candidates
-            deck_pool = build_deck_pool(pool)
-            deck_id = f"{category}{DECK_ID_SEPARATOR}{normalize_deck_spec(spec)}"
-            key = (category, normalize_deck_spec(spec))
-            occurrence_m = sgd_totals[key]
-            k = sgd_running.get(key, 0)
-            sgd_running[key] = k + 1
-            counter = deck.image_index * occurrence_m + k
-            style = deck_pool[deck_position(len(deck_pool), deck.base_seed, deck_id, counter)]
+            key = (kind, category, normalize_deck_spec(spec))
+            if kind == TOKEN_SGD:
+                deck_key = key[1:]
+                k = sgd_running.get(deck_key, 0)
+                sgd_running[deck_key] = k + 1
+
+            n = seen.get(key, 0)
+            seen[key] = n + 1
+            queue = queues.get(key, [])
+            if n < len(queue):
+                style = queue[n]
+            elif kind == TOKEN_SG:
+                style = picker.choice(pool)
+            else:
+                deck_pool = build_deck_pool(pool)
+                deck_id = f"{category}{DECK_ID_SEPARATOR}{key[2]}"
+                counter = deck.image_index * sgd_totals[deck_key] + k
+                style = deck_pool[deck_position(len(deck_pool), deck.base_seed, deck_id, counter)]
+            picks.append(Pick(key, style))
             return _field_value(style, field)
 
         text = TOKEN_PATTERN.sub(replacer, text)
@@ -216,4 +253,4 @@ def resolve_sg_wildcards(
             _MAX_PASSES,
         )
         text = TOKEN_PATTERN.sub("", text)
-    return text
+    return text, picks

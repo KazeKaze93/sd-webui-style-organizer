@@ -11,7 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Favorites and Recent** persist in `data/favorites.json` / `data/recent.json` (server) instead of browser localStorage. On first load, legacy `sg_v2_favorites` / `sg_v2_recent` keys are migrated once when the server files are absent.
 - **Backup** also includes `usage.json`, `category_order.json`, `favorites.json`, and `recent.json` (plus existing CSVs and `presets.json`). Thumbnails are opt-in. **Restore** is available in the Backup / Restore UI and creates a safety snapshot first.
 
+- **Random wildcards follow the seed:** `{sg:…}` picks are now drawn from the image seed, so a fixed seed repeats them (before: a new pick on every run).
+
 ### Added
+- **Paired negatives:** a `{sg:…}` / `{sgd:…}` token in the positive prompt adds the picked style’s negative prompt to the same image’s negative (after your text, in token order). The same token in the negative box reuses the positive pick, hires fix reuses both, and a negative tag that is also in the expanded positive is dropped. Setting **Style Grid → Add the negative prompt of styles picked by {sg:…} / {sgd:…} placeholders** (on by default). Infotext gains `Style Grid styles` and `Style Grid style negatives`.
 - `GET /style_grid/backups`, `POST /style_grid/restore`, and optional `include_thumbnails` on `POST /style_grid/backup`.
 - **Export / Import** include favorites and recent lists.
 

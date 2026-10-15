@@ -74,7 +74,7 @@ Category wildcard insertion and resolution:
 | Empty slice pool | Falls back to the full category so a stale/missing-name token still generates. |
 | Match key | Token category is lowercased and looked up in `styles_by_category` (also keyed by lowercased category). |
 | Source filter | When an active CSV source is set, the pool is filtered with `normalize_source_path` against each style’s `source_file`. |
-| Replacement value | One random style from the resolved pool. Positive field → that style’s **`prompt`**; negative field → **`negative_prompt`**. |
+| Replacement value | One random style from the resolved pool. Positive field → that style’s **`prompt`**; negative field → **`negative_prompt`**. A positive token also appends the picked style’s **`negative_prompt`** to the image’s negative (setting, on by default; see `docs/API.md`). |
 | Empty field | An empty chosen field resolves to an empty string (the token is not kept), on both the positive and negative sides. |
 | Nesting depth | Nested `{sg:…}` / `{sgd:…}` tokens resolve in up to **`_MAX_PASSES` = 3** passes. Leftovers after that are stripped with a warning. |
 | Empty category | Category present but with no styles: raw token is left through nested passes, then stripped to an empty string with a warning. |

@@ -271,15 +271,27 @@ def test_infotext_lists_picked_styles_per_image(monkeypatch):
     }
 
 
-def test_setting_is_registered_on_by_default(monkeypatch):
+def test_setting_is_registered_off_by_default(monkeypatch):
     shared = SimpleNamespace(opts=MagicMock(), OptionInfo=lambda default, label, **kw: (default, kw))
     monkeypatch.setattr(style_grid, "shared", shared)
     style_grid._on_ui_settings()
 
     key, (default, kw) = shared.opts.add_option.call_args.args
     assert key == style_grid.OPT_STYLE_NEGATIVES
-    assert default is True
+    assert default is False
     assert kw["infotext"] == style_grid.INFOTEXT_STYLE_NEGATIVES
+
+
+def test_default_off_skips_style_negatives_and_records_false(monkeypatch):
+    """When the option is missing from opts.data, the fallback is False (same as the registered default)."""
+    monkeypatch.setattr(style_grid.shared.opts, "data", {})
+    styles = [_style("SKIN_Tan", "tanned skin", "pale skin")]
+    script = _script(monkeypatch, styles)
+    p = _p(["{sg:skin}"], ["lowres"])
+    script.process(p, "")
+
+    assert p.all_negative_prompts == ["lowres"]
+    assert p.extra_generation_params[style_grid.INFOTEXT_STYLE_NEGATIVES] is False
 
 
 def test_resolve_sg_picks_reuses_paired_picks_then_draws():

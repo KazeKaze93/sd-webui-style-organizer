@@ -26,24 +26,7 @@ script_callbacks.on_app_started(register_api)
 logger = logging.getLogger("StyleGrid")
 
 DECK_FALLBACK_SEED = 0
-OPT_STYLE_NEGATIVES = "style_grid_style_negatives"
-INFOTEXT_STYLE_NEGATIVES = "Style Grid style negatives"
 INFOTEXT_STYLES = "Style Grid styles"
-
-
-def _on_ui_settings():
-    shared.opts.add_option(
-        OPT_STYLE_NEGATIVES,
-        shared.OptionInfo(
-            False,
-            "Add the negative prompt of styles picked by {sg:…} / {sgd:…} placeholders",
-            section=("style_grid", "Style Grid"),
-            infotext=INFOTEXT_STYLE_NEGATIVES,
-        ),
-    )
-
-
-script_callbacks.on_ui_settings(_on_ui_settings)
 
 
 def _deck_base_seed(p) -> int:
@@ -179,7 +162,6 @@ class StyleGridScript(scripts.Script):
         if lora_styles:
             styles_by_cat["lora"] = lora_styles
 
-        apply_negatives = bool(shared.opts.data.get(OPT_STYLE_NEGATIVES, False))
         base_seed = _deck_base_seed(p)
 
         first_pass_raw = list(p.all_prompts)
@@ -190,15 +172,13 @@ class StyleGridScript(scripts.Script):
             )
             first_pass_picks.append(picks)
 
-        if apply_negatives:
-            _add_style_negatives(p.all_negative_prompts, first_pass_picks)
+        _add_style_negatives(p.all_negative_prompts, first_pass_picks)
         first_pass_raw_negative = list(p.all_negative_prompts)
         for i, text in enumerate(first_pass_raw_negative):
             p.all_negative_prompts[i], _ = _resolve_entry(
                 text, styles_by_cat, "negative_prompt", DeckContext(base_seed, i), first_pass_picks[i]
             )
-        if apply_negatives:
-            _drop_positive_tags(p.all_negative_prompts, p.all_prompts, first_pass_picks)
+        _drop_positive_tags(p.all_negative_prompts, p.all_prompts, first_pass_picks)
 
         # Hires fix samples its second pass from all_hr_prompts / all_hr_negative_prompts;
         # without this the {sg:...} tokens reach the model as literal text. Both lists are
@@ -211,8 +191,7 @@ class StyleGridScript(scripts.Script):
             )
         hr_negative_prompts = getattr(p, "all_hr_negative_prompts", None)
         if hr_negative_prompts:
-            if apply_negatives:
-                _add_style_negatives(hr_negative_prompts, hr_picks)
+            _add_style_negatives(hr_negative_prompts, hr_picks)
             _resolve_hires_prompts(
                 hr_negative_prompts,
                 first_pass_raw_negative,
@@ -222,10 +201,8 @@ class StyleGridScript(scripts.Script):
                 base_seed,
                 hr_picks,
             )
-            if apply_negatives:
-                _drop_positive_tags(hr_negative_prompts, hr_prompts or p.all_prompts, hr_picks)
+            _drop_positive_tags(hr_negative_prompts, hr_prompts or p.all_prompts, hr_picks)
 
         extra_params = getattr(p, "extra_generation_params", None)
         if extra_params is not None and any(first_pass_picks):
             extra_params[INFOTEXT_STYLES] = [_styles_infotext(picks) for picks in first_pass_picks]
-            extra_params[INFOTEXT_STYLE_NEGATIVES] = apply_negatives

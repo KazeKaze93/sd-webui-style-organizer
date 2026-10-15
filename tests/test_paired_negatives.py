@@ -83,11 +83,6 @@ def _negative_of(styles, picked):
     return by_label[picked]
 
 
-@pytest.fixture
-def negatives_off(monkeypatch):
-    monkeypatch.setattr(style_grid.shared.opts, "data", {style_grid.OPT_STYLE_NEGATIVES: False})
-
-
 def test_positive_only_placeholder_fills_empty_negative(monkeypatch):
     script = _script(monkeypatch, BODY[:1])
     p = _p(["1girl, {sg:body}"], [""])
@@ -95,6 +90,16 @@ def test_positive_only_placeholder_fills_empty_negative(monkeypatch):
 
     assert p.all_prompts == ["1girl, tanned skin"]
     assert p.all_negative_prompts == ["pale skin"]
+
+
+@pytest.mark.parametrize("kind", ["sg", "sgd"])
+def test_positive_only_sgd_or_sg_fills_empty_negative(monkeypatch, kind):
+    script = _script(monkeypatch, BODY)
+    for seed in SEEDS:
+        p = _p([f"{{{kind}:body}}"], [""], seed=seed)
+        script.process(p, "")
+        assert p.all_negative_prompts == [_negative_of(BODY, _picked(p))]
+        assert p.all_negative_prompts[0]
 
 
 def test_negative_order_user_text_then_styles_in_placeholder_order(monkeypatch):
@@ -116,7 +121,7 @@ def test_nested_placeholder_negative_is_added(monkeypatch):
 
 
 @pytest.mark.parametrize("kind", ["sg", "sgd"])
-def test_negative_placeholder_pairs_with_positive_pick(monkeypatch, negatives_off, kind):
+def test_negative_placeholder_pairs_with_positive_pick(monkeypatch, kind):
     script = _script(monkeypatch, BODY)
     for seed in SEEDS:
         p = _p([f"{{{kind}:body}}"], [f"{{{kind}:body}}, lowres"], seed=seed)
@@ -124,15 +129,31 @@ def test_negative_placeholder_pairs_with_positive_pick(monkeypatch, negatives_of
         assert p.all_negative_prompts == [f"{_negative_of(BODY, _picked(p))}, lowres"]
 
 
-def test_pairing_holds_when_token_layout_differs(monkeypatch, negatives_off):
-    script = _script(monkeypatch, BODY + HAIR)
+def test_pairing_holds_when_token_layout_differs(monkeypatch):
+    # Negatives are tags that never appear in any positive, so drop_shared_tags cannot hide pairing.
+    styles = [
+        _style("HAIR_A", "red hair", "neg-hair-a"),
+        _style("HAIR_B", "blue hair", "neg-hair-b"),
+        _style("BODY_A", "tanned skin", "neg-body-a"),
+        _style("BODY_B", "pale skin", "neg-body-b"),
+        _style("BODY_C", "tall", "neg-body-c"),
+    ]
+    script = _script(monkeypatch, styles)
     for seed in SEEDS:
         p = _p(["{sg:hair}, {sg:body}, {sgd:body}, {sgd:body}"] * 3, ["{sg:body}, {sgd:body}"] * 3, seed=seed)
         script.process(p, "")
         for i in range(3):
-            _, sg_body, sgd_body, _ = _picked(p, i).split(", ")
+            hair, sg_body, sgd_a, sgd_b = _picked(p, i).split(", ")
+            # Negative-field tokens resolve first (paired), then appended style negatives in pick order.
             assert p.all_negative_prompts[i] == ", ".join(
-                dict.fromkeys([_negative_of(BODY, sg_body), _negative_of(BODY, sgd_body)])
+                dict.fromkeys(
+                    [
+                        _negative_of(styles, sg_body),
+                        _negative_of(styles, sgd_a),
+                        _negative_of(styles, hair),
+                        _negative_of(styles, sgd_b),
+                    ]
+                )
             )
 
 
@@ -234,16 +255,6 @@ def test_prompt_without_placeholders_is_not_filtered(monkeypatch):
     assert p.extra_generation_params == {}
 
 
-def test_setting_off_keeps_negative_as_typed(monkeypatch, negatives_off):
-    styles = [_style("SKIN_Tan", "tanned skin", "pale skin")]
-    script = _script(monkeypatch, styles)
-    p = _p(["{sg:skin}"], ["lowres, tanned skin"])
-    script.process(p, "")
-
-    assert p.all_negative_prompts == ["lowres, tanned skin"]
-    assert p.extra_generation_params[style_grid.INFOTEXT_STYLE_NEGATIVES] is False
-
-
 def test_sg_picks_are_deterministic_by_seed(monkeypatch):
     script = _script(monkeypatch, BODY)
 
@@ -260,38 +271,15 @@ def test_sg_picks_are_deterministic_by_seed(monkeypatch):
     assert len({prompts[0] for prompts, _ in first}) > 1
 
 
-def test_infotext_lists_picked_styles_per_image(monkeypatch):
+def test_infotext_lists_picked_styles_per_image_without_negatives_flag(monkeypatch):
     script = _script(monkeypatch, BODY[:1] + POSE)
     p = _p(["{sg:body}, {sg:pose}", "plain"], ["", ""])
     script.process(p, "")
 
     assert p.extra_generation_params == {
         style_grid.INFOTEXT_STYLES: ["BODY_Tanned (a.csv), POSE_Lean (a.csv)", None],
-        style_grid.INFOTEXT_STYLE_NEGATIVES: True,
     }
-
-
-def test_setting_is_registered_off_by_default(monkeypatch):
-    shared = SimpleNamespace(opts=MagicMock(), OptionInfo=lambda default, label, **kw: (default, kw))
-    monkeypatch.setattr(style_grid, "shared", shared)
-    style_grid._on_ui_settings()
-
-    key, (default, kw) = shared.opts.add_option.call_args.args
-    assert key == style_grid.OPT_STYLE_NEGATIVES
-    assert default is False
-    assert kw["infotext"] == style_grid.INFOTEXT_STYLE_NEGATIVES
-
-
-def test_default_off_skips_style_negatives_and_records_false(monkeypatch):
-    """When the option is missing from opts.data, the fallback is False (same as the registered default)."""
-    monkeypatch.setattr(style_grid.shared.opts, "data", {})
-    styles = [_style("SKIN_Tan", "tanned skin", "pale skin")]
-    script = _script(monkeypatch, styles)
-    p = _p(["{sg:skin}"], ["lowres"])
-    script.process(p, "")
-
-    assert p.all_negative_prompts == ["lowres"]
-    assert p.extra_generation_params[style_grid.INFOTEXT_STYLE_NEGATIVES] is False
+    assert not any("style negatives" in key.lower() for key in p.extra_generation_params)
 
 
 def test_resolve_sg_picks_reuses_paired_picks_then_draws():

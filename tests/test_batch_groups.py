@@ -291,3 +291,38 @@ def test_heterogeneous_hires_keeps_prefix(monkeypatch):
     assert p.all_hr_prompts[1].startswith("right ")
     assert "{sg:" not in p.all_hr_prompts[0]
     assert "{sg:" not in p.all_hr_prompts[1]
+
+
+def test_hires_mirrors_per_slot_when_positives_heterogeneous_unpaired_neg(monkeypatch):
+    """Hetero positives (no tokens) + uniform unpaired neg token: hires must mirror each slot.
+
+    Positives not collapsed → negatives resolve per slot with DeckContext(base_seed, i).
+    Raw/HR negatives stay uniform, so the collapsed hires branch must copy per-slot
+    first_pass_resolved, not broadcast slot 0.
+    """
+    script = _script(monkeypatch, BODY)
+    token = "{sg:BODY:A,B,C}"
+    raw_pos = ["a", "b"]
+    raw_neg = [token, token]
+    found_seed = None
+    for seed in range(80):
+        p = _p(
+            raw_pos,
+            raw_neg,
+            batch_size=2,
+            seed=seed,
+            hr_prompts=list(raw_pos),
+            hr_negatives=list(raw_neg),
+        )
+        script.process(p, "")
+        if p.all_negative_prompts[0] != p.all_negative_prompts[1]:
+            found_seed = seed
+            assert p.all_hr_prompts[0] == p.all_prompts[0]
+            assert p.all_hr_prompts[1] == p.all_prompts[1]
+            assert p.all_hr_negative_prompts[0] == p.all_negative_prompts[0]
+            assert p.all_hr_negative_prompts[1] == p.all_negative_prompts[1]
+            break
+    assert found_seed is not None, (
+        "expected a seed where first-pass negatives of slot 0 and 1 differ "
+        "(otherwise the scenario is vacuous)"
+    )

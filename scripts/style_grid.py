@@ -91,14 +91,18 @@ def _resolve_hires_prompts(
             text = hr_prompts[start]
             paired = first_pass_picks[start] if first_pass_picks else []
             if start < len(first_pass_raw) and text == first_pass_raw[start]:
-                resolved = first_pass_resolved[start]
-                picks = paired
+                # Raw HR matches first-pass raw: reuse each slot's own first-pass
+                # result (first_pass_resolved may differ per slot when positives
+                # were heterogeneous and this list stayed uniform).
+                for i in range(start, end):
+                    hr_prompts[i] = first_pass_resolved[i]
+                    hr_picks[i] = first_pass_picks[i] if first_pass_picks else []
             else:
                 deck = DeckContext(base_seed, group_index) if base_seed is not None else None
                 resolved, picks = _resolve_entry(text, styles_by_cat, field, deck, paired)
-            for i in range(start, end):
-                hr_prompts[i] = resolved
-                hr_picks[i] = picks
+                for i in range(start, end):
+                    hr_prompts[i] = resolved
+                    hr_picks[i] = picks
         else:
             for i in range(start, end):
                 paired = first_pass_picks[i] if first_pass_picks else []

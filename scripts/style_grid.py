@@ -36,6 +36,22 @@ def _deck_base_seed(p) -> int:
     return DECK_FALLBACK_SEED
 
 
+def _batch_size_of(p) -> int:
+    """Forge batch size; groups of this many prompt slots share one wildcard expansion."""
+    try:
+        return max(1, int(getattr(p, "batch_size", 1) or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _uniform(texts, start: int, end: int) -> bool:
+    """True when every texts[i] for i in [start, end) equals texts[start]."""
+    if start >= end:
+        return True
+    first = texts[start]
+    return all(texts[i] == first for i in range(start + 1, end))
+
+
 def _resolve_entry(text, styles_by_cat, field, deck, paired=()):
     """Resolve one prompt string; returns the deduped text and its picks."""
     rng = dice_rng(deck) if deck is not None else None
@@ -51,6 +67,7 @@ def _resolve_hires_prompts(
     field,
     base_seed: int | None = None,
     first_pass_picks=None,
+    batch_size: int = 1,
 ):
     """Resolve wildcards in a hires-pass prompt list, in place; return each entry's picks.
 
@@ -59,17 +76,41 @@ def _resolve_hires_prompts(
     entry that still matches the unresolved first-pass text reuses the first-pass
     result so both passes draw the same styles; a real override is resolved on its
     own, reusing ``first_pass_picks`` for the tokens it shares with the first pass.
+    Uniform batches share one expansion (``group_index``); mixed slots keep HEAD
+    per-index resolution with ``DeckContext(base_seed, i)``.
     """
-    hr_picks = []
-    for i, text in enumerate(hr_prompts):
-        paired = first_pass_picks[i] if first_pass_picks else []
-        if i < len(first_pass_raw) and text == first_pass_raw[i]:
-            hr_prompts[i] = first_pass_resolved[i]
-            hr_picks.append(paired)
+    hr_picks = [None] * len(hr_prompts)
+    batch_size = max(1, int(batch_size or 1))
+    for start in range(0, len(hr_prompts), batch_size):
+        end = min(start + batch_size, len(hr_prompts))
+        group_index = start // batch_size
+        first_pass_uniform = (
+            end <= len(first_pass_raw) and _uniform(first_pass_raw, start, end)
+        )
+        if _uniform(hr_prompts, start, end) and first_pass_uniform:
+            text = hr_prompts[start]
+            paired = first_pass_picks[start] if first_pass_picks else []
+            if start < len(first_pass_raw) and text == first_pass_raw[start]:
+                resolved = first_pass_resolved[start]
+                picks = paired
+            else:
+                deck = DeckContext(base_seed, group_index) if base_seed is not None else None
+                resolved, picks = _resolve_entry(text, styles_by_cat, field, deck, paired)
+            for i in range(start, end):
+                hr_prompts[i] = resolved
+                hr_picks[i] = picks
         else:
-            deck = DeckContext(base_seed, i) if base_seed is not None else None
-            hr_prompts[i], picks = _resolve_entry(text, styles_by_cat, field, deck, paired)
-            hr_picks.append(picks)
+            for i in range(start, end):
+                paired = first_pass_picks[i] if first_pass_picks else []
+                if i < len(first_pass_raw) and hr_prompts[i] == first_pass_raw[i]:
+                    hr_prompts[i] = first_pass_resolved[i]
+                    hr_picks[i] = paired
+                else:
+                    deck = DeckContext(base_seed, i) if base_seed is not None else None
+                    hr_prompts[i], picks = _resolve_entry(
+                        hr_prompts[i], styles_by_cat, field, deck, paired
+                    )
+                    hr_picks[i] = picks
     return hr_picks
 
 
@@ -163,21 +204,55 @@ class StyleGridScript(scripts.Script):
             styles_by_cat["lora"] = lora_styles
 
         base_seed = _deck_base_seed(p)
+        batch_size = _batch_size_of(p)
 
         first_pass_raw = list(p.all_prompts)
-        first_pass_picks = []
-        for i, text in enumerate(first_pass_raw):
-            p.all_prompts[i], picks = _resolve_entry(
-                text, styles_by_cat, "prompt", DeckContext(base_seed, i)
-            )
-            first_pass_picks.append(picks)
+        first_pass_picks = [None] * len(first_pass_raw)
+        collapsed_groups: set[int] = set()
+        for start in range(0, len(first_pass_raw), batch_size):
+            end = min(start + batch_size, len(first_pass_raw))
+            group_index = start // batch_size
+            if _uniform(first_pass_raw, start, end):
+                collapsed_groups.add(start)
+                resolved, picks = _resolve_entry(
+                    first_pass_raw[start],
+                    styles_by_cat,
+                    "prompt",
+                    DeckContext(base_seed, group_index),
+                )
+                for i in range(start, end):
+                    p.all_prompts[i] = resolved
+                    first_pass_picks[i] = picks
+            else:
+                for i in range(start, end):
+                    p.all_prompts[i], first_pass_picks[i] = _resolve_entry(
+                        first_pass_raw[i], styles_by_cat, "prompt", DeckContext(base_seed, i)
+                    )
 
         _add_style_negatives(p.all_negative_prompts, first_pass_picks)
         first_pass_raw_negative = list(p.all_negative_prompts)
-        for i, text in enumerate(first_pass_raw_negative):
-            p.all_negative_prompts[i], _ = _resolve_entry(
-                text, styles_by_cat, "negative_prompt", DeckContext(base_seed, i), first_pass_picks[i]
-            )
+        for start in range(0, len(first_pass_raw_negative), batch_size):
+            end = min(start + batch_size, len(first_pass_raw_negative))
+            group_index = start // batch_size
+            if start in collapsed_groups and _uniform(first_pass_raw_negative, start, end):
+                resolved, _ = _resolve_entry(
+                    first_pass_raw_negative[start],
+                    styles_by_cat,
+                    "negative_prompt",
+                    DeckContext(base_seed, group_index),
+                    first_pass_picks[start],
+                )
+                for i in range(start, end):
+                    p.all_negative_prompts[i] = resolved
+            else:
+                for i in range(start, end):
+                    p.all_negative_prompts[i], _ = _resolve_entry(
+                        first_pass_raw_negative[i],
+                        styles_by_cat,
+                        "negative_prompt",
+                        DeckContext(base_seed, i),
+                        first_pass_picks[i],
+                    )
         _drop_positive_tags(p.all_negative_prompts, p.all_prompts, first_pass_picks)
 
         # Hires fix samples its second pass from all_hr_prompts / all_hr_negative_prompts;
@@ -187,7 +262,14 @@ class StyleGridScript(scripts.Script):
         hr_picks = first_pass_picks
         if hr_prompts:
             hr_picks = _resolve_hires_prompts(
-                hr_prompts, first_pass_raw, p.all_prompts, styles_by_cat, "prompt", base_seed, first_pass_picks
+                hr_prompts,
+                first_pass_raw,
+                p.all_prompts,
+                styles_by_cat,
+                "prompt",
+                base_seed,
+                first_pass_picks,
+                batch_size,
             )
         hr_negative_prompts = getattr(p, "all_hr_negative_prompts", None)
         if hr_negative_prompts:
@@ -200,6 +282,7 @@ class StyleGridScript(scripts.Script):
                 "negative_prompt",
                 base_seed,
                 hr_picks,
+                batch_size,
             )
             _drop_positive_tags(hr_negative_prompts, hr_prompts or p.all_prompts, hr_picks)
 

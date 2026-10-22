@@ -163,7 +163,7 @@ The small tab badge in the panel header shows the active host context.
 
 **How `{sg:…}` wildcards work**
 
-- **Syntax (whole category):** `{sg:<category>}` — curly braces, the prefix `sg:`, then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{sg:…\}` (see `stylegrid/wildcards.py`).
+- **Syntax (whole category):** `{sg:<category>}` — curly braces, the `sg` / `sgd` prefix (case-insensitive, so `{SG:…}` and `{SGD:…}` work too), then the **category label** as it appears in Style Grid (e.g. `ACCESSORY` or `accessory`). Only this pattern is special; the regex is `\{(sgd?):…\}` with `re.IGNORECASE` (see `stylegrid/wildcards.py`).
 - **Syntax (slice):** `{sg:<category>:<spec>}`. Spec entries are comma-separated **style-name suffixes without the category prefix** — e.g. `{sg:body:Tanned,Shortstack}`, not `BODY_Tanned`. A leading `-` excludes (`{sg:body:-Tanned}` = whole category minus that style); a trailing `*` is a prefix glob (`{sg:body:Male_*}`).
 - **Slice resolution:** include entries are **unioned** first, then excludes **subtract**. If every listed name is missing from the CSV, the token **falls back to the whole category** rather than breaking the prompt. The UI writes whichever form is shortest (so selecting almost an entire category often produces a compact exclude token); the resolver understands all forms regardless.
 - **When it runs:** tokens are expanded **at generation time** inside Style Grid’s own processing hook (`scripts/style_grid.py`), **before** the rest of the prompt is handled like a normal WebUI prompt.

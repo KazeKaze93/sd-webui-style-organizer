@@ -15,10 +15,32 @@ import pytest
 
 from stylegrid.wildcards import (
     _MAX_PASSES,
+    DeckContext,
     parse_sg_token,
+    resolve_sg_picks,
     resolve_sg_wildcards,
     select_slice,
 )
+
+_BODY_CASE_FIXTURE = {
+    "body": [
+        {
+            "name": "BODY_A",
+            "prompt": "tag_a",
+            "negative_prompt": "neg_a",
+        },
+        {
+            "name": "BODY_B",
+            "prompt": "tag_b",
+            "negative_prompt": "neg_b",
+        },
+        {
+            "name": "BODY_C",
+            "prompt": "tag_c",
+            "negative_prompt": "neg_c",
+        },
+    ],
+}
 
 _GOLDEN_PATH = Path(__file__).resolve().parent / "fixtures" / "sg_wildcard_golden.json"
 _FIELD_BY_CASE = {"pos": "prompt", "neg": "negative_prompt"}
@@ -177,6 +199,53 @@ def test_plain_sg_token_behaves_as_before():
 
     assert seen["pool"] is styles_by["accessory"]
     assert result == "prefix picked_prompt suffix"
+
+
+def test_sg_prefix_case_insensitive_slice_resolves_like_lowercase():
+    styles_by = _BODY_CASE_FIXTURE
+    assert resolve_sg_wildcards("{SG:BODY:A}", styles_by) == "tag_a"
+    assert resolve_sg_wildcards("{Sg:body:a}", styles_by) == "tag_a"
+
+
+def test_sgd_prefix_case_insensitive_deck_matches_lowercase():
+    styles_by = _BODY_CASE_FIXTURE
+    base_seed = 12345
+    for image_index in range(6):
+        deck = DeckContext(base_seed=base_seed, image_index=image_index)
+        lower, _ = resolve_sg_picks("{sgd:BODY}", styles_by, deck=deck)
+        upper, _ = resolve_sg_picks("{SGD:BODY}", styles_by, deck=deck)
+        assert upper == lower
+
+
+def test_sg_prefix_case_insensitive_pairing_identity():
+    styles_by = _BODY_CASE_FIXTURE
+    allowed = {("tag_a", "neg_a"), ("tag_b", "neg_b")}
+    for seed in range(80):
+        rng = random.Random(seed)
+        pos, picks = resolve_sg_picks(
+            "{SG:BODY:A,B}", styles_by, rng=rng
+        )
+        neg, _ = resolve_sg_picks(
+            "{sg:BODY:A,B}",
+            styles_by,
+            field="negative_prompt",
+            paired=picks,
+            rng=random.Random(seed),
+        )
+        assert (pos, neg) in allowed
+
+        rng = random.Random(seed)
+        pos, picks = resolve_sg_picks(
+            "{sg:BODY:A,B}", styles_by, rng=rng
+        )
+        neg, _ = resolve_sg_picks(
+            "{SG:BODY:A,B}",
+            styles_by,
+            field="negative_prompt",
+            paired=picks,
+            rng=random.Random(seed),
+        )
+        assert (pos, neg) in allowed
 
 
 # --- Golden fixture (shared R2/R3 resolver contract) ---------------------------

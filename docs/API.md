@@ -38,7 +38,7 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 
 | Topic | Behavior |
 |---|---|
-| Syntax | `{sg:<category>}` (whole category) or `{sg:<category>:<spec>}` (slice). Matched by regex `\{sg:([^}]+)\}` (unchanged); the capture is split on the **first** `:` by `parse_sg_token`. Same forms exist for shuffle tokens `{sgd:…}`. |
+| Syntax | `{sg:<category>}` (whole category) or `{sg:<category>:<spec>}` (slice). Matched by regex `\{(sgd?):([^}]+)\}` with `re.IGNORECASE` (the `sg` / `sgd` prefix is case-insensitive); the capture is split on the **first** `:` by `parse_sg_token`. Same forms exist for shuffle tokens `{sgd:…}`. |
 | Spec grammar | Implemented by `select_slice`: comma-separated entries; each entry is a style-name suffix with the category prefix omitted, optionally `-`-prefixed to exclude and/or `*`-suffixed as a prefix glob. Full names are reconstructed as `CATEGORY_suffix` and compared case-insensitively. |
 | Resolution | Include entries are unioned first (all candidates when there are no include entries); then excludes subtract. |
 | Lookup | Token category is lowercased; map key is lowercased category from loaded styles. |

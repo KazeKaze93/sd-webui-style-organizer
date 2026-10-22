@@ -7,6 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Changed
+- **Wildcard tokens:** the `sg` and `sgd` prefix is now case-insensitive, so `{SG:BODY}` and `{SGD:BODY}` work the same as the lowercase form. This matches the ComfyUI version, so prompts move between the two without edits.
 - **Wildcards:** unknown or empty `{sg:…}` / `{sgd:…}` tokens are now stripped with a warning after nested resolution passes, instead of being left as raw text in the prompt. Empty style fields also resolve to an empty string (token not kept).
 - **Favorites and Recent** persist in `data/favorites.json` / `data/recent.json` (server) instead of browser localStorage. On first load, legacy `sg_v2_favorites` / `sg_v2_recent` keys are migrated once when the server files are absent.
 - **Backup** also includes `usage.json`, `category_order.json`, `favorites.json`, and `recent.json` (plus existing CSVs and `presets.json`). Thumbnails are opt-in. **Restore** is available in the Backup / Restore UI and creates a safety snapshot first.

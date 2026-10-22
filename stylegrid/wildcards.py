@@ -14,7 +14,7 @@ logger = logging.getLogger("StyleGrid")
 
 TOKEN_SG = "sg"
 TOKEN_SGD = "sgd"
-TOKEN_PATTERN = re.compile(r"\{(sgd?):([^}]+)\}")
+TOKEN_PATTERN = re.compile(r"\{(sgd?):([^}]+)\}", re.IGNORECASE)
 SPEC_ENTRY_SEPARATOR = ","
 DECK_ID_SEPARATOR = "|"
 _MAX_PASSES = 3
@@ -146,7 +146,7 @@ def select_slice(candidates, category, spec):
 def _count_sgd_occurrences(prompt: str) -> dict[tuple[str, str], int]:
     totals: dict[tuple[str, str], int] = {}
     for m in TOKEN_PATTERN.finditer(prompt):
-        if m.group(1) != TOKEN_SGD:
+        if m.group(1).lower() != TOKEN_SGD:
             continue
         category, spec = parse_sg_token(m.group(2))
         key = (category, normalize_deck_spec(spec))
@@ -216,7 +216,7 @@ def resolve_sg_picks(
         sgd_running: dict[tuple[str, str], int] = {}
 
         def replacer(m):
-            kind = m.group(1)
+            kind = m.group(1).lower()
             inner = m.group(2)
             category, spec = parse_sg_token(inner)
             candidates = styles_by_category.get(category)

@@ -18,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `GET /style_grid/backups`, `POST /style_grid/restore`, and optional `include_thumbnails` on `POST /style_grid/backup`.
 - **Export / Import** include favorites and recent lists.
 
+### Fixed
+- **Clear button:** Clear now empties both the positive and the negative prompt fields completely. Previously text you typed yourself was left behind.
+- **Batch generation with wildcards:** `{sg:...}` and `{sgd:...}` tokens are now expanded once per batch instead of once per image. All images in a batch share the same picks, and different batches still differ. This fixes `RuntimeError: The expanded size of the tensor ... must match the existing size` on reForge when batch size is greater than 1. Batch size 1 behaves exactly as before, and the same seed still gives the same picks.
+- **Hires fix:** in batches whose prompts differ per image, the hires pass now mirrors each image's own first-pass result.
+
 ## [5.3.0] - 2026-10-14
 
 ### Changed

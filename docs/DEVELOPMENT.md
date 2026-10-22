@@ -112,7 +112,7 @@ sequenceDiagram
 
 **Apply / unapply (`SG_APPLY` / `SG_UNAPPLY`):** The host maintains `state[tab].selected` and `selectedOrder`, because presets and other features read that set — applying a style adds the id and remembers `source_file` on the applied record; unapply removes it. This keeps **Save preset** consistent with what is actually selected. **Reorder** updates `selectedOrder` and rebuilds prompts from existing additive/wrap records (including wrap templates) without fabricating full-prompt deltas.
 
-**Clear:** host `clearAll` restores textareas from `userPromptBase` / `userPromptBaseNeg` instead of wiping typed user text. That snapshot usage is intentional and unchanged.
+**Clear:** host `clearAll` wipes both prompt and negative textareas to `""`, then clears selection/applied state and posts `SG_CLEAR_SELECTION` to the iframe. (`userPromptBase` / `userPromptBaseNeg` are still snapshotted on first apply but are not used by Clear.)
 
 **Reorder base (`rebuildPromptFromOrder`):** does **not** read `userPromptBase` / `userPromptBaseNeg` at all. It derives the base from the **live** textareas by unwinding each applied style in reverse `state[tab].appliedNestOrder` (wrap templates stripped by prefix/suffix, additive tags via `removeSubstringFromPrompt`), re-appends in the new order, then re-records `appliedNestOrder = orderedApplied`. Why: the old snapshot was captured once when `applied.size === 0`, so anything typed or inserted afterwards — including `{sg:…}` tokens — was silently dropped on the next reorder.
 

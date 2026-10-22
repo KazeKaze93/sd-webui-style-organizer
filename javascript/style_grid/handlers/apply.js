@@ -10,7 +10,6 @@ import {
 import {
     removeSubstringFromPrompt,
     stripWrapOrTagsFromText,
-    splitTopLevelCommas,
     setPromptValue,
 } from "../prompt-utils.js";
 import {
@@ -229,31 +228,9 @@ function postClearSelectionToIframes(tabName) {
 
 function clearAll(tabName) {
         var promptEl = qs("#" + tabName + "_prompt textarea");
-        var negEl    = qs("#" + tabName + "_neg_prompt textarea");
-        var p = promptEl ? (promptEl.value || "") : "";
-        var n = negEl ? (negEl.value || "") : "";
-
-        // Subtract what we added: unwind applied styles from live text (same strategy as rebuildPromptFromOrder).
-        var nest = state[tabName].appliedNestOrder || [];
-        for (var i = nest.length - 1; i >= 0; i--) {
-            var unwindName = nest[i];
-            var unwindRec = state[tabName].applied.get(unwindName);
-            if (!unwindRec) continue;
-            p = stripWrapOrTagsFromText(p, unwindRec.wrapTemplate, unwindRec.prompt);
-            n = stripWrapOrTagsFromText(n, unwindRec.negWrapTemplate, unwindRec.negative);
-        }
-
-        var wcRe = /^\{(sgd?):([^}]+)\}$/i;
-        var stripWildcardTokens = function (s) {
-            return splitTopLevelCommas(s || "").map(function (t) { return t.trim(); }).filter(function (t) {
-                return t && !wcRe.test(t);
-            }).join(", ");
-        };
-        p = stripWildcardTokens(p);
-        n = stripWildcardTokens(n);
-
-        if (promptEl) setPromptValue(promptEl, p);
-        if (negEl)    setPromptValue(negEl, n);
+        var negEl = qs("#" + tabName + "_neg_prompt textarea");
+        if (promptEl) setPromptValue(promptEl, "");
+        if (negEl) setPromptValue(negEl, "");
 
         state[tabName].selected.clear();
         state[tabName].selectedOrder = [];

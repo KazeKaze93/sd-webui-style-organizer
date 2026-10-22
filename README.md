@@ -281,7 +281,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 |---|---|
 | Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under the user-data `backups/` folder (folder + `.zip`) of loaded style CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
 | Import/Export | Export/import styles, presets, **favorites**, and **recent**. Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
-| Clear all selected styles | Clears all selected styles in the panel and on the host; restores the user’s base prompt/negative text instead of wiping the textareas. |
+| Clear all selected styles | Clears all selected styles in the panel and on the host, and wipes both the prompt and negative prompt textareas. |
 | Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
 | Collapse all / Expand all | One control: **Collapse all** when every category is expanded; **Expand all** when any category is collapsed. |
 | New style | Creates a style in the **currently selected CSV**. Disabled until a specific (non–read-only) source is selected — tooltip explains why. |

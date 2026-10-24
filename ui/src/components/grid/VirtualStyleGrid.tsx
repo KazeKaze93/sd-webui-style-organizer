@@ -47,6 +47,10 @@ import {
   gridGapPx,
   minCardWidthPx,
 } from './constants'
+import {
+  getCachedRangeIndexes,
+  type StickyRangeCache,
+} from './rangeCache'
 
 const NAV_KEYS = new Set<string>([
   'ArrowLeft',
@@ -135,13 +139,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   const rowsRef = useRef<GridRow[]>([])
   // Profile (scroll N=5000): rangeExtractor new arrays every scroll sample —
   // reuse prior result when start/end/sticky index unchanged.
-  const rangeCacheRef = useRef<{
-    startIndex: number
-    endIndex: number
-    sticky: number
-    focusedRow: number | null
-    result: number[]
-  } | null>(null)
+  const rangeCacheRef = useRef<StickyRangeCache | null>(null)
 
   const focusedCell = useFocusedCell()
   const focusedRow = focusedCell?.row ?? null
@@ -227,16 +225,8 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
       if (stickyIndexes.length === 0) {
         const base = defaultRangeExtractor(range)
         if (focused == null) return base
-        const cached = rangeCacheRef.current
-        if (
-          cached &&
-          cached.startIndex === range.startIndex &&
-          cached.endIndex === range.endIndex &&
-          cached.sticky === -1 &&
-          cached.focusedRow === focused
-        ) {
-          return cached.result
-        }
+        const hit = getCachedRangeIndexes(rangeCacheRef.current, range, -1, focused)
+        if (hit) return hit
         const next = new Set(base)
         next.add(focused)
         const result = [...next].sort((a, b) => a - b)
@@ -245,22 +235,15 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
           endIndex: range.endIndex,
           sticky: -1,
           focusedRow: focused,
+          count: range.count,
           result,
         }
         return result
       }
       const sticky = activeStickyHeaderIndex(stickyIndexes, range.startIndex)
       activeStickyIndexRef.current = sticky
-      const cached = rangeCacheRef.current
-      if (
-        cached &&
-        cached.startIndex === range.startIndex &&
-        cached.endIndex === range.endIndex &&
-        cached.sticky === sticky &&
-        cached.focusedRow === focused
-      ) {
-        return cached.result
-      }
+      const hit = getCachedRangeIndexes(rangeCacheRef.current, range, sticky, focused)
+      if (hit) return hit
       const next = new Set([sticky, ...defaultRangeExtractor(range)])
       if (focused != null) next.add(focused)
       const result = [...next].sort((a, b) => a - b)
@@ -269,6 +252,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         endIndex: range.endIndex,
         sticky,
         focusedRow: focused,
+        count: range.count,
         result,
       }
       return result
@@ -298,7 +282,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   useEffect(() => {
     rangeCacheRef.current = null
     virtualizer.measure()
-  }, [columns, compactMode, windowed, focusedRow, virtualizer])
+  }, [columns, compactMode, windowed, focusedRow, rows.length, virtualizer])
 
   const scrollToHeader = useCallback(
     (category: string) => {
@@ -443,6 +427,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         }}
       >
         {virtualItems.map((virtualRow) => {
+          if (!virtualRow) return null
           const row = rows[virtualRow.index]
           if (!row) return null
           const isActiveSticky =

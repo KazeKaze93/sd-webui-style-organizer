@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import stylegrid.lora_scan as lora_scan
 from stylegrid import cache as sg_cache
 from stylegrid import csv_io
 from stylegrid import data_files as sg_data
-import stylegrid.lora_scan as lora_scan
 
 # Golden captured with the pre-change process() path
 # (list(get_cached_styles()); inject preexisting display_name; categorize_styles(all_styles))

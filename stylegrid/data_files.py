@@ -18,7 +18,7 @@ from stylegrid.config import (
     THUMBNAILS_DIR,
     get_all_styles_file_paths,
 )
-from stylegrid.csv_io import load_all_styles
+from stylegrid.cache import get_cached_styles
 from stylegrid.safe_persistence import (
     CorruptDataError,
     cleanup_stale_tmp,
@@ -221,7 +221,7 @@ def normalize_presets(presets):
     if not isinstance(presets, dict):
         return {}
     styles_by_name_first = {}
-    for s in load_all_styles():
+    for s in get_cached_styles():
         styles_by_name_first.setdefault(s["name"], s)
     out = {}
     for preset_name, preset in presets.items():

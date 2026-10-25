@@ -13,7 +13,7 @@ from modules import script_callbacks, scripts  # type: ignore[reportMissingImpor
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
 from stylegrid.cache import get_cached_styles
-from stylegrid.csv_io import categorize_styles, load_all_styles, normalize_source_path
+from stylegrid.csv_io import categorize_styles, enrich_style, load_all_styles, normalize_source_path
 from stylegrid.data_files import load_presets
 from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.prompt_ops import dedup_prompt, drop_shared_tags
@@ -174,8 +174,7 @@ class StyleGridScript(scripts.Script):
 
     def process(self, p: StableDiffusionProcessing, *args):
         """Resolve {sg:...} wildcards at generation time and add the picked styles' negatives."""
-        all_styles = list(get_cached_styles())
-        categorize_styles(all_styles)
+        all_styles = [enrich_style(s) for s in get_cached_styles()]
 
         # args[0] = active source filter passed from UI ("" means All Sources)
         active_source = (args[0] if len(args) >= 1 else "") or ""

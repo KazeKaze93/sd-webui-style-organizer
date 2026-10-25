@@ -22,7 +22,7 @@ def presets_env(tmp_path, monkeypatch):
     presets_path = tmp_path / "presets.json"
     monkeypatch.setattr(sg_data, "PRESETS_FILE", str(presets_path))
     monkeypatch.setattr(sg_config, "PRESETS_FILE", str(presets_path))
-    monkeypatch.setattr(sg_data, "load_all_styles", lambda: [])
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: [])
     return sg_data, presets_path
 
 

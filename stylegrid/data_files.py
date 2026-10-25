@@ -7,6 +7,7 @@ import shutil
 import time
 import zipfile
 
+from stylegrid.cache import get_cached_styles
 from stylegrid.config import (
     BACKUP_DIR,
     CATEGORY_ORDER_FILE,
@@ -18,7 +19,6 @@ from stylegrid.config import (
     THUMBNAILS_DIR,
     get_all_styles_file_paths,
 )
-from stylegrid.cache import get_cached_styles
 from stylegrid.safe_persistence import (
     CorruptDataError,
     cleanup_stale_tmp,

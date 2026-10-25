@@ -612,7 +612,7 @@ def test_load_presets_keeps_unresolved_bare_name(tmp_csv, tmp_path, monkeypatch)
     from stylegrid import csv_io
     from stylegrid import data_files as sg_data
 
-    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     path = tmp_path / "presets.json"
     path.write_text(
         json.dumps(
@@ -647,7 +647,7 @@ def test_presets_save_exists_without_overwrite(style_grid_client, tmp_csv, tmp_p
     from stylegrid import routes as sg_routes
 
     monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
-    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
         monkeypatch,
@@ -681,7 +681,7 @@ def test_presets_save_overwrite_preserves_created(style_grid_client, tmp_csv, tm
     from stylegrid import routes as sg_routes
 
     monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
-    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
         monkeypatch,
@@ -723,7 +723,7 @@ def test_presets_rename_and_touch(style_grid_client, tmp_csv, tmp_path, monkeypa
     from stylegrid import routes as sg_routes
 
     monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
-    monkeypatch.setattr(sg_data, "load_all_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
         monkeypatch,

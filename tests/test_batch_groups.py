@@ -6,7 +6,7 @@ import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from stylegrid.csv_io import categorize_styles
+from stylegrid.csv_io import enrich_style
 from stylegrid.prompt_ops import dedup_prompt
 from stylegrid.wildcards import DeckContext, dice_rng, resolve_sg_picks
 
@@ -104,8 +104,7 @@ def _p(prompts, negatives=None, *, batch_size=1, seed=0, hr_prompts=None, hr_neg
 
 
 def _styles_by_cat(styles):
-    rows = [dict(s) for s in styles]
-    categorize_styles(rows)
+    rows = [enrich_style(dict(s)) for s in styles]
     by_cat: dict[str, list] = {}
     for s in rows:
         key = (s.get("category") or "").lower()

@@ -130,35 +130,48 @@ def _category_from_filename(source):
     return base[0].upper() + base[1:]
 
 
+def enrich_style(s: dict) -> dict:
+    """Return a shallow copy with category, display_name, and has_placeholder set.
+
+    An existing display_name is kept (LoRA scan pre-sets titles).
+    """
+    out = dict(s)
+    name = out["name"]
+    source = out.get("source") or ""
+    explicit_cat = (out.get("category_explicit") or "").strip()
+    if explicit_cat:
+        cat = explicit_cat
+        display = name.split("_", 1)[1].replace("_", " ") if "_" in name else name
+    elif "_" in name:
+        before, rest = name.split("_", 1)
+        cat = before.upper()
+        display = rest.replace("_", " ")
+    elif "-" in name:
+        before, rest = name.split("-", 1)
+        cat = before
+        display = rest.replace("-", " ")
+    else:
+        cat = _category_from_filename(source)
+        if not cat:
+            cat = "OTHER"
+        display = name.replace("_", " ")
+    out["category"] = cat
+    if not out.get("display_name"):
+        out["display_name"] = display
+    out["has_placeholder"] = "{prompt}" in (out.get("prompt") or "") or "{prompt}" in (
+        out.get("negative_prompt") or ""
+    )
+    return out
+
+
 def categorize_styles(styles):
     categories = {}
     for s in styles:
-        name = s["name"]
-        source = s.get("source") or ""
-        explicit_cat = s.get("category_explicit", "").strip()
-        if explicit_cat:
-            cat = explicit_cat
-            display = name.split("_", 1)[1].replace("_", " ") if "_" in name else name
-        elif "_" in name:
-            before, rest = name.split("_", 1)
-            cat = before.upper()
-            display = rest.replace("_", " ")
-        elif "-" in name:
-            before, rest = name.split("-", 1)
-            cat = before
-            display = rest.replace("-", " ")
-        else:
-            cat = _category_from_filename(source)
-            if not cat:
-                cat = "OTHER"
-            display = name.replace("_", " ")
-        s["category"] = cat
-        if not s.get("display_name"):
-            s["display_name"] = display
-        s["has_placeholder"] = "{prompt}" in (s.get("prompt") or "") or "{prompt}" in (s.get("negative_prompt") or "")
+        row = enrich_style(s)
+        cat = row["category"]
         if cat not in categories:
             categories[cat] = []
-        categories[cat].append(s)
+        categories[cat].append(row)
     for cat in categories:
         categories[cat].sort(key=lambda x: (x.get("display_name") or x["name"] or "").lower())
     return categories

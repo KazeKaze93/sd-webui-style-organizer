@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -149,3 +151,64 @@ def test_restore_creates_safety_and_restores_metadata(backup_env):
     listed = {b["name"] for b in sg_data.list_backups()}
     assert "20260101_140000" in listed
     assert restored["safety_snapshot"] in listed
+
+
+@pytest.mark.parametrize(
+    "arcname",
+    [
+        "scripts/style_grid.py",
+        "stylegrid/routes.py",
+        "install.py",
+        "styles/../scripts/x.py",
+        "styles\\..\\scripts\\x.py",
+        "styles/sub/x.csv",
+        "styles/x.py",
+        "styles/",
+        "C:/Windows/x.csv",
+        "/etc/x.csv",
+        "samples/x.csv",
+        "external/foo/x.csv",
+        "thumbnails/../x.webp",
+        "thumbnails/abc.webp",
+        "thumbnails/" + "a" * 32 + ".png",
+        "thumbnails/sub/" + "a" * 32 + ".webp",
+        "styles/a:b.csv",
+        "",
+    ],
+)
+def test_resolve_restore_dest_rejects_non_whitelist(backup_env, arcname):
+    assert sg_data._resolve_restore_dest(arcname) is None
+
+
+def test_resolve_restore_dest_allows_styles_and_thumbs(backup_env):
+    style_dest = sg_data._resolve_restore_dest("styles/my.csv")
+    assert style_dest == os.path.join(sg_data.EXT_DIR, "styles", "my.csv")
+
+    thumb_leaf = "0123456789abcdef" * 2 + ".webp"
+    thumb_dest = sg_data._resolve_restore_dest("thumbnails/" + thumb_leaf)
+    assert thumb_dest == os.path.join(sg_data.THUMBNAILS_DIR, thumb_leaf)
+
+
+@pytest.mark.parametrize(
+    "basename",
+    ["presets.json", "category_order.json", "favorites.json", "recent.json"],
+)
+def test_resolve_restore_dest_metadata_basenames(backup_env, basename):
+    meta = dict(sg_data.metadata_backup_files())
+    assert sg_data._resolve_restore_dest(basename) == meta[basename]
+
+
+def test_restore_skips_non_whitelist_members(backup_env):
+    snap_name = "20260101_000000"
+    zip_path = Path(backup_env["backup_dir"]) / f"{snap_name}.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("styles/ok.csv", "name,prompt,negative_prompt,description,category\r\n")
+        zf.writestr("scripts/evil.py", "print('evil')\n")
+        zf.writestr("samples/s.csv", "name,prompt,negative_prompt,description,category\r\n")
+
+    result = sg_data.restore_from_backup(snap_name, create_safety=False)
+    assert "styles/ok.csv" in result["restored"]
+    assert "scripts/evil.py" in result["skipped"]
+    assert "samples/s.csv" in result["skipped"]
+    assert not (backup_env["tmp"] / "scripts" / "evil.py").exists()
+    assert not (backup_env["tmp"] / "samples" / "s.csv").exists()

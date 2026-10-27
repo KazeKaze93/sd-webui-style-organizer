@@ -331,6 +331,22 @@ def metadata_backup_files():
 
 
 _SNAPSHOT_NAME_RE = re.compile(r"^\d{8}_\d{6}(_[A-Za-z0-9]+)?$")
+_RESTORE_STYLE_LEAF_RE = re.compile(r"^[^/\\:\x00]+\.csv$", re.IGNORECASE)
+_RESTORE_THUMB_LEAF_RE = re.compile(r"^[0-9a-f]{32}\.webp$")
+
+
+def _is_strictly_inside(root, candidate):
+    """True when realpath(candidate) is inside realpath(root) and not equal to it."""
+    root_abs = os.path.realpath(root)
+    cand_abs = os.path.realpath(candidate)
+    try:
+        common = os.path.commonpath([root_abs, cand_abs])
+    except ValueError:
+        return False
+    return (
+        os.path.normcase(common) == os.path.normcase(root_abs)
+        and os.path.normcase(cand_abs) != os.path.normcase(root_abs)
+    )
 
 
 def _backup_rel_name(fp):
@@ -549,22 +565,39 @@ def _iter_snapshot_members(snapshot_name):
 
 
 def _resolve_restore_dest(arcname):
-    """Map a backup member name to an absolute destination path, or None to skip."""
-    meta = {name: path for name, path in metadata_backup_files()}
+    """Map a backup member to an absolute destination, or None to skip.
+
+    Whitelist only:
+      - metadata basenames from metadata_backup_files()
+      - styles/<file>.csv            -> EXT_DIR/styles/<file>.csv (flat, matches get_all_styles_file_paths)
+      - thumbnails/<32 hex>.webp     -> THUMBNAILS_DIR/<file> (matches get_thumbnail_path naming)
+    Everything else is skipped: samples/ (bundled, read-only), external/ (drive stripped
+    at backup time), and any other path. Backslashes, colons, NUL, leading "/" and
+    nested segments are rejected before any join.
+    """
+    if not isinstance(arcname, str) or not arcname:
+        return None
+    if "\\" in arcname or ":" in arcname or "\x00" in arcname or arcname.startswith("/"):
+        return None
+    meta = dict(metadata_backup_files())
     if arcname in meta:
         return meta[arcname]
-    if arcname.startswith("thumbnails/"):
-        rel = arcname[len("thumbnails/") :]
-        if not rel or ".." in rel.split("/"):
-            return None
-        return os.path.join(THUMBNAILS_DIR, *rel.split("/"))
-    if arcname.startswith("external/"):
-        # Drive letter was stripped at backup time — cannot restore safely.
+    parts = arcname.split("/")
+    if len(parts) != 2:
         return None
-    # Extension-relative paths (styles/…, samples/…).
-    if ".." in arcname.split("/"):
+    top, leaf = parts
+    if leaf in ("", ".", ".."):
         return None
-    return os.path.join(EXT_DIR, *arcname.split("/"))
+    if top == "styles" and _RESTORE_STYLE_LEAF_RE.match(leaf):
+        root = os.path.join(EXT_DIR, "styles")
+    elif top == "thumbnails" and _RESTORE_THUMB_LEAF_RE.match(leaf):
+        root = THUMBNAILS_DIR
+    else:
+        return None
+    dest = os.path.join(root, leaf)
+    if not _is_strictly_inside(root, dest):
+        return None
+    return dest
 
 
 def restore_from_backup(snapshot_name, *, create_safety=True):

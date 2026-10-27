@@ -63,19 +63,26 @@ def _script(monkeypatch, styles):
     return style_grid.StyleGridScript()
 
 
-def _p(prompts, negatives, seed=0, hr_prompts=None, hr_negatives=None):
+def _p(prompts, negatives, seed=0, hr_prompts=None, hr_negatives=None, *, batch_size=1):
+    n = len(prompts)
     return SimpleNamespace(
         all_prompts=list(prompts),
         all_negative_prompts=list(negatives),
-        all_seeds=[seed + i for i in range(len(prompts))],
+        all_seeds=[seed + i for i in range(n)],
+        batch_size=batch_size,
+        n_iter=max(1, (n + max(1, batch_size) - 1) // max(1, batch_size)),
+        iteration=0,
         all_hr_prompts=hr_prompts,
         all_hr_negative_prompts=hr_negatives,
         extra_generation_params={},
     )
 
 
-def _picked(p, index=0):
-    return p.extra_generation_params[style_grid.INFOTEXT_STYLES][index]
+def _picked(p, index=0, *, all_prompts=None):
+    """Resolve INFOTEXT_STYLES (callable) for one slot; default = gallery/full-job path."""
+    param = p.extra_generation_params[style_grid.INFOTEXT_STYLES]
+    assert callable(param)
+    return param(p=p, index=index, all_prompts=p.all_prompts if all_prompts is None else all_prompts)
 
 
 def _negative_of(styles, picked):
@@ -171,7 +178,7 @@ def test_batch_negatives_follow_each_image_pick(monkeypatch):
     p = _p(["{sgd:body}"] * 6, ["lowres"] * 6, seed=100)
     script.process(p, "")
 
-    picked = p.extra_generation_params[style_grid.INFOTEXT_STYLES]
+    picked = [_picked(p, i) for i in range(6)]
     assert len(set(picked[:3])) == 3
     for i in range(6):
         assert p.all_negative_prompts[i] == f"lowres, {_negative_of(BODY, picked[i])}"
@@ -276,9 +283,10 @@ def test_infotext_lists_picked_styles_per_image_without_negatives_flag(monkeypat
     p = _p(["{sg:body}, {sg:pose}", "plain"], ["", ""])
     script.process(p, "")
 
-    assert p.extra_generation_params == {
-        style_grid.INFOTEXT_STYLES: ["BODY_Tanned (a.csv), POSE_Lean (a.csv)", None],
-    }
+    assert set(p.extra_generation_params) == {style_grid.INFOTEXT_STYLES}
+    assert callable(p.extra_generation_params[style_grid.INFOTEXT_STYLES])
+    assert _picked(p, 0) == "BODY_Tanned (a.csv), POSE_Lean (a.csv)"
+    assert _picked(p, 1) is None
     assert not any("style negatives" in key.lower() for key in p.extra_generation_params)
 
 

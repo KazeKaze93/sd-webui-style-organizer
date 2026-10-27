@@ -686,26 +686,28 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 
 **Response:**
 
-Success (no name collisions, or no `styles` / empty `styles`):
+A valid body always returns HTTP 200 with `{ "ok": true }`. When `styles` is present and non-empty, the body also includes style counters:
 
 
-| field | type    | description           |
-| ----- | ------- | --------------------- |
-| `ok`  | boolean | `true` on completion. |
+| field | type | description |
+| ----- | ---- | ----------- |
+| `ok` | boolean | `true` on completion. |
+| `imported` | int | Count of styles written to the new CSV. |
+| `collisions` | array[string] | Sorted names that already exist in the non-LoRA library and were skipped. |
+| `invalid` | int | Count of entries without a non-empty string `name` (skipped). |
 
 
-When `styles` is present and non-empty, the handler writes a new `styles/imported_YYYYMMDD_HHMMSS.csv` (same as before). Presets continue to merge via update. There is no merge/upsert of styles into an existing CSV.
+Colliding and invalid entries are skipped; the remaining styles are written to a new `styles/imported_YYYYMMDD_HHMMSS.csv`. If nothing is importable, no CSV is written. Presets continue to merge via update. There is no merge/upsert of styles into an existing CSV.
 
 **Error cases:**
 
 
 | case | response body | HTTP |
 | ---- | ------------- | ---- |
-| One or more imported style names already exist in the library (LoRA-sourced styles are excluded from the check) | `{ "ok": false, "error": "Import contains style names that already exist in the library.", "collisions": ["…"] }` — `collisions` is a sorted list of conflicting names; no CSV is written and the styles cache is not invalidated | 400 |
 | Invalid JSON body | FastAPI `422` detail | 422 |
 
 
-Zip (`PK`) bodies remain presets-only and are unchanged by this collision check.
+Zip (`PK`) bodies remain presets-only.
 
 ## POST /category_order/save
 

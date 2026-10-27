@@ -280,7 +280,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 | Control | What it does |
 |---|---|
 | Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under the user-data `backups/` folder (folder + `.zip`) of loaded style CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
-| Import/Export | Export/import styles, presets, **favorites**, and **recent**. Style import is **rejected** if any imported name already exists in the library (toast lists collisions); presets still merge. |
+| Import/Export | Export/import styles, presets, **favorites**, and **recent**. Colliding names are skipped and listed in a toast; non-colliding styles are imported into a new CSV; presets still merge. |
 | Clear all selected styles | Clears all selected styles in the panel and on the host, and wipes both the prompt and negative prompt textareas. |
 | Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
 | Collapse all / Expand all | One control: **Collapse all** when every category is expanded; **Expand all** when any category is collapsed. |
@@ -390,7 +390,7 @@ Corrupt `presets.json` (or similar data files) returns HTTP **409** and refuses 
 | Thumbnails not appearing | Verify generation/upload status and user-data `thumbnails/` permissions. CSV preview URLs and generate/upload/delete **must** include `source` (`source_file`). Generation is async by `job_id` — wait for completion / check cancel. LoRA cards only show sibling preview files on disk. |
 | **🧬 LoRA** missing in sidebar | No scanned models yet — check Forge LoRA folder / `config/lora_roots.json`, then reload / reopen the Style Grid panel so `/styles` rescans. |
 | LoRA titles still filenames after 🌐 | Wait for fetch to finish (toast), then **reopen the panel** so `/styles` reloads with cached `display_name`. HTTP 429 means rate limit; retry later (failed entries are retried on the next run). |
-| Import fails with “names that already exist” | Rename or remove colliding styles in the export, or delete/rename the existing library entries first. LoRA synthetic names are excluded from the collision check. |
+| Some styles were skipped on import | The toast lists names that already exist; rename them in the export file or rename/delete the existing library entries, then import again. LoRA synthetic names are excluded from the check. |
 | Cannot edit/delete a sample style | Expected: CSVs under `samples/` are **read-only**. Copy the style into your own `styles/` CSV (or another writable source) first. |
 | Preset save blocked / **409** | `presets.json` (or another data file) is corrupt — restore from `.bak` next to it; Style Grid will not overwrite bad JSON. |
 | `/style_grid/ui` returns **401** | Expected with `--gradio-auth` until you log in to Gradio (same cookies as the WebUI login). |

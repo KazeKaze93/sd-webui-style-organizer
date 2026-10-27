@@ -228,16 +228,37 @@ function installHostKeyboardA11y() {
         else document.addEventListener("DOMContentLoaded", watchOverlays);
     }
 
-function postPanelToast(tabName, message) {
+function postPanelToast(tabName, message, variant) {
         var fr = state[tabName] && state[tabName].sgFrame;
         if (fr && fr.contentWindow) {
             postToFrame(fr, {
                 type: "SG_TOAST",
                 message: message,
-                variant: "error"
+                variant: variant || "error"
             });
         }
     }
+
+export const IMPORT_SUMMARY_MAX_NAMES = 10;
+
+/** Build the post-import toast. Returns null when the body carries no style counters. */
+export function formatImportSummary(body) {
+    if (!body || typeof body.imported !== "number") return null;
+    const collisions = Array.isArray(body.collisions) ? body.collisions : [];
+    const invalid = typeof body.invalid === "number" ? body.invalid : 0;
+    const parts = [];
+    parts.push(body.imported === 1 ? "Imported 1 style." : "Imported " + body.imported + " styles.");
+    if (collisions.length) {
+        const shown = collisions.slice(0, IMPORT_SUMMARY_MAX_NAMES).join(", ");
+        const extra = collisions.length - IMPORT_SUMMARY_MAX_NAMES;
+        parts.push("Skipped " + collisions.length + " already in the library: " + shown + (extra > 0 ? " (+" + extra + " more)" : "") + ".");
+    }
+    if (invalid > 0) {
+        parts.push("Skipped " + invalid + " invalid " + (invalid === 1 ? "entry" : "entries") + " (missing name).");
+    }
+    const variant = collisions.length || invalid > 0 ? "info" : "success";
+    return { message: parts.join(" "), variant: variant };
+}
 
 function qs(sel, root) {
         if (root) return root.querySelector(sel);
@@ -608,11 +629,13 @@ function showExportImport(tabName) {
                             }
                             return body;
                         })
-                        .then(function () {
+                        .then(function (body) {
                             overlay.remove();
                             hooks.refreshPanel(tabName);
                             var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
                             if (typeof notify === "function") notify();
+                            var summary = formatImportSummary(body);
+                            if (summary) postPanelToast(tabName, summary.message, summary.variant);
                         }).catch(function (err) {
                             showImportError((err && err.message) ? err.message : "Import failed");
                         });

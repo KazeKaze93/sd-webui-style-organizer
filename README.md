@@ -188,11 +188,11 @@ The small tab badge in the panel header shows the active host context.
 
 #### 🃏 Shuffle wildcards
 
-A **shuffle wildcard** draws styles **without repeats**. Where the random wildcard `{sg:category}` may pick the same style twice in a batch, `{sgd:category}` uses every style once before any style comes back.
+A **shuffle wildcard** draws styles **without repeats across batches**. `{sgd:category}` uses every style once before any style comes back, advancing **one deck position per batch**. Images inside one batch share the same pick (same as `{sg:...}`). To get a different style on every image, set **batch size 1** and raise **batch count**.
 
 - **Syntax:** `{sgd:category}` for a whole category, `{sgd:category:spec}` for a slice. The spec grammar is the same as for `{sg:...}` (names, `-excludes`, `Root_*` globs), and the order of entries does not matter.
 - **Insert:** right-click a category and use the *Wildcard: shuffle* group (*Whole category* or *Pick styles...*), or type the token by hand. Shuffle chips have their own icon and can be reordered, removed and saved in presets like any other wildcard.
-- **Scope of uniqueness:** one generation, that is batch count × batch size. A fixed seed repeats the same order, seed -1 gives a new order on every click.
+- **Scope of uniqueness:** one generation, counted in **batches** (batch count), not images. A fixed seed repeats the same order, seed -1 gives a new order on every click.
 - **Several tokens:** repeating the same token in one prompt draws a different style for each occurrence.
 - **Positive and negative prompts:** the same shuffle token in both fields resolves to the same style for a given image.
 - **Duplicates across packs:** styles with identical prompt and negative prompt count once.

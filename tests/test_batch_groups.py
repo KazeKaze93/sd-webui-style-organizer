@@ -6,6 +6,8 @@ import types
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from stylegrid.csv_io import enrich_style
 from stylegrid.prompt_ops import dedup_prompt
 from stylegrid.wildcards import DeckContext, dice_rng, resolve_sg_picks
@@ -97,10 +99,18 @@ def _p(prompts, negatives=None, *, batch_size=1, seed=0, hr_prompts=None, hr_neg
         all_seeds=[seed] * n,
         batch_size=batch_size,
         n_iter=max(1, (n + max(1, batch_size) - 1) // max(1, batch_size)),
+        iteration=0,
         all_hr_prompts=None if hr_prompts is None else list(hr_prompts),
         all_hr_negative_prompts=None if hr_negatives is None else list(hr_negatives),
         extra_generation_params={},
     )
+
+
+def _infotext_name(p, index, *, all_prompts=None):
+    """Resolve INFOTEXT_STYLES callable the way create_infotext would."""
+    param = p.extra_generation_params[style_grid.INFOTEXT_STYLES]
+    assert callable(param)
+    return param(p=p, index=index, all_prompts=p.all_prompts if all_prompts is None else all_prompts)
 
 
 def _styles_by_cat(styles):
@@ -224,8 +234,9 @@ def test_partial_last_group(monkeypatch):
 
     assert p.all_prompts[0] == p.all_prompts[1]
     assert p.all_prompts[2] in ("tag_a", "tag_b", "tag_c")
-    styles = p.extra_generation_params[style_grid.INFOTEXT_STYLES]
-    assert len(styles) == len(p.all_prompts) == 3
+    names = [_infotext_name(p, i) for i in range(len(p.all_prompts))]
+    assert len(names) == 3
+    assert all(names)
 
 
 def test_negative_token_equal_inside_batch(monkeypatch):
@@ -325,3 +336,104 @@ def test_hires_mirrors_per_slot_when_positives_heterogeneous_unpaired_neg(monkey
         "expected a seed where first-pass negatives of slot 0 and 1 differ "
         "(otherwise the scenario is vacuous)"
     )
+
+
+def _save_path_name(p, iteration, index=0):
+    """Simulate Forge PNG save: batch-sliced prompts + batch-local index."""
+    bs = p.batch_size
+    start = iteration * bs
+    batch_prompts = p.all_prompts[start : start + bs]
+    p.iteration = iteration
+    return _infotext_name(p, index, all_prompts=batch_prompts)
+
+
+@pytest.mark.parametrize("kind", ["sg", "sgd"])
+def test_infotext_save_path_uses_iteration_not_slot0(monkeypatch, kind):
+    """batch_size=1, n_iter=25: save-path index=0 must return names[N], not names[0]."""
+    styles = [
+        {
+            "name": f"BODY_{i:02d}",
+            "prompt": f"tag_{i:02d}",
+            "negative_prompt": f"neg_{i:02d}",
+            "category_explicit": "",
+            "source": "styles.csv",
+            "source_file": "/packs/styles.csv",
+        }
+        for i in range(25)
+    ]
+    script = _script(monkeypatch, styles)
+    token = f"{{{kind}:body}}"
+    p = _p([token] * 25, [""] * 25, batch_size=1, seed=7)
+    script.process(p, "")
+
+    gallery = [_infotext_name(p, i) for i in range(25)]
+    if kind == "sgd":
+        assert len(set(gallery)) == 25, f"expected 25 distinct deck picks, got {len(set(gallery))}"
+    differ = [n for n in range(1, 25) if gallery[n] != gallery[0]]
+    assert differ, "need at least one image whose pick differs from image 0"
+    for n in (0, differ[0], 24):
+        assert _save_path_name(p, iteration=n, index=0) == gallery[n]
+
+
+def test_styles_infotext_param_25_distinct_names_save_and_gallery():
+    """Callable with 25 distinct names: gallery (global index) and PNG save path."""
+    names = [f"BODY_{i:02d} (styles.csv)" for i in range(25)]
+    param = style_grid._styles_infotext_param(names)
+    p = SimpleNamespace(batch_size=1, iteration=0)
+    for i in range(25):
+        assert param(p=p, index=i, all_prompts=["x"] * 25) == names[i]
+    for n in range(25):
+        p.iteration = n
+        assert param(p=p, index=0, all_prompts=["batch"]) == names[n]
+    p.iteration = 0
+    assert param(p=p, index=99, all_prompts=["x"] * 25) is None
+    assert param(p=p, index=0, all_prompts=["batch"]) == names[0]
+
+
+def test_infotext_save_path_batch_size_4_iteration_2_index_3(monkeypatch):
+    """batch_size=4, n_iter=3: iteration=2, index=3 → global slot 11."""
+    styles = [
+        {
+            "name": f"BODY_{i:02d}",
+            "prompt": f"tag_{i:02d}",
+            "negative_prompt": f"neg_{i:02d}",
+            "category_explicit": "",
+            "source": "styles.csv",
+            "source_file": "/packs/styles.csv",
+        }
+        for i in range(12)
+    ]
+    script = _script(monkeypatch, styles)
+    # Heterogeneous prompts so each slot keeps its own draw (no batch collapse).
+    prompts = [f"slot{i} {{sgd:body}}" for i in range(12)]
+    p = _p(prompts, [""] * 12, batch_size=4, seed=11)
+    script.process(p, "")
+
+    gallery = [_infotext_name(p, i) for i in range(12)]
+    assert _save_path_name(p, iteration=2, index=3) == gallery[11]
+    assert _save_path_name(p, iteration=2, index=3) != gallery[0]
+
+
+def test_infotext_gallery_path_global_index(monkeypatch):
+    """Processed.infotext path: full all_prompts + global index."""
+    script = _script(monkeypatch, BODY)
+    p = _p(["{sgd:BODY:A,B,C}"] * 3, [""] * 3, batch_size=1, seed=5)
+    script.process(p, "")
+
+    gallery = [_infotext_name(p, i) for i in range(3)]
+    assert len(set(gallery)) == 3
+    for i in range(3):
+        assert _infotext_name(p, i, all_prompts=p.all_prompts) == gallery[i]
+
+
+def test_infotext_single_image(monkeypatch):
+    script = _script(monkeypatch, BODY)
+    p = _p(["{sg:BODY:A,B,C}"], [""], batch_size=1, seed=2)
+    script.process(p, "")
+    name = _infotext_name(p, 0)
+    assert name in (
+        "BODY_A (styles.csv)",
+        "BODY_B (styles.csv)",
+        "BODY_C (styles.csv)",
+    )
+    assert _save_path_name(p, iteration=0, index=0) == name

@@ -144,6 +144,36 @@ def _styles_infotext(picks):
     return ", ".join(names) or None
 
 
+def _styles_infotext_param(names):
+    """create_infotext callable: pick the job-slot name for the current image.
+
+    Forge's PNG save path passes a batch-local ``index`` and batch-sliced
+    ``all_prompts``; ``Processed.infotext`` passes a global index with the
+    full job list. Detect via ``len(all_prompts) == len(names)``. Out of
+    range returns ``None`` so the field is omitted (reforge drops ``None``).
+    """
+    names = list(names)
+
+    def param(p, index, all_prompts=None, **_kwargs):
+        if all_prompts is not None and len(all_prompts) == len(names):
+            i = index
+        else:
+            try:
+                batch_size = max(1, int(getattr(p, "batch_size", 1) or 1))
+            except (TypeError, ValueError):
+                batch_size = 1
+            try:
+                iteration = int(getattr(p, "iteration", 0) or 0)
+            except (TypeError, ValueError):
+                iteration = 0
+            i = iteration * batch_size + index
+        if i < 0 or i >= len(names):
+            return None
+        return names[i]
+
+    return param
+
+
 class StyleGridScript(scripts.Script):
     def title(self):
         return "Style Grid"
@@ -291,4 +321,5 @@ class StyleGridScript(scripts.Script):
 
         extra_params = getattr(p, "extra_generation_params", None)
         if extra_params is not None and any(first_pass_picks):
-            extra_params[INFOTEXT_STYLES] = [_styles_infotext(picks) for picks in first_pass_picks]
+            names = [_styles_infotext(picks) for picks in first_pass_picks]
+            extra_params[INFOTEXT_STYLES] = _styles_infotext_param(names)

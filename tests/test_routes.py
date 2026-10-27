@@ -767,3 +767,113 @@ def test_presets_rename_and_touch(style_grid_client, tmp_csv, tmp_path, monkeypa
     assert r3.json().get("ok") is True
     assert isinstance(r3.json()["presets"]["New"].get("last_used"), str)
     assert r3.json()["presets"]["New"]["last_used"]
+
+
+def test_generate_thumbnail_returns_429_when_queue_full(style_grid_client, monkeypatch):
+    from stylegrid.thumbnails import ThumbnailQueueFullError, thumbnail_generation_manager
+
+    def _raise_full(_name, _source):
+        raise ThumbnailQueueFullError("thumbnail queue is full (20 pending)")
+
+    monkeypatch.setattr(thumbnail_generation_manager, "enqueue", _raise_full)
+    r = style_grid_client.post(
+        "/style_grid/thumbnail/generate",
+        json={"name": "Test Style A", "source": "styles.csv"},
+    )
+    assert r.status_code == 429
+    body = r.json()
+    assert body.get("ok") is False
+    assert "full" in body.get("error", "").lower()
+
+
+def test_upload_thumbnail_rejects_oversized_b64_before_decode(
+    style_grid_client, tmp_csv, monkeypatch
+):
+    from stylegrid import routes as sg_routes
+    from stylegrid import thumbnails as sg_thumbs
+
+    thumbs_dir = tmp_csv.parent / "thumbs_upload"
+    thumbs_dir.mkdir()
+    monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
+
+    called = []
+
+    def _b64_should_not_run(_data):
+        called.append(True)
+        raise AssertionError("base64.b64decode must not be called for oversized input")
+
+    monkeypatch.setattr(sg_routes.base64, "b64decode", _b64_should_not_run)
+    max_b64_len = ((sg_routes.MAX_THUMBNAIL_UPLOAD_BYTES + 2) // 3) * 4 + 4
+    r = style_grid_client.post(
+        "/style_grid/thumbnail/upload",
+        json={
+            "name": "Test Style A",
+            "source": str(tmp_csv),
+            "image": "A" * (max_b64_len + 1),
+        },
+    )
+    assert r.status_code == 200
+    assert r.json() == {"error": "Image too large (max 2MB)"}
+    assert called == []
+
+
+def test_upload_thumbnail_rejects_oversized_dimensions(
+    style_grid_client, tmp_csv, monkeypatch
+):
+    import base64
+    import sys
+    import types
+    from pathlib import Path
+
+    from stylegrid import routes as sg_routes
+    from stylegrid import thumbnails as sg_thumbs
+
+    thumbs_dir = tmp_csv.parent / "thumbs_dims"
+    thumbs_dir.mkdir()
+    monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
+
+    class _StubImg:
+        size = (4097, 4097)
+        mode = "RGB"
+        info = {}
+        is_animated = False
+
+        def convert(self, _mode):
+            raise AssertionError("convert must not run after dimension reject")
+
+        def seek(self, _frame):
+            raise AssertionError("seek must not run after dimension reject")
+
+        def save(self, *_a, **_k):
+            raise AssertionError("save must not run after dimension reject")
+
+    pil_mod = types.ModuleType("PIL")
+    pil_image = types.ModuleType("PIL.Image")
+    pil_image.open = staticmethod(lambda _buf: _StubImg())
+    pil_mod.Image = pil_image
+    monkeypatch.setitem(sys.modules, "PIL", pil_mod)
+    monkeypatch.setitem(sys.modules, "PIL.Image", pil_image)
+
+    # Tiny PNG magic only; Image.open is stubbed so payload size does not matter.
+    tiny_png = (
+        b"\x89PNG\r\n\x1a\n"
+        b"\x00\x00\x00\rIHDR"
+        b"\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    payload = base64.b64encode(tiny_png).decode("ascii")
+    before = list(thumbs_dir.iterdir())
+    r = style_grid_client.post(
+        "/style_grid/thumbnail/upload",
+        json={
+            "name": "Test Style A",
+            "source": str(tmp_csv),
+            "image": payload,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert "dimensions too large" in body.get("error", "").lower()
+    assert sg_routes.MAX_THUMBNAIL_UPLOAD_PIXELS == 4096 * 4096
+    assert list(thumbs_dir.iterdir()) == before
+    assert not any(Path(thumbs_dir).glob("*.webp"))

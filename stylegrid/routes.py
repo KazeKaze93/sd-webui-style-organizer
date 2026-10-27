@@ -65,11 +65,15 @@ from stylegrid.lora_scan import (
 from stylegrid.lora_titles import title_fetch_manager
 from stylegrid.safe_persistence import locked_path, write_atomic
 from stylegrid.thumbnails import (
+    ThumbnailQueueFullError,
     get_thumbnail_path,
     list_thumbnails,
     thumbnail_generation_manager,
 )
 from stylegrid.write_auth import inject_write_token_script, install_write_auth
+
+MAX_THUMBNAIL_UPLOAD_BYTES = 2 * 1024 * 1024
+MAX_THUMBNAIL_UPLOAD_PIXELS = 4096 * 4096
 
 
 def _register_style_routes(app):
@@ -700,8 +704,11 @@ def _register_thumbnail_routes(app):
         try:
             if "," in image_data:
                 image_data = image_data.split(",", 1)[1]
+            max_b64_len = ((MAX_THUMBNAIL_UPLOAD_BYTES + 2) // 3) * 4 + 4
+            if len(image_data) > max_b64_len:
+                return {"error": "Image too large (max 2MB)"}
             raw = base64.b64decode(image_data)
-            if len(raw) > 2 * 1024 * 1024:
+            if len(raw) > MAX_THUMBNAIL_UPLOAD_BYTES:
                 return {"error": "Image too large (max 2MB)"}
             ALLOWED_MAGIC = [
                 b'\xff\xd8\xff',
@@ -719,6 +726,14 @@ def _register_thumbnail_routes(app):
             try:
                 from PIL import Image  # type: ignore[reportMissingImports]
                 img = Image.open(io.BytesIO(raw))
+                width, height = img.size
+                if width * height > MAX_THUMBNAIL_UPLOAD_PIXELS:
+                    return {
+                        "error": (
+                            f"Image dimensions too large "
+                            f"(max {MAX_THUMBNAIL_UPLOAD_PIXELS} pixels)"
+                        )
+                    }
                 if getattr(img, "is_animated", False):
                     img.seek(0)
                 has_alpha = (
@@ -767,6 +782,8 @@ def _register_thumbnail_routes(app):
 
         try:
             job_id = mgr.enqueue(style_name, requested_source)
+        except ThumbnailQueueFullError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=429)
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
         return {"ok": True, "job_id": job_id, "status": "queued"}

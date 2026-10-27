@@ -209,6 +209,16 @@ def list_thumbnails():
     return result
 
 
+MAX_PENDING_THUMBNAIL_JOBS = 20  # queued + running
+FINISHED_JOB_TTL_SECONDS = 900  # must exceed the host batch poll window
+MAX_FINISHED_JOBS_KEPT = 200
+_FINISHED_STATUSES = frozenset({"done", "error", "cancelled"})
+
+
+class ThumbnailQueueFullError(RuntimeError):
+    """Raised when enqueue would exceed MAX_PENDING_THUMBNAIL_JOBS."""
+
+
 class ThumbnailGenerationManager:
     """FIFO single-worker thumbnail jobs: enqueue returns job_id; one process_images at a time."""
 
@@ -220,6 +230,36 @@ class ThumbnailGenerationManager:
         self._current_job_id = None
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
+
+    @staticmethod
+    def _finish(job, status, message):
+        job["status"] = status
+        job["message"] = message
+        job["finished_at"] = time.monotonic()
+
+    def _prune_finished_locked(self):
+        """Drop finished jobs past TTL, then oldest finished beyond the keep cap."""
+        now = time.monotonic()
+        expired = [
+            jid
+            for jid, job in self._jobs.items()
+            if job["status"] in _FINISHED_STATUSES
+            and job.get("finished_at") is not None
+            and (now - job["finished_at"]) > FINISHED_JOB_TTL_SECONDS
+        ]
+        for jid in expired:
+            del self._jobs[jid]
+        finished = [
+            (job.get("finished_at") if job.get("finished_at") is not None else 0.0, jid)
+            for jid, job in self._jobs.items()
+            if job["status"] in _FINISHED_STATUSES
+        ]
+        if len(finished) <= MAX_FINISHED_JOBS_KEPT:
+            return
+        finished.sort()
+        excess = len(finished) - MAX_FINISHED_JOBS_KEPT
+        for _, jid in finished[:excess]:
+            del self._jobs[jid]
 
     def enqueue(self, name, source):
         """Queue a generation job; returns job_id immediately (non-blocking)."""
@@ -233,8 +273,17 @@ class ThumbnailGenerationManager:
             "status": "queued",
             "message": None,
             "cancel_requested": False,
+            "finished_at": None,
         }
         with self._cond:
+            self._prune_finished_locked()
+            pending = sum(
+                1 for j in self._jobs.values() if j["status"] in ("queued", "running")
+            )
+            if pending >= MAX_PENDING_THUMBNAIL_JOBS:
+                raise ThumbnailQueueFullError(
+                    f"thumbnail queue is full ({MAX_PENDING_THUMBNAIL_JOBS} pending)"
+                )
             self._jobs[job_id] = record
             self._queue.append(job_id)
             self._cond.notify()
@@ -269,8 +318,7 @@ class ThumbnailGenerationManager:
                     self._queue.remove(job_id)
                 except ValueError:
                     pass
-                job["status"] = "cancelled"
-                job["message"] = "cancelled before start"
+                self._finish(job, "cancelled", "cancelled before start")
                 return True
             if status == "running":
                 job["cancel_requested"] = True
@@ -294,8 +342,7 @@ class ThumbnailGenerationManager:
                 if not job or job["status"] == "cancelled":
                     continue
                 if job.get("cancel_requested"):
-                    job["status"] = "cancelled"
-                    job["message"] = "cancelled before start"
+                    self._finish(job, "cancelled", "cancelled before start")
                     continue
                 name = job["name"]
                 source = job["source"]
@@ -307,8 +354,7 @@ class ThumbnailGenerationManager:
                     job = self._jobs.get(job_id)
                     if not job or job["status"] == "cancelled" or job.get("cancel_requested"):
                         if job and job["status"] != "cancelled":
-                            job["status"] = "cancelled"
-                            job["message"] = "cancelled while waiting for SD"
+                            self._finish(job, "cancelled", "cancelled while waiting for SD")
                         cancelled_while_waiting = True
                         break
                 busy = False
@@ -329,8 +375,7 @@ class ThumbnailGenerationManager:
                 job = self._jobs.get(job_id)
                 if not job or job["status"] == "cancelled" or job.get("cancel_requested"):
                     if job and job["status"] != "cancelled":
-                        job["status"] = "cancelled"
-                        job["message"] = "cancelled before start"
+                        self._finish(job, "cancelled", "cancelled before start")
                     continue
                 job["status"] = "running"
                 self._current_job_id = job_id
@@ -343,21 +388,17 @@ class ThumbnailGenerationManager:
                         pass
                     elif job.get("cancel_requested"):
                         # cancel_requested wins over done; keep any file already written
-                        job["status"] = "cancelled"
-                        job["message"] = "cancelled after generation"
+                        self._finish(job, "cancelled", "cancelled after generation")
                     else:
-                        job["status"] = "done"
-                        job["message"] = None
+                        self._finish(job, "done", None)
             except Exception as e:
                 with self._lock:
                     job = self._jobs.get(job_id)
                     if job:
                         if job.get("cancel_requested"):
-                            job["status"] = "cancelled"
-                            job["message"] = str(e) or "cancelled"
+                            self._finish(job, "cancelled", str(e) or "cancelled")
                         else:
-                            job["status"] = "error"
-                            job["message"] = str(e)
+                            self._finish(job, "error", str(e))
             finally:
                 with self._lock:
                     if self._current_job_id == job_id:

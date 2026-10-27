@@ -175,9 +175,10 @@ def resolve_sg_wildcards(
 
     Optional slice: ``{sg:CATEGORY:spec}`` / ``{sgd:CATEGORY:spec}`` where
     ``spec`` is a comma-separated include/exclude/glob list (see
-    ``select_slice``). Empty slices fall back to the full category. Unknown or
-    empty categories keep the raw token through nested passes, then strip with a
-    warning. An empty style field resolves to an empty string (token is not kept).
+    ``select_slice``). Empty slices resolve to an empty string with a warning.
+    Unknown or empty categories keep the raw token through nested passes, then
+    strip with a warning. An empty style field resolves to an empty string
+    (token is not kept).
 
     When ``deck`` is provided, ``{sgd:...}`` draws without replacement via
     ``deck_position``. ``{sg:...}`` uses ``rng.choice`` when ``rng`` is set,
@@ -208,6 +209,7 @@ def resolve_sg_picks(
         queues.setdefault(pick.key, []).append(pick.style)
     seen: dict[tuple[str, str, str], int] = {}
     picks: list[Pick] = []
+    empty_slice_warned: set[str] = set()
     text = prompt
     for _ in range(_MAX_PASSES):
         if not TOKEN_PATTERN.search(text):
@@ -223,8 +225,15 @@ def resolve_sg_picks(
             if not candidates or (kind == TOKEN_SGD and deck is None):
                 return m.group(0)
             pool = select_slice(candidates, category, spec) if spec else candidates
-            if not pool:
-                pool = candidates
+            if spec and not pool:
+                token = m.group(0)
+                if token not in empty_slice_warned:
+                    empty_slice_warned.add(token)
+                    logger.warning(
+                        "[Style Grid] %s matches no styles; resolved to empty",
+                        token,
+                    )
+                return ""
             key = (kind, category, normalize_deck_spec(spec))
             if kind == TOKEN_SGD:
                 deck_key = key[1:]

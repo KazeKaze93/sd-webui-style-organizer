@@ -165,20 +165,20 @@ def test_resolve_sg_wildcards_with_spec_picks_only_from_sliced_pool():
     assert result == "p::BODY_Tanned"
 
 
-def test_resolve_sg_wildcards_stale_slice_falls_back_to_full_category():
+def test_resolve_sg_wildcards_empty_slice_resolves_to_empty_with_warning(caplog):
     candidates = _styles_from_names(["BODY_Tanned", "BODY_Pale"])
     styles_by = {"body": candidates}
-    seen = {}
 
-    def choose_first(seq):
-        seen["pool"] = seq
-        return seq[0]
+    with caplog.at_level(logging.WARNING, logger="StyleGrid"):
+        with patch("stylegrid.wildcards.random.choice") as choice:
+            result = resolve_sg_wildcards("{sg:body:Ghost,Missing}", styles_by)
+            choice.assert_not_called()
 
-    with patch("stylegrid.wildcards.random.choice", choose_first):
-        result = resolve_sg_wildcards("{sg:body:Ghost,Missing}", styles_by)
-
-    assert seen["pool"] is candidates
-    assert result == "p::BODY_Tanned"
+    assert result == ""
+    assert any(
+        "{sg:body:Ghost,Missing} matches no styles; resolved to empty" in rec.message
+        for rec in caplog.records
+    )
 
 
 def test_plain_sg_token_behaves_as_before():

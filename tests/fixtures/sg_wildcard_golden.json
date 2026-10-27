@@ -110,7 +110,7 @@
       "expected_warnings": []
     },
     {
-      "id": "all_names_missing_fallback",
+      "id": "all_names_missing_empty",
       "input": "{sg:body:Ghost,Missing}",
       "field": "pos",
       "styles_fixture": {
@@ -133,8 +133,10 @@
         ]
       },
       "seed": 42,
-      "expected_output": "shortstack",
-      "expected_warnings": []
+      "expected_output": "",
+      "expected_warnings": [
+        "[Style Grid] {sg:body:Ghost,Missing} matches no styles; resolved to empty"
+      ]
     },
     {
       "id": "unknown_category",

@@ -232,6 +232,11 @@ def get_styles_dirs():
 
 
 def get_all_styles_file_paths():
+    """Discover style CSVs: extension styles/, samples/, then WebUI shared.prompt_styles.
+
+    WebUI-root files come only from ``shared.prompt_styles.all_styles_files``
+    (typically ``<data_path>/styles.csv``). There is no cwd ``*.csv`` scan.
+    """
     ext_styles_dir = os.path.join(EXT_DIR, "styles")
     all_styles_file_paths = []
     if os.path.isdir(ext_styles_dir):
@@ -251,11 +256,5 @@ def get_all_styles_file_paths():
         shared_paths = [str(p.absolute()) for p in shared.prompt_styles.all_styles_files]
         all_styles_file_paths.extend(shared_paths)
     except Exception:
-        shared_paths = []
-    webui_root = os.getcwd()
-    for fname in sorted(os.listdir(webui_root)):
-        if fname.lower().endswith(".csv"):
-            fp = os.path.join(webui_root, fname)
-            if fp not in all_styles_file_paths:
-                all_styles_file_paths.append(fp)
+        pass
     return all_styles_file_paths

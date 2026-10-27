@@ -24,6 +24,7 @@ def test_parse_returns_expected_fields(tmp_csv):
         "source_file",
     }
     assert by_name["Test Style A"]["source"] == by_name["Test Style A"]["_source"] == "styles.csv"
+    assert by_name["Test Style A"]["source_file"] == "styles/styles.csv"
     # CSV column "category" is stored as category_explicit; "category" is added by categorize_styles().
     assert "category" not in by_name["Test Style A"]
     assert by_name["Test Style A"]["category_explicit"] == "BASE"
@@ -46,16 +47,26 @@ def test_parse_empty_prompt_and_negative_are_empty_strings(tmp_csv):
 
 def test_load_all_keeps_same_basename_in_different_dirs(tmp_path, monkeypatch):
     """Two styles.csv in different scanned dirs must not collapse by name."""
-    d1 = tmp_path / "ext"
-    d2 = tmp_path / "root"
-    d1.mkdir()
-    d2.mkdir()
-    (d1 / "styles.csv").write_text(
+    from stylegrid import config as sg_config
+    from stylegrid import source_ids
+
+    ext = tmp_path / "ext"
+    webui = tmp_path / "webui"
+    (ext / "styles").mkdir(parents=True)
+    (ext / "samples").mkdir(parents=True)
+    webui.mkdir(parents=True)
+    monkeypatch.setattr(sg_config, "EXT_DIR", str(ext))
+    monkeypatch.setattr(csv_io, "EXT_DIR", str(ext))
+    monkeypatch.setattr(source_ids, "webui_styles_root", lambda: str(webui))
+
+    p1 = ext / "styles" / "styles.csv"
+    p2 = webui / "styles.csv"
+    p1.write_text(
         "name,prompt,negative_prompt,description,category\n"
         "SharedName,from_ext,,,\n",
         encoding="utf-8",
     )
-    (d2 / "styles.csv").write_text(
+    p2.write_text(
         "name,prompt,negative_prompt,description,category\n"
         "SharedName,from_root,,,\n",
         encoding="utf-8",
@@ -63,16 +74,20 @@ def test_load_all_keeps_same_basename_in_different_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(
         csv_io,
         "get_all_styles_file_paths",
-        lambda: [str(d1 / "styles.csv"), str(d2 / "styles.csv")],
+        lambda: [str(p1), str(p2)],
     )
     styles = csv_io.load_all_styles()
     prompts = {s["prompt"] for s in styles if s["name"] == "SharedName"}
     assert prompts == {"from_ext", "from_root"}
     assert all(s.get("_source") == "styles.csv" for s in styles)
+    assert {s["source_file"] for s in styles if s["name"] == "SharedName"} == {
+        "styles/styles.csv",
+        "webui/styles.csv",
+    }
 
 
-def test_parse_row_count_matches_data_rows(tmp_path):
-    p = tmp_path / "x.csv"
+def test_parse_row_count_matches_data_rows(tmp_ext):
+    p = tmp_ext / "styles" / "x.csv"
     p.write_text(
         "name,prompt,negative_prompt,description,category\n"
         "One,a,,,\n"
@@ -82,8 +97,8 @@ def test_parse_row_count_matches_data_rows(tmp_path):
     assert len(csv_io.parse_styles_csv(str(p))) == 2
 
 
-def test_parse_strips_name_whitespace(tmp_path):
-    p = tmp_path / "w.csv"
+def test_parse_strips_name_whitespace(tmp_ext):
+    p = tmp_ext / "styles" / "w.csv"
     p.write_text(
         "name,prompt,negative_prompt,description,category\n"
         '  Trimmed Name  ,p,,,\n',
@@ -94,8 +109,8 @@ def test_parse_strips_name_whitespace(tmp_path):
     assert styles[0]["name"] == "Trimmed Name"
 
 
-def test_parse_skips_empty_name_row(tmp_path):
-    p = tmp_path / "e.csv"
+def test_parse_skips_empty_name_row(tmp_ext):
+    p = tmp_ext / "styles" / "e.csv"
     p.write_text(
         "name,prompt,negative_prompt,description,category\n"
         ",ghost,,,\n"
@@ -170,16 +185,18 @@ def test_delete_removes_row_by_name(tmp_csv, patch_styles_dirs, monkeypatch):
 def test_delete_nonexistent_name_no_raise(tmp_csv, patch_styles_dirs, monkeypatch):
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
     before = csv_io.parse_styles_csv(str(tmp_csv))
-    # Implementation returns True and rewrites file with the same rows.
-    assert csv_io.delete_style_from_csv("No Such Style", source_file="styles.csv") is True
+    # True only when a row was actually removed.
+    assert csv_io.delete_style_from_csv("No Such Style", source_file="styles.csv") is False
     after = csv_io.parse_styles_csv(str(tmp_csv))
     assert len(after) == len(before)
     assert [s["name"] for s in after] == [s["name"] for s in before]
 
 
-def test_save_updates_all_duplicate_rows(tmp_path, monkeypatch):
+def test_save_updates_all_duplicate_rows(tmp_ext, monkeypatch):
+    from stylegrid import config as sg_config
+
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
-    p = tmp_path / "styles.csv"
+    p = tmp_ext / "styles" / "styles.csv"
     p.write_text(
         "name,prompt,negative_prompt,description,category\n"
         "Dup,old1,,,\n"
@@ -187,7 +204,9 @@ def test_save_updates_all_duplicate_rows(tmp_path, monkeypatch):
         "Other,x,,,\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: [str(p)])
+    paths = [str(p)]
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: paths)
     csv_io.save_style_to_csv(
         "Dup",
         "updated",
@@ -231,9 +250,11 @@ def test_rename_changes_target_row_leaves_others_intact(tmp_csv, patch_styles_di
     ]
 
 
-def test_rename_preserves_row_position(tmp_path, monkeypatch):
+def test_rename_preserves_row_position(tmp_ext, monkeypatch):
+    from stylegrid import config as sg_config
+
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
-    p = tmp_path / "styles.csv"
+    p = tmp_ext / "styles" / "styles.csv"
     p.write_text(
         "name,prompt,negative_prompt,description,category\n"
         "First,a,,,\n"
@@ -241,7 +262,9 @@ def test_rename_preserves_row_position(tmp_path, monkeypatch):
         "Last,c,,,\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: [str(p)])
+    paths = [str(p)]
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: paths)
     csv_io.rename_style_in_csv("Middle", "MiddleRenamed", source_file="styles.csv")
     assert [s["name"] for s in csv_io.parse_styles_csv(str(p))] == [
         "First",
@@ -250,20 +273,24 @@ def test_rename_preserves_row_position(tmp_path, monkeypatch):
     ]
 
 
-def test_rename_preserves_extra_columns(tmp_path, monkeypatch):
+def test_rename_preserves_extra_columns(tmp_ext, monkeypatch):
     """Renamed row must keep trailing columns; only the name cell changes."""
     import csv
     import io
 
+    from stylegrid import config as sg_config
+
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
-    p = tmp_path / "styles.csv"
+    p = tmp_ext / "styles" / "styles.csv"
     p.write_text(
         "name,prompt,negative_prompt,description,category,extra_a,extra_b\n"
         "Keep,ka,kn,kd,BASE,keep1,keep2\n"
         "RenameMe,ra,rn,rd,BODY,extra_val,42\n",
         encoding="utf-8-sig",
     )
-    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: [str(p)])
+    paths = [str(p)]
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: paths)
     csv_io.rename_style_in_csv("RenameMe", "Renamed", source_file="styles.csv")
 
     text = p.read_text(encoding="utf-8-sig")
@@ -346,10 +373,12 @@ def test_rename_lora_source_raises(monkeypatch):
         )
 
 
-def test_rename_ambiguous_duplicate_old_name_raises_and_leaves_file(tmp_path, monkeypatch):
+def test_rename_ambiguous_duplicate_old_name_raises_and_leaves_file(tmp_ext, monkeypatch):
     """Documented decision: refuse when old_name matches multiple rows (unlike save)."""
+    from stylegrid import config as sg_config
+
     monkeypatch.setattr(csv_io, "invalidate_styles_cache", lambda: None)
-    p = tmp_path / "styles.csv"
+    p = tmp_ext / "styles" / "styles.csv"
     content = (
         "name,prompt,negative_prompt,description,category\n"
         "Dup,old1,,,\n"
@@ -357,7 +386,9 @@ def test_rename_ambiguous_duplicate_old_name_raises_and_leaves_file(tmp_path, mo
         "Other,x,,,\n"
     )
     p.write_text(content, encoding="utf-8")
-    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: [str(p)])
+    paths = [str(p)]
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: paths)
     before = p.read_bytes()
     with pytest.raises(ValueError):
         csv_io.rename_style_in_csv("Dup", "DupRenamed", source_file="styles.csv")

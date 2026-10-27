@@ -19,7 +19,13 @@ def _thumbnail_hash_input(style_name, csv_path=""):
     """Stable string for thumbnail filename hash; empty csv_path keeps legacy name-only hash."""
     if not csv_path:
         return style_name
-    ap = os.path.normpath(os.path.abspath(csv_path))
+    from stylegrid.source_ids import coerce_source_ref
+
+    src = csv_path
+    resolved = coerce_source_ref(src)
+    if resolved:
+        src = resolved
+    ap = os.path.normpath(os.path.abspath(src))
     rel = None
     for base in get_styles_dirs():
         try:

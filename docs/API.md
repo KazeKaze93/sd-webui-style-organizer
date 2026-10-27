@@ -90,7 +90,7 @@ Style object fields include:
 | `negative_prompt`   | string  | Negative prompt fragment.                                   |
 | `description`       | string  | Freeform description.                                       |
 | `category_explicit` | string  | Raw category column value from CSV, or LoRA relative folder / `"LoRA"`. |
-| `source_file`       | string  | Absolute CSV path (forward-slash normalized), or `__style_grid_lora__` for LoRA rows.   |
+| `source_file`       | string  | Relative pack id (`styles/<file.csv>`, `samples/<file.csv>`, `webui/<file.csv>`, or `shared/<dir>/<file.csv>`), or `__style_grid_lora__` for LoRA rows. Never an absolute filesystem path. |
 | `category`          | string  | Resolved category.                                          |
 | `display_name`      | string  | Card label: filename-derived by default; CivitAI title when pre-set for LoRAs. |
 | `has_placeholder`   | boolean | True if `{prompt}` is present in prompt or negative prompt. |
@@ -135,7 +135,7 @@ Canonical on-disk / API shape (normalized on load; legacy bare-name style entrie
 {
   "Warrior": {
     "styles": [
-      { "name": "Style_A", "source_file": "/abs/path/pack.csv", "weight": 1.0 }
+      { "name": "Style_A", "source_file": "styles/pack.csv", "weight": 1.0 }
     ],
     "wildcards": [{ "category": "POSE", "spec": "" }],
     "note": "",

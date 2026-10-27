@@ -629,7 +629,7 @@ The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this ro
 ## POST /restore
 
 **Method:** POST  
-**Description:** Restores CSVs and metadata (and `thumbnails/` when present in the snapshot) from a chosen backup. Creates an automatic **safety** backup of the current state first (`…_safety`). Extension-relative members (`styles/…`, `samples/…`) and metadata basenames are restored; `external/…` members are skipped (drive letter was stripped at backup time).
+**Description:** Restores CSVs and metadata (and `thumbnails/` when present in the snapshot) from a chosen backup. Creates an automatic **safety** backup of the current state first (`…_safety`). Only metadata JSON basenames, `styles/*.csv`, and `thumbnails/<hash>.webp` members are restored; `samples/` and `external/` members are reported in `skipped`.
 
 **Parameters:**
 

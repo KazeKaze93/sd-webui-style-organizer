@@ -29,14 +29,12 @@ from stylegrid.config import (
     CATEGORY_ORDER_FILE,
     EXT_DIR,
     PRESETS_FILE,
-    get_all_styles_file_paths,
     is_samples_source,
 )
 from stylegrid.csv_io import (
     categorize_styles,
     delete_style_from_csv,
     load_all_styles,
-    normalize_source_path,
     rename_style_in_csv,
     save_style_to_csv,
 )
@@ -64,6 +62,12 @@ from stylegrid.lora_scan import (
 )
 from stylegrid.lora_titles import title_fetch_manager
 from stylegrid.safe_persistence import locked_path, write_atomic
+from stylegrid.source_ids import (
+    coerce_source_ref,
+    resolve_client_source,
+    source_id_for_compare,
+    to_source_id,
+)
 from stylegrid.thumbnails import (
     ThumbnailQueueFullError,
     get_thumbnail_path,
@@ -393,11 +397,22 @@ def _register_favorites_recent_routes(app):
         return {"ok": True, "migrated": migrated, "items": items}
 
 
+def _resolve_thumb_source(source: str) -> str | None:
+    """Resolve a client thumbnail source ref to an abs path (ids, abs, unique leaf)."""
+    if not isinstance(source, str) or not source.strip():
+        return None
+    raw = source.strip()
+    if raw == LORA_SOURCE:
+        return None
+    return resolve_client_source(raw, for_write=False) or coerce_source_ref(raw)
+
+
 def _remove_thumbnail_file(name, source):
     """Remove thumbnail for name+source if present. Shared by style delete and DELETE /thumbnail."""
     if not name or not source:
         return
-    path = get_thumbnail_path(name, source)
+    resolved = _resolve_thumb_source(source) if source != LORA_SOURCE else None
+    path = get_thumbnail_path(name, resolved or source)
     if os.path.isfile(path):
         os.remove(path)
 
@@ -413,8 +428,10 @@ def _move_thumbnail_file(old_name, new_name, source):
         return
     if old_name == new_name:
         return
-    old_path = get_thumbnail_path(old_name, source)
-    new_path = get_thumbnail_path(new_name, source)
+    resolved = _resolve_thumb_source(source) if source != LORA_SOURCE else None
+    key = resolved or source
+    old_path = get_thumbnail_path(old_name, key)
+    new_path = get_thumbnail_path(new_name, key)
     if old_path == new_path or not os.path.isfile(old_path):
         return
     os.replace(old_path, new_path)
@@ -423,22 +440,17 @@ def _move_thumbnail_file(old_name, new_name, source):
 def _remap_presets_after_rename(old_name, new_name, resolved_path=None, source=None):
     """Rewrite preset members that pointed at old_name+source to new_name.
 
-    Presets store absolute source_file paths (see normalize_preset_entry /
-    style source_file). Match with normalize_source_path against resolved_path
-    when available so a basename request does not update a same-named style in
-    a different CSV. Saves only when at least one member changed.
+    Match by public source id (coerce both sides) so basename / abs / id forms
+    agree. Saves only when at least one member changed.
     """
     if not old_name or not new_name or old_name == new_name:
         return
-    target_norm = None
+    target_id = None
     if resolved_path:
-        target_norm = normalize_source_path(resolved_path)
-    elif source:
-        src = str(source).strip()
-        replaced = src.replace("\\", "/")
-        if os.path.isabs(src) or "/" in replaced:
-            target_norm = normalize_source_path(src)
-    if not target_norm:
+        target_id = to_source_id(resolved_path) or source_id_for_compare(resolved_path)
+    if target_id is None and source:
+        target_id = source_id_for_compare(str(source).strip())
+    if not target_id:
         return
 
     with locked_path(PRESETS_FILE):
@@ -458,7 +470,8 @@ def _remap_presets_after_rename(old_name, new_name, resolved_path=None, source=N
                 mem_sf = entry.get("source_file") or ""
                 if not isinstance(mem_sf, str) or not mem_sf.strip():
                     continue
-                if normalize_source_path(mem_sf) != target_norm:
+                mem_id = source_id_for_compare(mem_sf)
+                if mem_id is None or mem_id != target_id:
                     continue
                 entry["name"] = new_name
                 changed = True
@@ -474,26 +487,17 @@ def _register_crud_routes(app):
         if not name:
             return {"error": "Name required"}
 
-        # FIX A: reject writes into read-only samples/
         source = data.get("source")
-        resolved_path = None
-        if source:
-            source_base = os.path.basename(source)
-            if not source_base.lower().endswith(".csv"):
-                source_base = source_base + ".csv"
-            for fp in get_all_styles_file_paths():
-                if os.path.basename(fp) == source_base:
-                    resolved_path = fp
-                    break
-        if resolved_path and is_samples_source(resolved_path):
-            return JSONResponse(
-                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
-                status_code=403,
-            )
+        if source and source != LORA_SOURCE:
+            peek = resolve_client_source(str(source), for_write=False)
+            if peek and is_samples_source(peek):
+                return JSONResponse(
+                    {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                    status_code=403,
+                )
 
-        # FIX B: surface LoRA/validation ValueError as 400
         try:
-            save_style_to_csv(
+            ok = save_style_to_csv(
                 name,
                 data.get("prompt", ""),
                 data.get("negative_prompt", ""),
@@ -503,6 +507,11 @@ def _register_crud_routes(app):
             )
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        if not ok:
+            return JSONResponse(
+                {"ok": False, "error": "Invalid or ambiguous source"},
+                status_code=400,
+            )
         return {"ok": True}
 
     @app.post("/style_grid/style/delete")
@@ -511,31 +520,24 @@ def _register_crud_routes(app):
         if not name:
             return {"error": "Name required"}
 
-        # FIX A: reject deletes from read-only samples/
         source = data.get("source")
         if not source:
             for s in load_all_styles():
                 if s["name"] == name:
-                    source = s.get("source", "styles.csv")
+                    source = s.get("source_file") or s.get("source", "styles.csv")
                     break
         resolved_path = None
-        if source:
-            source_base = os.path.basename(source)
-            if not source_base.lower().endswith(".csv"):
-                source_base = source_base + ".csv"
-            for fp in get_all_styles_file_paths():
-                if os.path.basename(fp) == source_base:
-                    resolved_path = fp
-                    break
-        if resolved_path and is_samples_source(resolved_path):
-            return JSONResponse(
-                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
-                status_code=403,
-            )
+        if source and source != LORA_SOURCE:
+            peek = resolve_client_source(str(source), for_write=False)
+            if peek and is_samples_source(peek):
+                return JSONResponse(
+                    {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                    status_code=403,
+                )
+            resolved_path = resolve_client_source(str(source), for_write=True)
 
-        # FIX B: surface LoRA/validation ValueError as 400
         try:
-            deleted = delete_style_from_csv(name, data.get("source"))
+            deleted = delete_style_from_csv(name, data.get("source") or source)
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
         if not deleted:
@@ -543,7 +545,7 @@ def _register_crud_routes(app):
                 {"ok": False, "error": "Style not found"},
                 status_code=404,
             )
-        _remove_thumbnail_file(name, source or "")
+        _remove_thumbnail_file(name, resolved_path or source or "")
         return {"ok": True}
 
     @app.post("/style_grid/style/rename")
@@ -555,36 +557,29 @@ def _register_crud_routes(app):
         if not new_name:
             return {"error": "new_name required"}
 
-        # FIX A: reject writes into read-only samples/
         source = data.get("source")
         if not source:
             for s in load_all_styles():
                 if s["name"] == old_name:
-                    source = s.get("source", "styles.csv")
+                    source = s.get("source_file") or s.get("source", "styles.csv")
                     break
         resolved_path = None
-        if source:
-            source_base = os.path.basename(source)
-            if not source_base.lower().endswith(".csv"):
-                source_base = source_base + ".csv"
-            for fp in get_all_styles_file_paths():
-                if os.path.basename(fp) == source_base:
-                    resolved_path = fp
-                    break
-        if resolved_path and is_samples_source(resolved_path):
-            return JSONResponse(
-                {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
-                status_code=403,
-            )
+        if source and source != LORA_SOURCE:
+            peek = resolve_client_source(str(source), for_write=False)
+            if peek and is_samples_source(peek):
+                return JSONResponse(
+                    {"ok": False, "error": "Cannot modify styles from the read-only samples/ pack."},
+                    status_code=403,
+                )
+            resolved_path = resolve_client_source(str(source), for_write=True)
 
         fields = {}
         for key in ("prompt", "negative_prompt", "description", "category"):
             if key in data:
                 fields[key] = data[key]
 
-        # FIX B: surface LoRA/validation ValueError as 400
         try:
-            rename_style_in_csv(old_name, new_name, data.get("source"), **fields)
+            rename_style_in_csv(old_name, new_name, data.get("source") or source, **fields)
         except ValueError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
 
@@ -676,8 +671,14 @@ def _register_thumbnail_routes(app):
                 {"ok": False, "error": "source is required for CSV thumbnails"},
                 status_code=400,
             )
+        resolved = _resolve_thumb_source(source)
+        if not resolved:
+            return JSONResponse(
+                {"ok": False, "error": "Invalid or unknown source"},
+                status_code=400,
+            )
 
-        path = get_thumbnail_path(name, source)
+        path = get_thumbnail_path(name, resolved)
         if os.path.isfile(path):
             return FileResponse(
                 path,
@@ -701,6 +702,13 @@ def _register_thumbnail_routes(app):
                 {"ok": False, "error": "source is required for CSV thumbnails"},
                 status_code=400,
             )
+        resolved = _resolve_thumb_source(source)
+        if not resolved:
+            return JSONResponse(
+                {"ok": False, "error": "Invalid or unknown source"},
+                status_code=400,
+            )
+        source = resolved
         try:
             if "," in image_data:
                 image_data = image_data.split(",", 1)[1]
@@ -779,9 +787,15 @@ def _register_thumbnail_routes(app):
                 {"ok": False, "error": "source is required for CSV thumbnails"},
                 status_code=400,
             )
+        resolved = _resolve_thumb_source(requested_source)
+        if not resolved:
+            return JSONResponse(
+                {"ok": False, "error": "Invalid or unknown source"},
+                status_code=400,
+            )
 
         try:
-            job_id = mgr.enqueue(style_name, requested_source)
+            job_id = mgr.enqueue(style_name, resolved)
         except ThumbnailQueueFullError as e:
             return JSONResponse({"ok": False, "error": str(e)}, status_code=429)
         except ValueError as e:
@@ -805,7 +819,13 @@ def _register_thumbnail_routes(app):
                 {"ok": False, "error": "source is required for CSV thumbnails"},
                 status_code=400,
             )
-        _remove_thumbnail_file(name, source)
+        resolved = _resolve_thumb_source(source)
+        if not resolved:
+            return JSONResponse(
+                {"ok": False, "error": "Invalid or unknown source"},
+                status_code=400,
+            )
+        _remove_thumbnail_file(name, resolved)
         return {"ok": True}
 
 

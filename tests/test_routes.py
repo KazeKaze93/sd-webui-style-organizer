@@ -40,6 +40,7 @@ def style_grid_client(tmp_csv, monkeypatch):
     from stylegrid import cache as sg_cache
     from stylegrid import config as sg_config
     from stylegrid import csv_io as sg_csv_io
+    from stylegrid import routes as sg_routes
     from stylegrid import thumbnails as sg_thumbs
 
     monkeypatch.setattr(sg_config, "get_styles_dirs", fake_get_styles_dirs)
@@ -47,6 +48,8 @@ def style_grid_client(tmp_csv, monkeypatch):
     monkeypatch.setattr(sg_config, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
     monkeypatch.setattr(sg_csv_io, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
     monkeypatch.setattr(sg_cache, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
+    if hasattr(sg_routes, "get_all_styles_file_paths"):
+        monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", fake_get_all_styles_file_paths)
 
     from stylegrid.cache import invalidate_styles_cache
 
@@ -155,8 +158,8 @@ def test_post_delete_nonexistent_graceful(style_grid_client):
         "/style_grid/style/delete",
         json={"name": "Absolutely No Such Style 404", "source": "styles.csv"},
     )
-    assert r.status_code == 200
-    assert r.json().get("ok") is True
+    assert r.status_code == 404
+    assert r.json().get("ok") is False
 
 
 # --- POST /style_grid/style/rename ---
@@ -340,13 +343,11 @@ def test_post_rename_lora_400(style_grid_client, tmp_csv):
 def test_post_rename_moves_thumbnail(style_grid_client, tmp_csv, monkeypatch):
     from pathlib import Path
 
-    from stylegrid import routes as sg_routes
     from stylegrid import thumbnails as sg_thumbs
 
     thumbs_dir = tmp_csv.parent / "thumbs"
     thumbs_dir.mkdir()
     monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
 
     source_path = str(tmp_csv)
     old_path = Path(sg_thumbs.get_thumbnail_path("Test Style B", source_path))
@@ -371,13 +372,11 @@ def test_post_rename_moves_thumbnail(style_grid_client, tmp_csv, monkeypatch):
 
 
 def test_post_rename_succeeds_without_thumbnail(style_grid_client, tmp_csv, monkeypatch):
-    from stylegrid import routes as sg_routes
     from stylegrid import thumbnails as sg_thumbs
 
     thumbs_dir = tmp_csv.parent / "thumbs"
     thumbs_dir.mkdir()
     monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
 
     r = style_grid_client.post(
         "/style_grid/style/rename",
@@ -405,7 +404,6 @@ def test_post_rename_ok_when_thumbnail_move_fails(style_grid_client, tmp_csv, mo
     thumbs_dir = tmp_csv.parent / "thumbs"
     thumbs_dir.mkdir()
     monkeypatch.setattr(sg_thumbs, "THUMBNAILS_DIR", str(thumbs_dir))
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
 
     source_path = str(tmp_csv)
     old_path = Path(sg_thumbs.get_thumbnail_path("Test Style B", source_path))
@@ -464,9 +462,7 @@ def test_post_rename_rewrites_preset_member_with_basename_source(
 
     from stylegrid import csv_io
     from stylegrid import data_files as sg_data
-    from stylegrid import routes as sg_routes
 
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     other_sf = csv_io.normalize_source_path(str(tmp_path / "other_dir" / "styles.csv"))
 
@@ -531,9 +527,7 @@ def test_post_rename_no_preset_refs_does_not_change_members(
 ):
     from stylegrid import csv_io
     from stylegrid import data_files as sg_data
-    from stylegrid import routes as sg_routes
 
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
         monkeypatch,
@@ -569,7 +563,6 @@ def test_post_rename_ok_when_preset_save_fails(
     from stylegrid import csv_io
     from stylegrid import routes as sg_routes
 
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
         monkeypatch,
@@ -644,9 +637,7 @@ def test_load_presets_keeps_unresolved_bare_name(tmp_csv, tmp_path, monkeypatch)
 def test_presets_save_exists_without_overwrite(style_grid_client, tmp_csv, tmp_path, monkeypatch):
     from stylegrid import csv_io
     from stylegrid import data_files as sg_data
-    from stylegrid import routes as sg_routes
 
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
@@ -678,9 +669,7 @@ def test_presets_save_exists_without_overwrite(style_grid_client, tmp_csv, tmp_p
 def test_presets_save_overwrite_preserves_created(style_grid_client, tmp_csv, tmp_path, monkeypatch):
     from stylegrid import csv_io
     from stylegrid import data_files as sg_data
-    from stylegrid import routes as sg_routes
 
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(
@@ -720,9 +709,7 @@ def test_presets_save_overwrite_preserves_created(style_grid_client, tmp_csv, tm
 def test_presets_rename_and_touch(style_grid_client, tmp_csv, tmp_path, monkeypatch):
     from stylegrid import csv_io
     from stylegrid import data_files as sg_data
-    from stylegrid import routes as sg_routes
 
-    monkeypatch.setattr(sg_routes, "get_all_styles_file_paths", lambda: [str(tmp_csv)])
     monkeypatch.setattr(sg_data, "get_cached_styles", lambda: csv_io.parse_styles_csv(str(tmp_csv)))
     abs_sf = csv_io.normalize_source_path(str(tmp_csv))
     _seed_presets_file(

@@ -7,17 +7,19 @@ Implementation lives in the `stylegrid` package; this file is the Forge script e
 
 import json
 import logging
+import os
 
 import gradio as gr  # type: ignore[reportMissingImports]
 from modules import script_callbacks, scripts  # type: ignore[reportMissingImports]
 from modules.processing import StableDiffusionProcessing  # type: ignore[reportMissingImports]
 
 from stylegrid.cache import get_cached_styles
-from stylegrid.csv_io import categorize_styles, enrich_style, load_all_styles, normalize_source_path
+from stylegrid.csv_io import categorize_styles, enrich_style, load_all_styles
 from stylegrid.data_files import load_presets
 from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.prompt_ops import dedup_prompt, drop_shared_tags
 from stylegrid.routes import register_api
+from stylegrid.source_ids import is_source_id, to_source_id
 from stylegrid.wildcards import DeckContext, dice_rng, resolve_sg_picks
 from stylegrid.write_auth import WRITE_TOKEN_JS_GLOBAL, get_session_token, is_public_bind
 
@@ -208,15 +210,41 @@ class StyleGridScript(scripts.Script):
 
         # args[0] = active source filter passed from UI ("" means All Sources)
         active_source = (args[0] if len(args) >= 1 else "") or ""
-        if active_source:
+        if not active_source:
+            wildcard_pool = all_styles
+        elif is_source_id(active_source):
             wildcard_pool = [
                 s for s in all_styles
-                if normalize_source_path(s.get("source_file") or "") == normalize_source_path(active_source)
+                if (s.get("source_file") or "") == active_source
             ]
-            if not wildcard_pool:           # unknown source — fall back to all
-                wildcard_pool = all_styles
         else:
-            wildcard_pool = all_styles      # All Sources selected
+            mapped_id = to_source_id(active_source) if os.path.isabs(active_source) else None
+            if mapped_id:
+                wildcard_pool = [
+                    s for s in all_styles
+                    if (s.get("source_file") or "") == mapped_id
+                ]
+            else:
+                want_base = os.path.basename(active_source.replace("\\", "/"))
+                ids = sorted({
+                    sid
+                    for s in all_styles
+                    for sid in [(s.get("source_file") or "")]
+                    if sid and sid.rsplit("/", 1)[-1] == want_base
+                })
+                if len(ids) == 1:
+                    wildcard_pool = [
+                        s for s in all_styles
+                        if (s.get("source_file") or "") == ids[0]
+                    ]
+                else:
+                    wildcard_pool = []
+                    logger.warning(
+                        'active_source %r matches %s packs; empty wildcard pool '
+                        '(no silent fallback to all)',
+                        active_source,
+                        len(ids) if ids else 0,
+                    )
 
         styles_by_cat = {}
         for s in wildcard_pool:

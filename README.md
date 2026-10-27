@@ -359,6 +359,8 @@ Primary style fields:
 - `negative_prompt`
 - optional metadata: `description`, `category`
 
+Style packs are discovered from the extension `styles/` and `samples/` folders, plus the WebUI styles file(s) configured in WebUI (`shared.prompt_styles`, typically `<data_path>/styles.csv`). Only those WebUI-configured files are read from the WebUI data/root folder; loose `*.csv` files in the process cwd are not scanned.
+
 Detailed specification: `docs/CSV_FORMAT.md`.
 
 ---

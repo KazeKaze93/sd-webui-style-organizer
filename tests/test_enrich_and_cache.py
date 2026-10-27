@@ -27,10 +27,19 @@ GOLDEN_ALL_STYLES = [
 ]
 
 
-def _write_golden_packs(tmp_path: Path) -> list[str]:
-    a = tmp_path / "pack_a.csv"
-    b = tmp_path / "pack_b.csv"
-    c = tmp_path / "pack_c.csv"
+def _write_golden_packs(tmp_path: Path, monkeypatch) -> list[str]:
+    from stylegrid import config as sg_config
+
+    ext = tmp_path / "ext"
+    styles = ext / "styles"
+    styles.mkdir(parents=True)
+    (ext / "samples").mkdir(parents=True)
+    monkeypatch.setattr(sg_config, "EXT_DIR", str(ext))
+    monkeypatch.setattr(csv_io, "EXT_DIR", str(ext))
+
+    a = styles / "pack_a.csv"
+    b = styles / "pack_b.csv"
+    c = styles / "pack_c.csv"
     a.write_text(
         "name,prompt,negative_prompt,description,category\n"
         "BASE_Alpha,p_a1,n_a1,d,BASE\n"
@@ -55,8 +64,11 @@ def _write_golden_packs(tmp_path: Path) -> list[str]:
 
 
 def _patch_style_paths(monkeypatch, paths: list[str]) -> None:
+    from stylegrid import config as sg_config
+
     monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: paths)
     monkeypatch.setattr(sg_cache, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: paths)
     monkeypatch.setattr(lora_scan, "get_cached_lora_styles", lambda: [])
     sg_cache._file_hashes.clear()
     sg_cache.invalidate_styles_cache()
@@ -76,13 +88,13 @@ def _fingerprint(styles: list[dict]) -> list[tuple]:
 
 
 def test_process_path_enriched_order_matches_prechange_golden(tmp_path, monkeypatch):
-    paths = _write_golden_packs(tmp_path)
+    paths = _write_golden_packs(tmp_path, monkeypatch)
     _patch_style_paths(monkeypatch, paths)
 
     raw = list(sg_cache.get_cached_styles())
     # CSV parser never sets display_name; inject the same preexisting title used in the golden.
     for s in raw:
-        if s["name"] == "plainone" and os.path.basename(s.get("source_file") or "") == "pack_a.csv":
+        if s["name"] == "plainone" and (s.get("source_file") or "").endswith("pack_a.csv"):
             s["display_name"] = "Keep Me"
             break
     enriched = [csv_io.enrich_style(s) for s in raw]
@@ -157,7 +169,7 @@ def test_enrich_and_categorize_do_not_mutate_input():
 
 
 def test_normalize_presets_reuses_styles_cache(tmp_path, monkeypatch):
-    paths = _write_golden_packs(tmp_path)
+    paths = _write_golden_packs(tmp_path, monkeypatch)
     _patch_style_paths(monkeypatch, paths)
 
     calls = {"n": 0}

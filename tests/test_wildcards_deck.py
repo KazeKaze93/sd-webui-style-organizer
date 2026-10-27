@@ -229,8 +229,7 @@ def test_deck_fallbacks():
     out = resolve_sg_wildcards(
         "{sgd:cat:Ghost,Missing}", styles, deck=DeckContext(1, 0)
     )
-    assert out in {s["prompt"] for s in styles["cat"]}
-    assert "{sgd:" not in out
+    assert out == ""
 
 
 def test_spec_normalization_order_independent():

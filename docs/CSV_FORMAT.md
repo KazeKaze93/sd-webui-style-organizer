@@ -71,7 +71,7 @@ Category wildcard insertion and resolution:
 | Whole category | `{sg:<category>}` — e.g. `{sg:furry_body}`. Same forms exist for shuffle tokens `{sgd:…}`. |
 | Slice | `{sg:<category>:<spec>}`. Spec is a comma-separated list of style-name **suffixes** (category prefix omitted): plain include, `-` exclude, trailing `*` glob. |
 | Resolution | At generation time, `resolve_sg_wildcards` in `stylegrid/wildcards.py` (via `scripts/style_grid.py`) replaces `{sg:…}` / `{sgd:…}` tokens using regex `\{(sgd?):([^}]+)\}` with `re.IGNORECASE` (the `sg` / `sgd` prefix is case-insensitive). Capture splits on the **first** `:`; `select_slice` unions includes then subtracts excludes. |
-| Empty slice pool | Falls back to the full category so a stale/missing-name token still generates. |
+| Empty slice pool | Resolves to empty; a warning is logged to the WebUI console. |
 | Match key | Token category is lowercased and looked up in `styles_by_category` (also keyed by lowercased category). |
 | Source filter | When an active CSV source is set, the pool is filtered with `normalize_source_path` against each style’s `source_file`. |
 | Replacement value | One random style from the resolved pool. Positive field → that style’s **`prompt`**; negative field → **`negative_prompt`**. A positive token also appends the picked style’s **`negative_prompt`** to the image’s negative (setting, on by default; see `docs/API.md`). |

@@ -445,6 +445,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
               data-index={virtualRow.index}
               role="row"
               aria-rowindex={virtualRow.index + 1}
+              className={isActiveSticky ? 'bg-sg-bg' : undefined}
               style={
                 isActiveSticky
                   ? stickyRowStyle

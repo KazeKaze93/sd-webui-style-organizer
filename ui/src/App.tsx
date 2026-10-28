@@ -579,9 +579,11 @@ export default function App() {
         </div>
 
         {/* Grid */}
-        <div className="p-3 min-h-0"
+        <div className="px-3 pb-3 min-h-0"
           style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
-          <StyleGrid windowed={!isFullscreen} />
+          <div className="pt-3">
+            <StyleGrid windowed={!isFullscreen} />
+          </div>
         </div>
       </div>
 

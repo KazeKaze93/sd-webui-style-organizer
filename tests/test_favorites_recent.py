@@ -109,7 +109,7 @@ def test_save_favorites_then_get_route(fav_client, fav_recent_env):
 
     r0 = fav_client.get("/style_grid/favorites")
     assert r0.status_code == 200
-    assert r0.json() == {"items": [], "persisted": False}
+    assert r0.json() == {"items": [], "persisted": False, "ambiguous": []}
 
     r_mig = fav_client.post("/style_grid/favorites/migrate", json={"items": [key]})
     assert r_mig.status_code == 200
@@ -121,7 +121,10 @@ def test_save_favorites_then_get_route(fav_client, fav_recent_env):
 
     r1 = fav_client.get("/style_grid/favorites")
     assert r1.status_code == 200
-    assert r1.json() == {"items": [key], "persisted": True}
+    body1 = r1.json()
+    assert body1["items"] == [key]
+    assert body1["persisted"] is True
+    assert body1["ambiguous"] == []
 
     r_mig2 = fav_client.post(
         "/style_grid/favorites/migrate",
@@ -150,7 +153,7 @@ def test_recent_save_and_get_route(fav_client):
 
     r2 = fav_client.get("/style_grid/recent")
     assert r2.status_code == 200
-    assert r2.json() == {"items": keys, "persisted": True}
+    assert r2.json() == {"items": keys, "persisted": True, "ambiguous": []}
 
 
 def test_export_and_import_include_favorites_recent(fav_client, fav_recent_env):
@@ -183,10 +186,12 @@ def test_export_and_import_include_favorites_recent(fav_client, fav_recent_env):
     assert fav_client.get("/style_grid/favorites").json() == {
         "items": [fav_key],
         "persisted": True,
+        "ambiguous": [],
     }
     assert fav_client.get("/style_grid/recent").json() == {
         "items": [recent_key],
         "persisted": True,
+        "ambiguous": [],
     }
 
 
@@ -217,9 +222,11 @@ def test_import_ignores_legacy_usage_key(fav_client, fav_recent_env):
     assert fav_client.get("/style_grid/favorites").json() == {
         "items": [fav_key],
         "persisted": True,
+        "ambiguous": [],
     }
     assert fav_client.get("/style_grid/recent").json() == {
         "items": [recent_key],
         "persisted": True,
+        "ambiguous": [],
     }
     assert not (fav_path.parent / "usage.json").exists()

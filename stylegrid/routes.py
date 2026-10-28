@@ -5,6 +5,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import time
@@ -41,11 +42,14 @@ from stylegrid.csv_io import (
 from stylegrid.data_files import (
     CorruptDataError,
     backup_csv_files,
+    classify_identity_items,
     list_backups,
     load_favorites,
     load_presets,
     load_recent,
     migrate_favorites_once,
+    migrate_identity_files_once,
+    migrate_presets_source_ids_once,
     migrate_recent_once,
     preset_styles_payload_ok,
     restore_from_backup,
@@ -75,6 +79,8 @@ from stylegrid.thumbnails import (
     thumbnail_generation_manager,
 )
 from stylegrid.write_auth import inject_write_token_script, install_write_auth
+
+log = logging.getLogger(__name__)
 
 MAX_THUMBNAIL_UPLOAD_BYTES = 2 * 1024 * 1024
 MAX_THUMBNAIL_UPLOAD_PIXELS = 4096 * 4096
@@ -339,8 +345,25 @@ def _register_preset_routes(app):
             return _corrupt_response(exc)
         return {"ok": True, "presets": saved}
 
-def _items_payload(items, persisted):
-    return {"items": items, "persisted": persisted}
+def _items_payload(items, persisted, *, ambiguous=None):
+    return {
+        "items": items,
+        "persisted": persisted,
+        "ambiguous": list(ambiguous) if ambiguous is not None else [],
+    }
+
+
+def _favorites_ambiguous_names(items):
+    """Read-only classify against the current catalog; sorted unique ambiguous names."""
+    styles = [
+        s
+        for s in get_cached_styles()
+        if (s.get("source_file") or "") != LORA_SOURCE
+    ]
+    if not styles:
+        return []
+    result = classify_identity_items(items, styles, link_identical_to_all=True)
+    return sorted(result["ambiguous_names"])
 
 
 def _register_favorites_recent_routes(app):
@@ -352,7 +375,7 @@ def _register_favorites_recent_routes(app):
             items, persisted = load_favorites()
         except CorruptDataError as exc:
             raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
-        return _items_payload(items, persisted)
+        return _items_payload(items, persisted, ambiguous=_favorites_ambiguous_names(items))
 
     @app.post("/style_grid/favorites/save")
     async def api_save_favorites(data: dict):
@@ -377,7 +400,8 @@ def _register_favorites_recent_routes(app):
             items, persisted = load_recent()
         except CorruptDataError as exc:
             raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
-        return _items_payload(items, persisted)
+        # Recent never toasts; always report empty ambiguous.
+        return _items_payload(items, persisted, ambiguous=[])
 
     @app.post("/style_grid/recent/save")
     async def api_save_recent(data: dict):
@@ -891,3 +915,11 @@ def register_api(demo, app):
     _register_thumbnail_routes(app)
     _register_lora_routes(app)
     _register_ui_routes(app)
+    try:
+        migrate_presets_source_ids_once()
+    except Exception:
+        log.exception("[Style Grid] presets source-id migration failed")
+    try:
+        migrate_identity_files_once()
+    except Exception:
+        log.exception("[Style Grid] identity files migration failed")

@@ -742,7 +742,9 @@ Success:
 ## GET /favorites · GET /recent
 
 **Method:** GET  
-**Description:** Returns server-persisted favorites or recent style row keys (`source_file + "\\0" + name`) from `data/favorites.json` / `data/recent.json`.
+**Description:** Returns server-persisted favorites or recent style row keys from `data/favorites.json` / `data/recent.json`. Each item is a composite `"<source id>\\0<name>"` (NUL separator), matching the iframe `styleRowKey` (for example `styles/pack.csv\\0BASE_Alpha`). Legacy absolute paths and bare names may still appear until migration rewrites them.
+
+On API registration the server runs a one-shot migration: mappable absolute `source_file` values in `presets.json` become public ids, and favorites/recent composites are rewritten the same way (copy never delete: unlinked entries stay stored). An empty style catalog skips identity migration so missing packs are not treated as "everything unlinked".
 
 **Response:**
 
@@ -750,13 +752,14 @@ Success:
 | ----------- | ------- | ----------- |
 | `items`     | array[string] | Ordered keys (recent capped at 10). |
 | `persisted` | boolean | `true` when the JSON file exists on disk (even if `items` is empty). |
+| `ambiguous` | array[string] | Favorites: sorted unique style **names** that match several packs with diverging prompt/negative content (computed read-only against the current catalog). Recent always returns `[]` (no toast). |
 
-Missing file → `{ "items": [], "persisted": false }` (HTTP 200). Corrupt file → HTTP **409** `corrupt_data`.
+Missing file → `{ "items": [], "persisted": false, "ambiguous": [] }` (HTTP 200). Corrupt file → HTTP **409** `corrupt_data`.
 
 ## POST /favorites/save · POST /recent/save
 
 **Method:** POST  
-**Description:** Replace the on-disk list. Body: `{ "items": ["…"] }`. Recent is capped at 10 unique keys.
+**Description:** Replace the on-disk list. Body: `{ "items": ["…"] }`. Recent is capped at 10 unique keys. The client list fully replaces the file: send back any unlinked entries received from GET so they are not dropped.
 
 **Response:** `{ "ok": true, "items": […] }`
 

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import threading
 import time
 from pathlib import Path
 
 import pytest
 
+from stylegrid import config as sg_config
+from stylegrid import source_ids
 from stylegrid import thumbnails as sg_thumbs
 from stylegrid.thumbnails import (
     FINISHED_JOB_TTL_SECONDS,
@@ -27,10 +30,50 @@ def thumbs_dir(tmp_path, monkeypatch):
     return d
 
 
+@pytest.fixture
+def source_id_roots(tmp_path, monkeypatch, thumbs_dir):
+    """EXT_DIR with styles/ + samples/ so to_source_id yields distinct ids."""
+    ext = tmp_path / "ext"
+    (ext / "styles").mkdir(parents=True)
+    (ext / "samples").mkdir(parents=True)
+    webui = tmp_path / "webui_data"
+    webui.mkdir()
+    monkeypatch.setattr(sg_config, "EXT_DIR", str(ext))
+    monkeypatch.setattr(source_ids, "webui_styles_root", lambda: str(webui))
+    monkeypatch.setattr(sg_config, "_get_webui_data_path", lambda: str(webui))
+    styles_dir = ext / "styles"
+    samples_dir = ext / "samples"
+    monkeypatch.setattr(
+        sg_thumbs, "get_styles_dirs", lambda: [str(styles_dir), str(samples_dir)]
+    )
+    return {
+        "ext": ext,
+        "styles": styles_dir,
+        "samples": samples_dir,
+        "webui": webui,
+        "thumbs": thumbs_dir,
+    }
+
+
 def _write_legacy(thumbs_dir, name, payload=b"LEGACY"):
     path = thumbs_dir / f"{sg_thumbs.legacy_thumbnail_stem(name)}.webp"
     path.write_bytes(payload)
     return path
+
+
+def _write_rel(thumbs_dir, name, source, payload=b"REL"):
+    path = thumbs_dir / f"{sg_thumbs._legacy_rel_stem(name, source)}.webp"
+    path.write_bytes(payload)
+    return path
+
+
+def _prod_replace_thumb(path: Path, payload: bytes):
+    """Match generation write: tmp file, remove destination, rename into place."""
+    tmp = Path(str(path) + ".tmp")
+    tmp.write_bytes(payload)
+    if path.is_file():
+        path.unlink()
+    tmp.rename(path)
 
 
 def test_hash_keys_differ_across_source_files(thumbs_dir, tmp_path):
@@ -252,3 +295,185 @@ def test_prune_never_drops_queued_or_running(blocked_thumb_mgr):
         assert mgr._jobs[running_id]["status"] == "running"
         assert mgr._jobs[queued_id]["status"] == "queued"
     release.set()
+
+
+def test_same_filename_two_roots_yield_two_stems(source_id_roots):
+    styles_csv = str(source_id_roots["styles"] / "pack.csv")
+    samples_csv = str(source_id_roots["samples"] / "pack.csv")
+    Path(styles_csv).write_text("name,prompt\n", encoding="utf-8")
+    Path(samples_csv).write_text("name,prompt\n", encoding="utf-8")
+    name = "POSE_Standing"
+    assert source_ids.to_source_id(styles_csv) == "styles/pack.csv"
+    assert source_ids.to_source_id(samples_csv) == "samples/pack.csv"
+    ka = sg_thumbs.thumbnail_hash_key(name, styles_csv)
+    kb = sg_thumbs.thumbnail_hash_key(name, samples_csv)
+    assert ka != kb
+    assert sg_thumbs._legacy_rel_stem(name, styles_csv) == sg_thumbs._legacy_rel_stem(
+        name, samples_csv
+    )
+
+
+def test_migrate_rel_unique_source_places_new_keeps_old(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "CAMERA_Closeup"
+    old = _write_rel(thumbs, name, src, b"UNIQUE")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "closeup", "negative_prompt": ""}
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    new_path = Path(sg_thumbs.get_thumbnail_path(name, src))
+    assert result["need_regeneration"] == 0
+    assert result["linked"] + result["copied"] == 1
+    assert old.exists()
+    assert new_path.exists()
+    assert new_path.read_bytes() == b"UNIQUE"
+    assert old.read_bytes() == b"UNIQUE"
+
+
+def test_migrate_rel_identical_multi_source_places_every_stem(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    a = str(source_id_roots["styles"] / "pack.csv")
+    b = str(source_id_roots["samples"] / "pack.csv")
+    Path(a).write_text("name,prompt\n", encoding="utf-8")
+    Path(b).write_text("name,prompt\n", encoding="utf-8")
+    name = "LIGHTING_Rim"
+    old = _write_rel(thumbs, name, a, b"SHARED")
+    styles = [
+        {"name": name, "source_file": a, "prompt": "rim light", "negative_prompt": "flat"},
+        {"name": name, "source_file": b, "prompt": "rim light", "negative_prompt": "flat"},
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["need_regeneration"] == 0
+    assert result["linked"] + result["copied"] == 2
+    assert old.exists()
+    assert Path(sg_thumbs.get_thumbnail_path(name, a)).read_bytes() == b"SHARED"
+    assert Path(sg_thumbs.get_thumbnail_path(name, b)).read_bytes() == b"SHARED"
+
+
+def test_migrate_rel_diverging_multi_source_needs_regeneration(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    a = str(source_id_roots["styles"] / "pack.csv")
+    b = str(source_id_roots["samples"] / "pack.csv")
+    Path(a).write_text("name,prompt\n", encoding="utf-8")
+    Path(b).write_text("name,prompt\n", encoding="utf-8")
+    name = "BASE_Anti_3D"
+    old = _write_rel(thumbs, name, a, b"SHARED")
+    styles = [
+        {"name": name, "source_file": a, "prompt": "", "negative_prompt": "3d"},
+        {"name": name, "source_file": b, "prompt": "", "negative_prompt": "3d, realistic"},
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["linked"] == 0
+    assert result["copied"] == 0
+    assert result["need_regeneration"] == 1
+    assert old.exists()
+    assert not Path(sg_thumbs.get_thumbnail_path(name, a)).exists()
+    assert not Path(sg_thumbs.get_thumbnail_path(name, b)).exists()
+
+
+def test_migrate_rel_existing_new_stem_never_overwritten(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "POSE_Existing"
+    _write_rel(thumbs, name, src, b"OLD")
+    new_path = Path(sg_thumbs.get_thumbnail_path(name, src))
+    new_path.write_bytes(b"KEEP")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "x", "negative_prompt": ""}
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["linked"] == 0
+    assert result["copied"] == 0
+    assert result["skipped_existing"] == 1
+    assert new_path.read_bytes() == b"KEEP"
+
+
+def test_migrate_rel_second_run_linked_and_copied_zero(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "POSE_Idempotent"
+    _write_rel(thumbs, name, src, b"ONCE")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "x", "negative_prompt": ""}
+    ]
+    first = sg_thumbs.migrate_rel_thumbnails(styles)
+    second = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert first["linked"] + first["copied"] == 1
+    assert second["linked"] == 0
+    assert second["copied"] == 0
+    assert second["skipped_existing"] >= 1
+
+
+def test_migrate_rel_hardlink_isolation_on_prod_write(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "POSE_Hardlink"
+    old = _write_rel(thumbs, name, src, b"ORIGINAL")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "x", "negative_prompt": ""}
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    new_path = Path(sg_thumbs.get_thumbnail_path(name, src))
+    assert result["linked"] + result["copied"] == 1
+    assert new_path.exists()
+    _prod_replace_thumb(new_path, b"NEWBYTES")
+    assert old.read_bytes() == b"ORIGINAL"
+    assert new_path.read_bytes() == b"NEWBYTES"
+
+
+def test_migrate_rel_os_link_oserror_falls_back_to_copy2(source_id_roots, monkeypatch):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "POSE_CopyFallback"
+    _write_rel(thumbs, name, src, b"COPYME")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "x", "negative_prompt": ""}
+    ]
+
+    def _boom(*_a, **_k):
+        raise OSError("no hardlinks")
+
+    monkeypatch.setattr(os, "link", _boom)
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["copied"] == 1
+    assert result["linked"] == 0
+    assert Path(sg_thumbs.get_thumbnail_path(name, src)).read_bytes() == b"COPYME"
+
+
+def test_thumbnail_hash_input_falls_back_when_to_source_id_none(source_id_roots, monkeypatch):
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    assert source_ids.to_source_id(src) == "styles/only.csv"
+    monkeypatch.setattr(sg_thumbs, "to_source_id", lambda _p: None)
+    name = "FALLBACK_Style"
+    assert sg_thumbs._thumbnail_hash_input(name, src) == sg_thumbs._legacy_rel_hash_input(
+        name, src
+    )
+
+
+def test_name_only_legacy_migrates_to_source_id_stem(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "only.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "LEGACY_NameOnly"
+    legacy = _write_legacy(thumbs, name, b"NAMEONLY")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "x", "negative_prompt": ""}
+    ]
+    new_stem = sg_thumbs.thumbnail_hash_key(name, src)
+    rel_stem = sg_thumbs._legacy_rel_stem(name, src)
+    assert new_stem != rel_stem
+    assert new_stem != sg_thumbs.legacy_thumbnail_stem(name)
+    result = sg_thumbs.migrate_legacy_thumbnails(styles)
+    assert result["migrated"] == 1
+    new_path = Path(sg_thumbs.get_thumbnail_path(name, src))
+    assert new_path.exists()
+    assert new_path.name == f"{new_stem}.webp"
+    assert new_path.read_bytes() == b"NAMEONLY"
+    assert legacy.exists()

@@ -19,6 +19,7 @@ from fastapi.responses import (  # type: ignore[reportMissingImports]
     JSONResponse,
     Response,
 )
+from starlette.staticfiles import StaticFiles  # type: ignore[reportMissingImports]
 
 from stylegrid.cache import (
     check_files_changed,
@@ -900,6 +901,29 @@ def _register_ui_routes(app):
         return HTMLResponse(content=_get_ui_html())
 
 
+def _register_host_module_routes(app):
+    """Serve host ES modules under /style_grid/host with Cache-Control: no-cache."""
+
+    host_dir = Path(__file__).resolve().parent.parent / "javascript" / "style_grid"
+
+    class _HostModuleFiles(StaticFiles):
+        async def get_response(self, path: str, scope):
+            if not str(path).endswith(".js"):
+                return Response(status_code=404)
+            response = await super().get_response(path, scope)
+            if response.status_code in (200, 304):
+                response.headers["Cache-Control"] = "no-cache"
+            if response.status_code == 200:
+                response.headers["Content-Type"] = "text/javascript; charset=utf-8"
+            return response
+
+    app.mount(
+        "/style_grid/host",
+        _HostModuleFiles(directory=str(host_dir), html=False, check_dir=True),
+        name="style_grid_host",
+    )
+
+
 def register_api(demo, app):
     """
     Register all Style Grid API groups on FastAPI app.
@@ -915,6 +939,7 @@ def register_api(demo, app):
     _register_thumbnail_routes(app)
     _register_lora_routes(app)
     _register_ui_routes(app)
+    _register_host_module_routes(app)
     try:
         migrate_presets_source_ids_once()
     except Exception:

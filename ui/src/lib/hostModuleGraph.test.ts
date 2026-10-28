@@ -1,25 +1,25 @@
 /**
- * Permanent gate: host entry `javascript/style_grid.mjs` must link
+ * Permanent gate: host entry graph must link
  * (full import graph including theme.js exports). Uses a native Node
  * subprocess — Vite SSR soft-binds missing named exports to undefined,
  * which would hide real link breaks. ReferenceError for document/window
  * is tolerated (no Gradio host); SyntaxError / missing-export = fail.
  */
 import { spawnSync } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-const HOST_ENTRY = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '../../../javascript/style_grid.mjs',
-)
+const HERE = path.dirname(fileURLToPath(import.meta.url))
+const HOST_ENTRY = path.resolve(HERE, '../../../javascript/style_grid/main.js')
+const HOST_SHELL = path.resolve(HERE, '../../../javascript/style_grid.mjs')
 
 const LINK_OK = 0
 const LINK_FAIL = 2
 
 describe('host module graph', () => {
-  it('links javascript/style_grid.mjs (export graph resolves)', () => {
+  it('links javascript/style_grid/main.js (export graph resolves)', () => {
     const href = pathToFileURL(HOST_ENTRY).href
     const script = `
 import(${JSON.stringify(href)}).then(function () {
@@ -49,5 +49,11 @@ import(${JSON.stringify(href)}).then(function () {
       )
     }
     expect(result.status).toBe(LINK_OK)
+  })
+
+  it('style_grid.mjs has no static imports and targets /style_grid/host/main.js', () => {
+    const src = fs.readFileSync(HOST_SHELL, 'utf8')
+    expect(src).toContain('/style_grid/host/main.js')
+    expect(src).not.toMatch(/^\s*import\s+.+\s+from\s+/m)
   })
 })

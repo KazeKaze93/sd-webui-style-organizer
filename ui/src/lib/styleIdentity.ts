@@ -1,6 +1,48 @@
 import type { Style } from '../bridge'
 
-/** Same composite as stylesStore.styleRowKey — kept here so tests stay free of the store. */
+const FORBIDDEN_LEAF_CHARS = new Set(['/', '\\', ':', '\0'])
+
+function leafOk(leaf: string): boolean {
+  if (!leaf || leaf === '.' || leaf === '..') return false
+  for (const ch of FORBIDDEN_LEAF_CHARS) {
+    if (leaf.includes(ch)) return false
+  }
+  return leaf.toLowerCase().endsWith('.csv')
+}
+
+/**
+ * True when value looks like a public source id (mirrors stylegrid/source_ids.py
+ * is_source_id): styles|samples|webui/<f.csv> or shared/<dir>/<f.csv>.
+ */
+export function isSourceId(s: string): boolean {
+  if (typeof s !== 'string' || !s) return false
+  if (s.includes('\\') || s.includes('\0')) return false
+  const parts = s.split('/')
+  if (
+    parts.length === 2 &&
+    (parts[0] === 'styles' || parts[0] === 'samples' || parts[0] === 'webui')
+  ) {
+    return leafOk(parts[1])
+  }
+  if (parts.length === 3 && parts[0] === 'shared') {
+    const dirPart = parts[1]
+    const leaf = parts[2]
+    if (!dirPart) return false
+    for (const ch of FORBIDDEN_LEAF_CHARS) {
+      if (dirPart.includes(ch)) return false
+    }
+    return leafOk(leaf)
+  }
+  return false
+}
+
+/** Last path segment after `/` or `\`, lowercased. */
+export function sourceLeaf(s: string): string {
+  const base = s.replace(/\\/g, '/').split('/').pop() ?? s
+  return base.toLowerCase()
+}
+
+/** Same composite as stylesStore.styleRowKey - kept here so tests stay free of the store. */
 export function styleIdentityKey(name: string, sourceFile: string): string {
   return `${sourceFile}\0${name}`
 }

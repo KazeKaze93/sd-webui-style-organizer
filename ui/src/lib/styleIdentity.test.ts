@@ -2,13 +2,40 @@ import { describe, expect, it } from 'vitest'
 import type { Style } from '../bridge'
 import {
   findStyleBySourceAndName,
+  isSourceId,
   parseComboPart,
   parseComboParts,
   parseComboTokens,
   resolveCombosInSourceFile,
   resolveSelectedStyleRow,
+  sourceLeaf,
   splitOutsideParens,
 } from './styleIdentity'
+
+describe('isSourceId / sourceLeaf (WebUI prefixes)', () => {
+  it('accepts styles/samples/webui leaves and shared dir forms', () => {
+    expect(isSourceId('styles/pack.csv')).toBe(true)
+    expect(isSourceId('samples/demo.csv')).toBe(true)
+    expect(isSourceId('webui/styles.csv')).toBe(true)
+    expect(isSourceId('shared/extra/pack.csv')).toBe(true)
+    expect(isSourceId('shared/extra~abc123/pack.csv')).toBe(true)
+  })
+
+  it('rejects abs paths, bare leaves, bad shared shape, and forbidden chars', () => {
+    expect(isSourceId('D:/packs/styles.csv')).toBe(false)
+    expect(isSourceId('pack.csv')).toBe(false)
+    expect(isSourceId('data/pack.csv')).toBe(false)
+    expect(isSourceId('shared/pack.csv')).toBe(false)
+    expect(isSourceId('styles/nested/pack.csv')).toBe(false)
+    expect(isSourceId('styles/pack.csv\0x')).toBe(false)
+    expect(isSourceId('styles\\pack.csv')).toBe(false)
+  })
+
+  it('sourceLeaf lowercases the final segment', () => {
+    expect(sourceLeaf('styles/Pack.CSV')).toBe('pack.csv')
+    expect(sourceLeaf('D:\\old\\Pack.CSV')).toBe('pack.csv')
+  })
+})
 
 function row(
   name: string,

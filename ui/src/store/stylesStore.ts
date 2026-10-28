@@ -14,6 +14,7 @@ import {
   type CorruptDataInfo,
 } from '../lib/parseCorruptData'
 import { styleGridPost } from '../lib/styleGridFetch'
+import { isSourceId, sourceLeaf } from '../lib/styleIdentity'
 import type { ThemeMode } from '../lib/themeMode'
 
 export type { ThemeMode }
@@ -313,29 +314,12 @@ function loadStringArrayFromLs(key: string): string[] {
   }
 }
 
-/**
- * Upgrade legacy bare-name favorites/recent entries to styleRowKey composites.
- * Entries that already contain '\0' are left as-is.
- * Bare names resolve only when exactly one library row matches; ambiguous
- * duplicates (same name in multiple source_file values) are dropped.
- */
-export function migrateLegacyNameKeys(entries: string[], styles: Style[]): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
-  for (const entry of entries) {
-    let key: string | null
-    if (entry.includes('\0')) {
-      key = entry
-    } else {
-      const matches = styles.filter((s) => s.name === entry)
-      key = matches.length === 1 ? styleRowKey(matches[0]) : null
-    }
-    if (key && !seen.has(key)) {
-      seen.add(key)
-      out.push(key)
-    }
-  }
-  return out
+/** Session guard so the ambiguous-favorites toast does not repeat every hydrate. */
+let lastAmbiguousToastSignature: string | null = null
+
+/** Test-only: clear the once-per-session ambiguous toast signature. */
+export function __resetAmbiguousToastForTests(): void {
+  lastAmbiguousToastSignature = null
 }
 
 /** First occurrence wins; use only when the active source is "All sources". */
@@ -386,17 +370,18 @@ export function matchesSearchKey(key: string, rawQuery: string): boolean {
   return tokensMatchHaystack(haystack, rawQuery)
 }
 
-/** Map persisted or UI source string to an entry in `sources` (exact match, else basename). */
-function resolveSourceInList(sources: string[], preferred: string | null): string | null {
+/** Map persisted or UI source string to an entry in `sources` (exact, else unique leaf). */
+export function resolveSourceInList(
+  sources: string[],
+  preferred: string | null,
+): string | null {
   if (!preferred || sources.length === 0) return null
   if (sources.includes(preferred)) return preferred
-  const key = (s: string) => {
-    const base = s.replace(/\\/g, '/').split('/').pop() ?? s
-    return base.replace(/\.csv$/i, '').toLowerCase()
-  }
-  const k = key(preferred)
-  const found = sources.find((s) => key(s) === k)
-  return found ?? null
+  // Source ids that miss exactly must not collapse across packs by basename.
+  if (isSourceId(preferred)) return null
+  const leaf = sourceLeaf(preferred)
+  const matches = sources.filter((s) => sourceLeaf(s) === leaf)
+  return matches.length === 1 ? matches[0] : null
 }
 
 /**
@@ -623,7 +608,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       styles.filter(s => s.source_file !== LORA_SOURCE).map(s => s.source_file).filter(Boolean)
     )].sort()
 
-    // Restore selection: exact match can fail when host path strings differ from LS (basename must match)
+    // Restore selection: exact match, else unique leaf for legacy abs paths only
     const lastSourceKey = `sg_v2_last_source_${tab}`
     const lastSource =
       localStorage.getItem(lastSourceKey) ??
@@ -633,27 +618,28 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       resolveSourceInList(sources, prevActive) ??
       resolveSourceInList(sources, lastSource)
 
-    const prevFavs = [...get().favorites]
-    const prevRecent = get().recentNames
-    const nextFavs = migrateLegacyNameKeys(prevFavs, styles)
-    const nextRecent = migrateLegacyNameKeys(prevRecent, styles)
-    const favsChanged =
-      nextFavs.length !== prevFavs.length || nextFavs.some((k, i) => k !== prevFavs[i])
-    const recentChanged =
-      nextRecent.length !== prevRecent.length || nextRecent.some((k, i) => k !== prevRecent[i])
-    if (favsChanged && get().favoritesRecentHydrated) {
-      try {
-        void styleGridPost('/style_grid/favorites/save', { items: nextFavs }).catch(() => {})
-      } catch {
-        // fetch unavailable
-      }
-    }
-    if (recentChanged && get().favoritesRecentHydrated) {
-      try {
-        void styleGridPost('/style_grid/recent/save', { items: nextRecent }).catch(() => {})
-      } catch {
-        // fetch unavailable
-      }
+    // Copy abs-path thumb version keys onto unique source-id remaps (never delete old LS keys).
+    const catalogKeys = new Set(styles.map((s) => styleRowKey(s)))
+    const prevThumbs = get().thumbVersions
+    let nextThumbs: Record<string, string> | null = null
+    for (const [key, version] of Object.entries(prevThumbs)) {
+      if (!key.includes('\0')) continue
+      if (catalogKeys.has(key)) continue
+      const sep = key.indexOf('\0')
+      const sourcePart = key.slice(0, sep)
+      if (isSourceId(sourcePart)) continue
+      const name = key.slice(sep + 1)
+      const leaf = sourceLeaf(sourcePart)
+      const candidates = styles.filter(
+        (s) => s.name === name && sourceLeaf(s.source_file) === leaf,
+      )
+      if (candidates.length !== 1) continue
+      const newKey = styleRowKey(candidates[0])
+      if (Object.prototype.hasOwnProperty.call(nextThumbs ?? prevThumbs, newKey)) continue
+      if (localStorage.getItem(`${THUMB_VERSION_LS_PREFIX}${newKey}`) != null) continue
+      if (nextThumbs === null) nextThumbs = { ...prevThumbs }
+      nextThumbs[newKey] = version
+      localStorage.setItem(`${THUMB_VERSION_LS_PREFIX}${newKey}`, version)
     }
 
     set({
@@ -663,16 +649,13 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       activeSource,
       duplicatesByName: buildDuplicatesByName(styles),
       searchTextByKey: buildSearchTextByKey(styles),
-      ...(favsChanged ? { favorites: new Set(nextFavs) } : {}),
-      ...(recentChanged ? { recentNames: nextRecent } : {}),
+      ...(nextThumbs ? { thumbVersions: nextThumbs } : {}),
     })
-    if (activeSource) {
+    if (activeSource && activeSource !== lastSource) {
       localStorage.setItem(lastSourceKey, activeSource)
-    } else {
-      localStorage.removeItem(lastSourceKey)
     }
     localStorage.removeItem('sg_v2_last_source')
-    // Always notify — including All (null) so Gradio clears a stale source path
+    // Always notify - including All (null) so Gradio clears a stale source path
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
   setSearch: (search) => set({ search }),
@@ -797,15 +780,19 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       }
     }
 
-    const hydrateOne = async (
-      getUrl: string,
-      migrateUrl: string,
-      lsKey: 'sg_v2_favorites' | 'sg_v2_recent',
-    ): Promise<{ items: string[]; canRemoveLegacy: boolean }> => {
+    const parseAmbiguous = (body: { ambiguous?: unknown } | null): string[] => {
+      if (!Array.isArray(body?.ambiguous)) return []
+      return body.ambiguous.filter((x): x is string => typeof x === 'string')
+    }
+
+    const hydrateRecent = async (): Promise<{
+      items: string[]
+      canRemoveLegacy: boolean
+    }> => {
       try {
-        const r = await fetch(getUrl)
+        const r = await fetch('/style_grid/recent')
         if (!r.ok) {
-          return { items: loadStringArrayFromLs(lsKey), canRemoveLegacy: false }
+          return { items: loadStringArrayFromLs('sg_v2_recent'), canRemoveLegacy: false }
         }
         const body = (await r.json().catch(() => null)) as {
           items?: unknown
@@ -819,13 +806,12 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
           return { items: serverItems, canRemoveLegacy: true }
         }
 
-        const legacy = loadStringArrayFromLs(lsKey)
+        const legacy = loadStringArrayFromLs('sg_v2_recent')
         if (legacy.length === 0) {
-          // Nothing to migrate; safe to treat as already pruned.
           return { items: [], canRemoveLegacy: true }
         }
 
-        const mig = await styleGridPost(migrateUrl, { items: legacy })
+        const mig = await styleGridPost('/style_grid/recent/migrate', { items: legacy })
         if (!mig.ok) {
           return { items: legacy, canRemoveLegacy: false }
         }
@@ -835,7 +821,9 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         } | null
         if (Array.isArray(migBody?.items)) {
           return {
-            items: migBody.items.filter((x): x is string => typeof x === 'string' && x.length > 0),
+            items: migBody.items.filter(
+              (x): x is string => typeof x === 'string' && x.length > 0,
+            ),
             canRemoveLegacy: true,
           }
         }
@@ -844,14 +832,100 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         }
         return { items: legacy, canRemoveLegacy: false }
       } catch {
-        return { items: loadStringArrayFromLs(lsKey), canRemoveLegacy: false }
+        return { items: loadStringArrayFromLs('sg_v2_recent'), canRemoveLegacy: false }
       }
     }
 
-    const [fav, recent] = await Promise.all([
-      hydrateOne('/style_grid/favorites', '/style_grid/favorites/migrate', 'sg_v2_favorites'),
-      hydrateOne('/style_grid/recent', '/style_grid/recent/migrate', 'sg_v2_recent'),
-    ])
+    const hydrateFavorites = async (): Promise<{
+      items: string[]
+      canRemoveLegacy: boolean
+      ambiguous: string[]
+    }> => {
+      try {
+        const r = await fetch('/style_grid/favorites')
+        if (!r.ok) {
+          return {
+            items: loadStringArrayFromLs('sg_v2_favorites'),
+            canRemoveLegacy: false,
+            ambiguous: [],
+          }
+        }
+        const body = (await r.json().catch(() => null)) as {
+          items?: unknown
+          persisted?: unknown
+          ambiguous?: unknown
+        } | null
+        const serverItems = Array.isArray(body?.items)
+          ? body.items.filter((x): x is string => typeof x === 'string' && x.length > 0)
+          : []
+        const persisted = body?.persisted === true
+        if (persisted) {
+          return {
+            items: serverItems,
+            canRemoveLegacy: true,
+            ambiguous: parseAmbiguous(body),
+          }
+        }
+
+        const legacy = loadStringArrayFromLs('sg_v2_favorites')
+        if (legacy.length === 0) {
+          return {
+            items: [],
+            canRemoveLegacy: true,
+            ambiguous: parseAmbiguous(body),
+          }
+        }
+
+        const mig = await styleGridPost('/style_grid/favorites/migrate', { items: legacy })
+        if (!mig.ok) {
+          return { items: legacy, canRemoveLegacy: false, ambiguous: [] }
+        }
+        const migBody = (await mig.json().catch(() => null)) as {
+          items?: unknown
+          migrated?: unknown
+        } | null
+        let items: string[] | null = null
+        if (Array.isArray(migBody?.items)) {
+          items = migBody.items.filter(
+            (x): x is string => typeof x === 'string' && x.length > 0,
+          )
+        } else if (migBody?.migrated === true) {
+          items = legacy
+        }
+        if (items === null) {
+          return { items: legacy, canRemoveLegacy: false, ambiguous: [] }
+        }
+
+        // Server owns classify; re-GET after migrate for ambiguous names.
+        let ambiguous: string[] = []
+        try {
+          const r2 = await fetch('/style_grid/favorites')
+          if (r2.ok) {
+            const body2 = (await r2.json().catch(() => null)) as {
+              items?: unknown
+              ambiguous?: unknown
+            } | null
+            if (Array.isArray(body2?.items)) {
+              items = body2.items.filter(
+                (x): x is string => typeof x === 'string' && x.length > 0,
+              )
+            }
+            ambiguous = parseAmbiguous(body2)
+          }
+        } catch {
+          // keep migrate items; no ambiguous toast without a GET body
+        }
+        return { items, canRemoveLegacy: true, ambiguous }
+      } catch {
+        return {
+          items: loadStringArrayFromLs('sg_v2_favorites'),
+          canRemoveLegacy: false,
+          ambiguous: [],
+        }
+      }
+    }
+
+    const [fav, recent] = await Promise.all([hydrateFavorites(), hydrateRecent()])
     removeLegacyKey('sg_v2_favorites', fav.canRemoveLegacy)
     removeLegacyKey('sg_v2_recent', recent.canRemoveLegacy)
     set({
@@ -859,6 +933,24 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       recentNames: recent.items.slice(0, 10),
       favoritesRecentHydrated: true,
     })
+
+    const ambiguousNames = [...new Set(fav.ambiguous)].sort()
+    if (ambiguousNames.length > 0) {
+      const signature = ambiguousNames.join('\n')
+      if (signature !== lastAmbiguousToastSignature) {
+        lastAmbiguousToastSignature = signature
+        const shown = ambiguousNames.slice(0, 5)
+        const extra = ambiguousNames.length - shown.length
+        const list = shown.join(', ') + (extra > 0 ? ` (+${extra} more)` : '')
+        const n = ambiguousNames.length
+        queueMicrotask(() => {
+          get().showToast(
+            `${n} favorites match styles that differ between packs and were not linked: ${list}. Star the right pack again.`,
+            'info',
+          )
+        })
+      }
+    }
   },
 
   toggleStyle: (style) => {

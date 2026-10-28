@@ -9,7 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [5.4.0] - 2026-10-28
 
 ### Added
-- **Paired negatives:** a `{sg:…}` / `{sgd:…}` token in the positive prompt always adds the picked style’s negative prompt to the same image’s negative (after your text, in token order). The same token in the negative box reuses the positive pick, hires fix reuses both, and a negative tag that is also in the expanded positive is dropped. Infotext gains `Style Grid styles`.
+- **Paired negatives:** a `{sg:…}` / `{sgd:…}` token in the positive prompt always adds the picked style’s negative prompt to the same image’s negative (after your text, in token order). The same token in the negative box reuses the positive pick, hires fix reuses both, and a negative tag that is also in the expanded positive is dropped. Infotext gains `Style Grid styles`. If your packs have noisy negative prompts, your images will change.
 - **Backup and restore:** a backup now also contains `category_order.json`, `favorites.json` and `recent.json` next to your CSVs and `presets.json`; thumbnails are optional. **Restore** in the Backup / Restore window makes a safety snapshot of the current state first. API: `GET /style_grid/backups`, `POST /style_grid/restore`, optional `include_thumbnails` on `POST /style_grid/backup`.
 - **Export / Import** include favorites and recent lists.
 - **Crash recovery screen:** if the panel fails to render it shows a Reload button and a collapsible Details section instead of a blank area.

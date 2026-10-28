@@ -6,23 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Changed
-- **Wildcard tokens:** the `sg` and `sgd` prefix is now case-insensitive, so `{SG:BODY}` and `{SGD:BODY}` work the same as the lowercase form. This matches the ComfyUI version, so prompts move between the two without edits.
-- **Wildcards:** unknown or empty `{sg:…}` / `{sgd:…}` tokens are now stripped with a warning after nested resolution passes, instead of being left as raw text in the prompt. Empty style fields also resolve to an empty string (token not kept).
-- **Favorites and Recent** persist in `data/favorites.json` / `data/recent.json` (server) instead of browser localStorage. On first load, legacy `sg_v2_favorites` / `sg_v2_recent` keys are migrated once when the server files are absent.
-- **Backup** also includes `usage.json`, `category_order.json`, `favorites.json`, and `recent.json` (plus existing CSVs and `presets.json`). Thumbnails are opt-in. **Restore** is available in the Backup / Restore UI and creates a safety snapshot first.
-
-- **Random wildcards follow the seed:** `{sg:…}` picks are now drawn from the image seed, so a fixed seed repeats them (before: a new pick on every run).
+## [5.4.0] - 2026-10-28
 
 ### Added
 - **Paired negatives:** a `{sg:…}` / `{sgd:…}` token in the positive prompt always adds the picked style’s negative prompt to the same image’s negative (after your text, in token order). The same token in the negative box reuses the positive pick, hires fix reuses both, and a negative tag that is also in the expanded positive is dropped. Infotext gains `Style Grid styles`. Негативы стилей, выбранных {sg}/{sgd} в позитивном промпте, теперь добавляются в негатив того же изображения. Если в ваших CSV есть шумные негативы, результаты изменятся.
-- `GET /style_grid/backups`, `POST /style_grid/restore`, and optional `include_thumbnails` on `POST /style_grid/backup`.
+- **Backup and restore:** a backup now also contains `category_order.json`, `favorites.json` and `recent.json` next to your CSVs and `presets.json`; thumbnails are optional. **Restore** in the Backup / Restore window makes a safety snapshot of the current state first. API: `GET /style_grid/backups`, `POST /style_grid/restore`, optional `include_thumbnails` on `POST /style_grid/backup`.
 - **Export / Import** include favorites and recent lists.
+- **Crash recovery screen:** if the panel fails to render it shows a Reload button and a collapsible Details section instead of a blank area.
+
+### Changed
+- **Wildcard tokens:** the `sg` and `sgd` prefix is now case-insensitive, so `{SG:BODY}` and `{SGD:BODY}` work the same as the lowercase form. This matches the ComfyUI version, so prompts move between the two without edits.
+- **Wildcards:** unknown or empty `{sg:…}` / `{sgd:…}` tokens are now stripped with a warning after nested resolution passes, instead of being left as raw text in the prompt. Empty style fields also resolve to an empty string (token not kept).
+- **Random wildcards follow the seed:** `{sg:…}` picks are now drawn from the image seed, so a fixed seed repeats them (before: a new pick on every run).
+- **Empty slices:** a slice such as `{sg:body:Name}` that matches no style now resolves to nothing instead of picking from the whole category, with a warning in the WebUI console.
+- **Pack filter without silent fallback:** when the selected pack cannot be found, wildcards no longer pick from the whole library; the WebUI console shows a warning.
+- **Favorites and Recent** are stored by the server in the Style Grid folder of the WebUI user data directory instead of browser localStorage. Older browser data is moved over once.
+- **Stable pack ids:** packs are identified as `styles/<file>`, `samples/<file>`, `webui/<file>` or `shared/<folder>/<file>` instead of full disk paths, so favorites, Recent, presets and thumbnails stay linked after the WebUI folder is moved or renamed. Existing data is updated once at startup and nothing is deleted. A favorite whose name exists in several packs with identical content is starred in each; names whose content differs between packs are listed once in a notice so you can star the right pack.
+- **Import:** styles whose names already exist are skipped and listed in a notice; the rest are imported.
+- **Usage counters removed:** `usage.json` is no longer written or backed up.
 
 ### Fixed
 - **Clear button:** Clear now empties both the positive and the negative prompt fields completely. Previously text you typed yourself was left behind.
 - **Batch generation with wildcards:** `{sg:...}` and `{sgd:...}` tokens are now expanded once per batch instead of once per image. All images in a batch share the same picks, and different batches still differ. This fixes `RuntimeError: The expanded size of the tensor ... must match the existing size` on reForge when batch size is greater than 1. Batch size 1 behaves exactly as before, and the same seed still gives the same picks.
 - **Hires fix:** in batches whose prompts differ per image, the hires pass now mirrors each image's own first-pass result.
+- **Same file name in two folders:** editing, renaming and deleting a style now always target the pack it came from. An action that could match several packs by name shows a notice instead of picking one.
+- **Selected pack after reload:** the pack chosen in the panel applies to generation right after a page reload, without reopening the panel.
+- **Restore:** only style CSVs, data files and thumbnails are written back; anything else found in a snapshot is skipped.
+- **Thumbnails:** the generation queue is limited, finished jobs are cleaned up, and oversized uploads are rejected before decoding.
+- **Delete** reports "not found" when no row was removed.
+- **Style Grid styles infotext** uses the correct index for each image in a batch.
+- **Slice selection** shows the card grid with the right number of columns.
+- **Faster panel open:** the catalog is loaded once per open and cached styles are no longer modified in place.
+- Stricter checks on messages between the panel and the page.
+
+Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs unchanged and still read from the WebUI folder. Style Grid data now lives in the WebUI user data directory.
 
 ## [5.3.0] - 2026-10-14
 

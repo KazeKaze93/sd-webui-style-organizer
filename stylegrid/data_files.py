@@ -309,6 +309,12 @@ def save_favorites(items):
 
 def migrate_favorites_once(items):
     """Push localStorage favorites to server only when favorites.json is absent."""
+    if not os.path.isfile(FAVORITES_FILE):
+        styles = _catalog_styles_for_identity()
+        if styles:
+            items = classify_identity_items(
+                items, styles, link_identical_to_all=True
+            )["stored"]
     return _migrate_items_once(FAVORITES_FILE, items)
 
 
@@ -325,6 +331,12 @@ def save_recent(items):
 
 def migrate_recent_once(items):
     """Push localStorage recent to server only when recent.json is absent."""
+    if not os.path.isfile(RECENT_FILE):
+        styles = _catalog_styles_for_identity()
+        if styles:
+            items = classify_identity_items(
+                items, styles, link_identical_to_all=False
+            )["stored"]
     return _migrate_items_once(RECENT_FILE, items, max_len=RECENT_MAX)
 
 

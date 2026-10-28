@@ -105,24 +105,28 @@ def test_migrate_recent_once_caps_and_subsequent_read(fav_recent_env):
 
 def test_save_favorites_then_get_route(fav_client, fav_recent_env):
     _sg_data, fav_path, _recent_path = fav_recent_env
-    key = "styles.csv\0Test Style A"
+    legacy_key = "styles.csv\0Test Style A"
+    # Migrate classifies leaf composites against the catalog when present.
+    id_key = "styles/styles.csv\0Test Style A"
 
     r0 = fav_client.get("/style_grid/favorites")
     assert r0.status_code == 200
     assert r0.json() == {"items": [], "persisted": False, "ambiguous": []}
 
-    r_mig = fav_client.post("/style_grid/favorites/migrate", json={"items": [key]})
+    r_mig = fav_client.post(
+        "/style_grid/favorites/migrate", json={"items": [legacy_key]}
+    )
     assert r_mig.status_code == 200
     body = r_mig.json()
     assert body["ok"] is True
     assert body["migrated"] is True
-    assert body["items"] == [key]
+    assert body["items"] == [id_key]
     assert fav_path.is_file()
 
     r1 = fav_client.get("/style_grid/favorites")
     assert r1.status_code == 200
     body1 = r1.json()
-    assert body1["items"] == [key]
+    assert body1["items"] == [id_key]
     assert body1["persisted"] is True
     assert body1["ambiguous"] == []
 
@@ -131,17 +135,17 @@ def test_save_favorites_then_get_route(fav_client, fav_recent_env):
         json={"items": ["other\0X"]},
     )
     assert r_mig2.json()["migrated"] is False
-    assert r_mig2.json()["items"] == [key]
+    assert r_mig2.json()["items"] == [id_key]
 
     r_save = fav_client.post(
         "/style_grid/favorites/save",
-        json={"items": [key, "styles.csv\0Test Style B"]},
+        json={"items": [id_key, "styles.csv\0Test Style B"]},
     )
     assert r_save.status_code == 200
-    assert r_save.json()["items"] == [key, "styles.csv\0Test Style B"]
+    assert r_save.json()["items"] == [id_key, "styles.csv\0Test Style B"]
 
     r2 = fav_client.get("/style_grid/favorites")
-    assert r2.json()["items"] == [key, "styles.csv\0Test Style B"]
+    assert r2.json()["items"] == [id_key, "styles.csv\0Test Style B"]
 
 
 def test_recent_save_and_get_route(fav_client):

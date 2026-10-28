@@ -11,11 +11,12 @@ from collections import deque
 
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR, get_styles_dirs
+from stylegrid.source_ids import coerce_source_ref, to_source_id
 
 _RENAME_MAP_BASENAME = "RELEASE_NOTES_RENAMES.csv"
 
 
-def _thumbnail_hash_input(style_name, csv_path=""):
+def _legacy_rel_hash_input(style_name, csv_path):
     """Stable string for thumbnail filename hash; empty csv_path keeps legacy name-only hash."""
     if not csv_path:
         return style_name
@@ -39,6 +40,22 @@ def _thumbnail_hash_input(style_name, csv_path=""):
     if rel is None:
         rel = os.path.basename(ap).replace("\\", "/")
     return f"{style_name}::{rel}"
+
+
+def _thumbnail_hash_input(style_name, csv_path=""):
+    """Stable string for thumbnail filename hash; empty csv_path keeps legacy name-only hash."""
+    if not csv_path:
+        return style_name
+    resolved = coerce_source_ref(csv_path)
+    if resolved:
+        sid = to_source_id(resolved)
+        if sid:
+            return f"{style_name}::{sid}"
+    return _legacy_rel_hash_input(style_name, csv_path)
+
+
+def _legacy_rel_stem(name, source):
+    return hashlib.md5(_legacy_rel_hash_input(name, source).encode("utf-8")).hexdigest()
 
 
 def thumbnail_hash_key(name: str, source: str) -> str:
@@ -196,8 +213,100 @@ def migrate_legacy_thumbnails(styles=None, renamed_old_names=None, legacy_names=
     }
 
 
+def migrate_rel_thumbnails(styles=None):
+    """Link or copy relative-path thumbnail stems to source-id stems when safe.
+
+    Non-destructive: old files are never moved, renamed, or deleted.
+    Prefers hardlink; falls back to copy2 on OSError.
+    """
+    empty = {
+        "linked": 0,
+        "copied": 0,
+        "need_regeneration": 0,
+        "skipped_existing": 0,
+    }
+    if not os.path.isdir(THUMBNAILS_DIR):
+        return empty
+
+    if styles is None:
+        styles = get_cached_styles()
+
+    stem_to_filename = {}
+    for f in os.listdir(THUMBNAILS_DIR):
+        stem, ext = os.path.splitext(f)
+        if ext.lower() != ".webp":
+            continue
+        if stem not in stem_to_filename:
+            stem_to_filename[stem] = f
+
+    by_old_stem = {}
+    for s in styles:
+        name = s.get("name") or ""
+        source = s.get("source_file") or ""
+        if not name or not source:
+            continue
+        if source == "__style_grid_lora__" or name.startswith("LORA_"):
+            continue
+        old_stem = _legacy_rel_stem(name, source)
+        by_old_stem.setdefault(old_stem, []).append(s)
+
+    linked = 0
+    copied = 0
+    need_regeneration = 0
+    skipped_existing = 0
+
+    for old_stem, entries in by_old_stem.items():
+        old_filename = stem_to_filename.get(old_stem)
+        if not old_filename:
+            continue
+
+        member_stems = []
+        for s in entries:
+            name = s.get("name") or ""
+            source = s.get("source_file") or ""
+            member_stems.append(thumbnail_hash_key(name, source))
+
+        if all(ns == old_stem for ns in member_stems):
+            continue
+
+        uniq_sources = list(dict.fromkeys(s.get("source_file") or "" for s in entries))
+        uniq_sources = [s for s in uniq_sources if s]
+        if len(uniq_sources) > 1 and not _content_identical_across_sources(entries):
+            need_regeneration += 1
+            continue
+
+        old_path = os.path.join(THUMBNAILS_DIR, old_filename)
+        old_ext = os.path.splitext(old_filename)[1]
+        targets = list(dict.fromkeys(member_stems))
+
+        for new_stem in targets:
+            if new_stem in stem_to_filename:
+                skipped_existing += 1
+                continue
+            new_path = os.path.join(THUMBNAILS_DIR, new_stem + old_ext)
+            try:
+                os.link(old_path, new_path)
+                linked += 1
+                stem_to_filename[new_stem] = new_stem + old_ext
+            except OSError:
+                try:
+                    shutil.copy2(old_path, new_path)
+                    copied += 1
+                    stem_to_filename[new_stem] = new_stem + old_ext
+                except OSError:
+                    continue
+
+    return {
+        "linked": linked,
+        "copied": copied,
+        "need_regeneration": need_regeneration,
+        "skipped_existing": skipped_existing,
+    }
+
+
 def list_thumbnails():
     migrate_legacy_thumbnails()
+    migrate_rel_thumbnails()
     if not os.path.isdir(THUMBNAILS_DIR):
         return []
     hashes = {

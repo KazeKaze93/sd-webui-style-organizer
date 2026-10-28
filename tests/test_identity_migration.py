@@ -15,8 +15,10 @@ from stylegrid import data_files as sg_data
 from stylegrid import source_ids
 from stylegrid.data_files import (
     classify_identity_items,
+    migrate_favorites_once,
     migrate_identity_files_once,
     migrate_presets_source_ids_once,
+    migrate_recent_once,
     style_row_key,
 )
 from stylegrid.routes import register_api
@@ -333,3 +335,82 @@ def test_moved_install_links_by_unique_leaf(tmp_path, monkeypatch):
     assert n == 1
     disk = json.loads(presets_path.read_text(encoding="utf-8"))
     assert disk["P"]["styles"][0]["source_file"] == "styles/pack.csv"
+
+
+def test_migrate_favorites_once_bare_unique_stores_id(tmp_path, monkeypatch):
+    fav, _recent = _patch_identity_files(monkeypatch, tmp_path)
+    styles = [_style("Only", "styles/x.csv")]
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: styles)
+    items, migrated = migrate_favorites_once(["Only"])
+    assert migrated is True
+    assert items == ["styles/x.csv\0Only"]
+    assert json.loads(fav.read_text(encoding="utf-8"))["items"] == items
+
+
+def test_migrate_favorites_once_identical_multi_all_keys(tmp_path, monkeypatch):
+    fav, _recent = _patch_identity_files(monkeypatch, tmp_path)
+    styles = [
+        _style("A", "styles/a.csv", "same", "n"),
+        _style("A", "webui/a.csv", "same", "n"),
+    ]
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: styles)
+    items, migrated = migrate_favorites_once(["A"])
+    assert migrated is True
+    assert items == ["styles/a.csv\0A", "webui/a.csv\0A"]
+    assert json.loads(fav.read_text(encoding="utf-8"))["items"] == items
+
+
+def test_migrate_favorites_once_diverging_kept_raw(tmp_path, monkeypatch):
+    fav, _recent = _patch_identity_files(monkeypatch, tmp_path)
+    styles = [
+        _style("A", "styles/a.csv", "p1", "n1"),
+        _style("A", "webui/a.csv", "p2", "n2"),
+    ]
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: styles)
+    items, migrated = migrate_favorites_once(["A"])
+    assert migrated is True
+    assert items == ["A"]
+    assert json.loads(fav.read_text(encoding="utf-8"))["items"] == ["A"]
+
+
+def test_migrate_recent_once_identical_kept_raw(tmp_path, monkeypatch):
+    _fav, recent = _patch_identity_files(monkeypatch, tmp_path)
+    styles = [
+        _style("A", "styles/a.csv", "same", "n"),
+        _style("A", "webui/a.csv", "same", "n"),
+    ]
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: styles)
+    items, migrated = migrate_recent_once(["A"])
+    assert migrated is True
+    assert items == ["A"]
+    assert json.loads(recent.read_text(encoding="utf-8"))["items"] == ["A"]
+
+
+def test_migrate_favorites_once_existing_file_untouched(tmp_path, monkeypatch):
+    fav, _recent = _patch_identity_files(monkeypatch, tmp_path)
+    fav.write_text(json.dumps({"items": ["styles/old.csv\0Keep"]}), encoding="utf-8")
+    before = fav.read_bytes()
+    styles = [_style("Only", "styles/x.csv")]
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: styles)
+    writes = {"n": 0}
+    real = sg_data.write_json_atomic
+
+    def counting(path, data, **kw):
+        writes["n"] += 1
+        return real(path, data, **kw)
+
+    monkeypatch.setattr(sg_data, "write_json_atomic", counting)
+    items, migrated = migrate_favorites_once(["Only"])
+    assert migrated is False
+    assert items == ["styles/old.csv\0Keep"]
+    assert writes["n"] == 0
+    assert fav.read_bytes() == before
+
+
+def test_migrate_favorites_once_empty_catalog_writes_raw(tmp_path, monkeypatch):
+    fav, _recent = _patch_identity_files(monkeypatch, tmp_path)
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: [])
+    items, migrated = migrate_favorites_once(["Bare"])
+    assert migrated is True
+    assert items == ["Bare"]
+    assert json.loads(fav.read_text(encoding="utf-8"))["items"] == ["Bare"]

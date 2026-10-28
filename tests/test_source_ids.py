@@ -72,6 +72,8 @@ def test_shared_dir_prefix_and_collision_suffix(tmp_path, monkeypatch):
     ext = tmp_path / "ext"
     webui = tmp_path / "webui_data"
     _patch_ext(monkeypatch, ext, webui)
+    # Keep cwd inside webui so the root-scan parent is not an extra shared/ entry.
+    monkeypatch.chdir(webui)
 
     parent_a = tmp_path / "packs" / "alpha" / "shared_name"
     parent_b = tmp_path / "packs" / "beta" / "shared_name"
@@ -336,19 +338,154 @@ def test_delete_false_when_missing_target_or_no_row(tmp_path, monkeypatch):
     ) is False
 
 
-def test_cwd_stray_csv_not_discovered(tmp_path, monkeypatch):
+def test_webui_root_csv_discovery_and_ids(tmp_path, monkeypatch):
+    """CivitAI packs in the WebUI root are discovered once and mapped to ids."""
+    import json
+
+    from stylegrid import cache as sg_cache
+    from stylegrid import data_files as sg_data
+    from stylegrid.data_files import (
+        migrate_identity_files_once,
+        migrate_presets_source_ids_once,
+    )
+
     ext = tmp_path / "ext"
-    webui = tmp_path / "webui"
-    _patch_ext(monkeypatch, ext, webui)
-    stray = tmp_path / "stray.csv"
-    _write_csv(stray, "Stray")
-    monkeypatch.chdir(tmp_path)
+    webui_root = tmp_path / "webui_root"
+    _patch_ext(monkeypatch, ext, webui_root)
+    monkeypatch.chdir(webui_root)
+
+    styles_csv = webui_root / "styles.csv"
+    nsfw = webui_root / "styles_nsfw_core.csv"
+    yuri = webui_root / "styles_yuri.csv"
+    _write_csv(styles_csv, "Default")
+    _write_csv(nsfw, "Nsfw")
+    _write_csv(yuri, "X")
+
     from modules import shared
 
-    shared.prompt_styles.all_styles_files = []
+    shared.prompt_styles.all_styles_files = [Path(styles_csv)]
+
     paths = sg_config.get_all_styles_file_paths()
-    assert str(stray) not in paths
-    assert all(os.path.basename(p) != "stray.csv" for p in paths)
+    basenames = sorted(os.path.basename(p) for p in paths)
+    assert basenames.count("styles.csv") == 1
+    assert basenames.count("styles_nsfw_core.csv") == 1
+    assert basenames.count("styles_yuri.csv") == 1
+    assert source_ids.to_source_id(str(nsfw)) == "webui/styles_nsfw_core.csv"
+    assert source_ids.to_source_id(str(yuri)) == "webui/styles_yuri.csv"
+    assert source_ids.to_source_id(str(styles_csv)) == "webui/styles.csv"
+
+    # data_path differs from cwd -> shared/<cwd folder>/...
+    data_dir = tmp_path / "data_dir"
+    data_dir.mkdir()
+    monkeypatch.setattr(source_ids, "webui_styles_root", lambda: str(data_dir))
+    monkeypatch.setattr(sg_config, "_get_webui_data_path", lambda: str(data_dir))
+    cwd_name = os.path.basename(os.path.normpath(str(webui_root)))
+    assert source_ids.to_source_id(str(yuri)) == f"shared/{cwd_name}/styles_yuri.csv"
+    assert source_ids.to_source_id(str(nsfw)) == f"shared/{cwd_name}/styles_nsfw_core.csv"
+
+    # Restore cwd == data root for catalog / migration / GET checks.
+    monkeypatch.setattr(source_ids, "webui_styles_root", lambda: str(webui_root))
+    monkeypatch.setattr(sg_config, "_get_webui_data_path", lambda: str(webui_root))
+
+    monkeypatch.setattr(sg_config, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(csv_io, "get_all_styles_file_paths", lambda: paths)
+    monkeypatch.setattr(sg_cache, "get_all_styles_file_paths", lambda: paths)
+    sg_cache.invalidate_styles_cache()
+
+    fav = tmp_path / "favorites.json"
+    recent = tmp_path / "recent.json"
+    presets_path = tmp_path / "presets.json"
+    monkeypatch.setattr(sg_data, "FAVORITES_FILE", str(fav))
+    monkeypatch.setattr(sg_data, "RECENT_FILE", str(recent))
+    monkeypatch.setattr(sg_data, "PRESETS_FILE", str(presets_path))
+    monkeypatch.setattr(sg_config, "FAVORITES_FILE", str(fav))
+    monkeypatch.setattr(sg_config, "RECENT_FILE", str(recent))
+
+    abs_yuri = os.path.normpath(os.path.abspath(str(yuri)))
+    fav.write_text(
+        json.dumps({"items": [f"{abs_yuri}\0X"]}),
+        encoding="utf-8",
+    )
+    catalog = [csv_io.enrich_style(s) for s in csv_io.load_all_styles()]
+    monkeypatch.setattr(sg_data, "get_cached_styles", lambda: catalog)
+    monkeypatch.setattr(sg_cache, "get_cached_styles", lambda: catalog)
+    migrate_identity_files_once()
+    assert json.loads(fav.read_text(encoding="utf-8"))["items"] == [
+        "webui/styles_yuri.csv\0X"
+    ]
+
+    presets_path.write_text(
+        json.dumps(
+            {
+                "P": {
+                    "styles": [
+                        {"name": "X", "source_file": abs_yuri, "weight": 1.0},
+                    ],
+                    "wildcards": [],
+                    "note": "",
+                    "created": "2026-01-01T00:00:00",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert migrate_presets_source_ids_once() == 1
+    disk = json.loads(presets_path.read_text(encoding="utf-8"))
+    assert disk["P"]["styles"][0]["source_file"] == "webui/styles_yuri.csv"
+
+    from stylegrid import routes as sg_routes
+
+    monkeypatch.setattr(sg_routes, "get_cached_styles", lambda: catalog)
+    monkeypatch.setattr(sg_routes, "migrate_identity_files_once", lambda: None)
+    monkeypatch.setattr(sg_routes, "migrate_presets_source_ids_once", lambda: 0)
+    app = FastAPI()
+    register_api(None, app)
+    with TestClient(app, base_url="http://127.0.0.1:7860") as client:
+        r = client.get("/style_grid/styles")
+    assert r.status_code == 200
+    payload_ids = {
+        s.get("source_file")
+        for cat in r.json()["categories"].values()
+        for s in cat
+    }
+    assert "webui/styles_nsfw_core.csv" in payload_ids
+    assert "webui/styles_yuri.csv" in payload_ids
+    assert "webui/styles.csv" in payload_ids
+
+
+def test_webui_root_moved_install_same_ids(tmp_path, monkeypatch):
+    """Two WebUI roots with the same pack filenames yield the same public ids."""
+    name = "X"
+
+    def setup(root: Path):
+        ext = root / "ext"
+        webui = root / "webui"
+        _write_csv(webui / "styles.csv", "Default")
+        _write_csv(webui / "styles_yuri.csv", name)
+        return ext, webui
+
+    ext_a, webui_a = setup(tmp_path / "install_a")
+    ext_b, webui_b = setup(tmp_path / "install_b")
+
+    def ids_for(ext, webui):
+        _patch_ext(monkeypatch, ext, webui)
+        monkeypatch.chdir(webui)
+        from modules import shared
+
+        shared.prompt_styles.all_styles_files = [Path(webui / "styles.csv")]
+        return [
+            source_ids.to_source_id(str(webui / "styles.csv")),
+            source_ids.to_source_id(str(webui / "styles_yuri.csv")),
+        ]
+
+    assert ids_for(ext_a, webui_a) == [
+        "webui/styles.csv",
+        "webui/styles_yuri.csv",
+    ]
+    assert ids_for(ext_b, webui_b) == [
+        "webui/styles.csv",
+        "webui/styles_yuri.csv",
+    ]
 
 
 def _process_wildcard_pool(all_styles, active_source: str):

@@ -359,7 +359,7 @@ Primary style fields:
 - `negative_prompt`
 - optional metadata: `description`, `category`
 
-Style packs are discovered from the extension `styles/` and `samples/` folders, plus the WebUI styles file(s) configured in WebUI (`shared.prompt_styles`, typically `<data_path>/styles.csv`). Only those WebUI-configured files are read from the WebUI data/root folder; loose `*.csv` files in the process cwd are not scanned.
+Style packs are read from the extension `styles/` folder, `samples/`, the WebUI styles file(s) (`shared.prompt_styles`, typically `<data_path>/styles.csv`), and any `*.csv` in the WebUI root folder (process cwd; CivitAI packs often live next to `styles.csv`).
 
 Detailed specification: `docs/CSV_FORMAT.md`.
 

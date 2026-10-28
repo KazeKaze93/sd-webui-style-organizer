@@ -232,10 +232,11 @@ def get_styles_dirs():
 
 
 def get_all_styles_file_paths():
-    """Discover style CSVs: extension styles/, samples/, then WebUI shared.prompt_styles.
+    """Discover style CSVs: extension styles/, samples/, WebUI shared.prompt_styles, then cwd *.csv.
 
-    WebUI-root files come only from ``shared.prompt_styles.all_styles_files``
-    (typically ``<data_path>/styles.csv``). There is no cwd ``*.csv`` scan.
+    CivitAI-style packs installed in the WebUI root (next to styles.csv) are
+    found by scanning ``os.getcwd()`` for ``*.csv`` after the shared list.
+    Paths are deduped by ``normcase(abspath)`` so styles.csv is not listed twice.
     """
     ext_styles_dir = os.path.join(EXT_DIR, "styles")
     all_styles_file_paths = []
@@ -257,4 +258,14 @@ def get_all_styles_file_paths():
         all_styles_file_paths.extend(shared_paths)
     except Exception:
         pass
+
+    seen = {os.path.normcase(os.path.abspath(p)) for p in all_styles_file_paths}
+    webui_root = os.getcwd()
+    for fname in sorted(os.listdir(webui_root)):
+        if fname.lower().endswith(".csv"):
+            fp = os.path.join(webui_root, fname)
+            key = os.path.normcase(os.path.abspath(fp))
+            if key not in seen:
+                seen.add(key)
+                all_styles_file_paths.append(fp)
     return all_styles_file_paths

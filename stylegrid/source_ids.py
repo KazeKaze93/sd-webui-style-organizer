@@ -38,7 +38,12 @@ def _leaf_ok(leaf: str) -> bool:
 
 
 def _shared_parent_paths() -> list[str]:
-    """Abs parents of shared.prompt_styles files that are not styles/samples/webui."""
+    """Abs parents for shared/ ids: prompt_styles parents and WebUI cwd when needed.
+
+    Excludes styles/, samples/, and webui_styles_root(). When process cwd equals
+    the webui root, cwd packs already map to ``webui/<f.csv>``; otherwise cwd is
+    included so root-scan packs map to ``shared/<cwd folder>/<f.csv>``.
+    """
     fixed = {
         os.path.normcase(os.path.normpath(os.path.abspath(os.path.join(config.EXT_DIR, "styles")))),
         os.path.normcase(os.path.normpath(os.path.abspath(os.path.join(config.EXT_DIR, "samples")))),
@@ -49,7 +54,7 @@ def _shared_parent_paths() -> list[str]:
     try:
         files = list(shared.prompt_styles.all_styles_files)
     except Exception:
-        return out
+        files = []
     for p in files:
         try:
             parent = os.path.normpath(os.path.abspath(str(p.parent)))
@@ -60,6 +65,14 @@ def _shared_parent_paths() -> list[str]:
             continue
         seen.add(key)
         out.append(parent)
+    try:
+        cwd = os.path.normpath(os.path.abspath(os.getcwd()))
+        key = os.path.normcase(cwd)
+        if key not in fixed and key not in seen:
+            seen.add(key)
+            out.append(cwd)
+    except Exception:
+        pass
     out.sort(key=lambda p: os.path.normcase(p))
     return out
 

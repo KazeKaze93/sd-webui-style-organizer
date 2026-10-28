@@ -59,7 +59,7 @@ This is **not** an HTTP API. During each generation, `scripts/style_grid.py` run
 ## GET /styles
 
 **Method:** GET  
-**Description:** Returns categorized styles and presets, with ETag support. The style list from `get_cached_styles()` is CSV styles plus scanned LoRA synthetic rows (`stylegrid/lora_scan.py`).
+**Description:** Returns categorized styles and presets, with ETag support. The style list from `get_cached_styles()` is CSV styles plus scanned LoRA synthetic rows (`stylegrid/lora_scan.py`). CSV packs are read from the extension `styles/` folder, `samples/`, the WebUI styles file(s) (`shared.prompt_styles`), and any `*.csv` in the WebUI root folder (process cwd).
 
 **Parameters:**
 

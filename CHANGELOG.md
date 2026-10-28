@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [5.4.2] - 2026-10-28
+
+### Fixed
+
+- **Updates take effect without a hard refresh:** the browser no longer keeps old copies of Style Grid's page scripts after an update. Before, the panel could keep running the previous version until you pressed Ctrl+F5.
+
+Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs unchanged. Style Grid's page scripts are now served from `/style_grid/host/`.
+
 ## [5.4.1] - 2026-10-28
 
 ### Fixed

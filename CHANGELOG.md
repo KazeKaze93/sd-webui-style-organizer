@@ -7,10 +7,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ## [5.4.1] - 2026-10-28
+
 ### Fixed
+
 - **Thumbnails of same-named packs:** two packs with the same file name in different folders (for example a copy of a sample pack in `styles/` or next to `styles.csv`) no longer share one thumbnail. Existing thumbnails are linked to the new file names once at startup and the old files are kept. On NTFS and most Linux file systems a link takes no extra disk space; elsewhere the file is copied. Styles whose content differs between such packs generate their thumbnail again once.
 - **Thumbnail list with large libraries:** pack folders are resolved once per request instead of once per style.
 - **Sticky category header:** the header now sits on the top edge of the grid; cards no longer show above or under it while scrolling.
+
 Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs unchanged. Folder size tools may count linked thumbnail files twice.
 
 ## [5.4.0] - 2026-10-28

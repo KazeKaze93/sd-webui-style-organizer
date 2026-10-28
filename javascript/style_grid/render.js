@@ -349,7 +349,7 @@ function openStyleEditor(tabName, existingStyle, sourceFile) {
                     ? {
                         old_name: existingStyle.name,
                         new_name: name,
-                        source: existingStyle.source,
+                        source: existingStyle.source_file || existingStyle.source,
                         prompt: promptInput.value,
                         negative_prompt: negInput.value,
                         description: joinDescriptionAndCombos(descInput.value, combosInput.value),
@@ -359,7 +359,9 @@ function openStyleEditor(tabName, existingStyle, sourceFile) {
                         prompt: promptInput.value,
                         negative_prompt: negInput.value,
                         description: joinDescriptionAndCombos(descInput.value, combosInput.value),
-                        source: existingStyle ? existingStyle.source : (sourceFile || null),
+                        source: existingStyle
+                            ? (existingStyle.source_file || existingStyle.source)
+                            : (sourceFile || null),
                     };
                 apiPost(endpoint, payload).then(assertNoApiError).then(function () {
                     if (isRename) {
@@ -410,7 +412,10 @@ function openStyleEditor(tabName, existingStyle, sourceFile) {
 function duplicateStyle(tabName, style, onDone) {
         const newName = style.name + "_copy";
         apiPost("/style_grid/style/save", {
-            name: newName, prompt: style.prompt || "", negative_prompt: style.negative_prompt || "", source: style.source,
+            name: newName,
+            prompt: style.prompt || "",
+            negative_prompt: style.negative_prompt || "",
+            source: style.source_file || style.source,
         }).then(assertNoApiError).then(function () {
             hooks.refreshPanel(tabName);
             var notify = state[tabName] && state[tabName].refreshAndNotifyFrame;
@@ -519,7 +524,7 @@ function moveToCategory(tabName, style, onDone) {
                 apiPost("/style_grid/style/rename", {
                     old_name: oldName,
                     new_name: newName,
-                    source: style.source,
+                    source: style.source_file || style.source,
                     // Align category column with the new prefix. Display prefers
                     // category_explicit over the name prefix when the column is set.
                     category: newCat.toUpperCase(),

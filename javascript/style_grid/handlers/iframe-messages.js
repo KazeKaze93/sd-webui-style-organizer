@@ -8,6 +8,7 @@ import {
     migrateFavoritesInMemory,
     pushStyleIntoCategories,
     findStyleByNameAndSource,
+    sourceLeaf,
 } from "../state.js";
 import {
     setPromptValue,
@@ -82,21 +83,36 @@ function installIframeMessageBridge(tab, frame) {
             }
             state[tab].refreshAndNotifyFrame = refreshAndNotifyFrame;
             function findStyleByName(styleName) {
-                // Searches the tab-local host cache built from state[tab].categories.
+                // Unique match only (dedupe by styleIdentityKey); ambiguous -> null.
                 var cats = (state[tab] && state[tab].categories) || {};
+                var matches = [];
+                var seen = {};
                 for (var cat in cats) {
                     if (!Object.prototype.hasOwnProperty.call(cats, cat)) continue;
-                    var list = cats[cat] || [];
-                    var found = list.find(function (s) { return s.name === styleName; });
-                    if (found) return found;
+                    (cats[cat] || []).forEach(function (s) {
+                        if (s.name !== styleName) return;
+                        var key = styleIdentityKey(s.name, s.source_file || s.source || "");
+                        if (seen[key]) return;
+                        seen[key] = true;
+                        matches.push(s);
+                    });
                 }
-                return null;
+                return matches.length === 1 ? matches[0] : null;
             }
             function findStyleForMessage(styleName, sourceFile) {
                 if (sourceFile) {
                     return findStyleByNameAndSource(tab, styleName, sourceFile);
                 }
                 return findStyleByName(styleName);
+            }
+            function toastAmbiguousPack(styleName) {
+                if (frame && frame.contentWindow) {
+                    postToFrame(frame, {
+                        type: "SG_TOAST",
+                        message: '"' + styleName + '" exists in several packs; pick it from the panel with its pack.',
+                        variant: "info",
+                    });
+                }
             }
             if (msg.type === "SG_READY") {
                 // Fresh detect at READY time - do not reuse a mode cached at iframe creation.
@@ -207,18 +223,24 @@ function installIframeMessageBridge(tab, frame) {
                 var styleToEdit = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToEdit) {
                     openStyleEditor(tab, styleToEdit);
+                } else if (!msg.source_file) {
+                    toastAmbiguousPack(msg.styleId);
                 }
             }
             if (msg.type === "SG_DUPLICATE_STYLE") {
                 var styleToDup = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToDup) {
                     duplicateStyle(tab, styleToDup, refreshAndNotifyFrame);
+                } else if (!msg.source_file) {
+                    toastAmbiguousPack(msg.styleId);
                 }
             }
             if (msg.type === "SG_MOVE_TO_CATEGORY") {
                 var styleToMove = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToMove) {
                     moveToCategory(tab, styleToMove, refreshAndNotifyFrame);
+                } else if (!msg.source_file) {
+                    toastAmbiguousPack(msg.styleId);
                 }
             }
             if (msg.type === "SG_WILDCARD_CATEGORY") {
@@ -260,12 +282,10 @@ function installIframeMessageBridge(tab, frame) {
                 if (msg.source === state[tab].selectedSourceFile) return;
                 var src = msg.source;
                 if (src) {
-                    var normalized = src.replace(/\\/g, "/");
-                    state[tab].selectedSource = normalized.split("/").pop() || src;
-                    // Full path for batch/API — same filter as V2 (`source_file`), not basename-only
-                    state[tab].selectedSourceFile = (normalized.indexOf("/") !== -1 || src.indexOf("\\") !== -1)
-                        ? normalized
-                        : null;
+                    var normalized = String(src).replace(/\\/g, "/");
+                    // Button text stays the leaf; persist the public source id.
+                    state[tab].selectedSource = sourceLeaf(normalized) || normalized;
+                    state[tab].selectedSourceFile = normalized;
                 } else {
                     state[tab].selectedSource = "All";
                     state[tab].selectedSourceFile = null;
@@ -274,19 +294,21 @@ function installIframeMessageBridge(tab, frame) {
                 if (syncBtn) {
                     syncBtn.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
                 }
-                setStoredSource(tab, state[tab].selectedSource || "All");
+                setStoredSource(tab, state[tab].selectedSourceFile || "All");
                 syncSourceInput(tab);
             }
             if (msg.type === "SG_GENERATE_CATEGORY_PREVIEWS") {
                 var catName = msg.category || "";
                 if (catName) {
                     if (msg.source !== undefined) {
-                        state[tab].selectedSourceFile = msg.source;
+                        state[tab].selectedSourceFile = msg.source
+                            ? String(msg.source).replace(/\\/g, "/")
+                            : null;
                     }
                     var batchSource = msg.source || state[tab].selectedSourceFile || "";
                     var sourceMatchKey = function (str) {
                         if (!str) return "";
-                        var base = String(str).replace(/\\/g, "/").split("/").pop() || "";
+                        var base = sourceLeaf(str);
                         return base.replace(/\.csv$/i, "").toLowerCase();
                     };
                     var rawState = (state[tab] && state[tab].selectedSource) || "All";
@@ -298,8 +320,13 @@ function installIframeMessageBridge(tab, frame) {
                     var exactPath = null;
                     if (batchSource) {
                         var ns = String(batchSource).replace(/\\/g, "/");
-                        activeSource = ns.split("/").pop() || String(batchSource);
-                        if (ns.indexOf("/") !== -1 || String(batchSource).indexOf("\\") !== -1) {
+                        activeSource = sourceLeaf(ns) || String(batchSource);
+                        // Exact id / abs / LoRA sentinel; bare leaf falls back to key match.
+                        if (
+                            ns.indexOf("/") !== -1
+                            || String(batchSource).indexOf("\\") !== -1
+                            || ns === "__style_grid_lora__"
+                        ) {
                             exactPath = ns;
                             activeKey = null;
                         } else {
@@ -312,9 +339,12 @@ function installIframeMessageBridge(tab, frame) {
                         if (syncBtnBatch) {
                             syncBtnBatch.textContent = state[tab].selectedSource === "All" ? "All Sources" : state[tab].selectedSource;
                         }
+                        setStoredSource(tab, state[tab].selectedSourceFile || "All");
                     } else {
-                        activeKey = activeSource !== "All" ? sourceMatchKey(activeSource) : null;
-                        exactPath = null;
+                        exactPath = state[tab].selectedSourceFile || null;
+                        activeKey = (!exactPath && activeSource !== "All")
+                            ? sourceMatchKey(activeSource)
+                            : null;
                     }
                     // state[tab].categories dedupes by name only on first load — use API list; filter like V2 (source_file), not basename-only
                     fetch("/style_grid/styles")
@@ -394,7 +424,14 @@ function installIframeMessageBridge(tab, frame) {
             if (msg.type === "SG_DELETE_STYLE") {
                 var styleToDelete = findStyleForMessage(msg.styleId, msg.source_file);
                 if (styleToDelete) {
-                    deleteStyle(tab, styleToDelete.name, styleToDelete.source || styleToDelete.source_file, refreshAndNotifyFrame);
+                    deleteStyle(
+                        tab,
+                        styleToDelete.name,
+                        styleToDelete.source_file || styleToDelete.source,
+                        refreshAndNotifyFrame
+                    );
+                } else if (!msg.source_file) {
+                    toastAmbiguousPack(msg.styleId);
                 }
             }
         });

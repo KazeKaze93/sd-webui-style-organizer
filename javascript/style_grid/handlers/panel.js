@@ -8,8 +8,9 @@ import {
 import {
     state,
     getStoredSource,
-    getUniqueSources,
+    setStoredSource,
     parseStyleIdentityKey,
+    resolveStoredSourceSelection,
 } from "../state.js";
 import {
     setPromptValue,
@@ -27,6 +28,8 @@ import {
     syncWildcards,
 } from "./wildcards.js";
 import { postToFrame } from "../post-message.js";
+
+var LORA_SOURCE_SENTINEL = "__style_grid_lora__";
 
 let _pollInterval = null;
 
@@ -55,11 +58,24 @@ function syncPanelHostState(tabName) {
         var categories = loadStyles(tabName);
         state[tabName].categories = categories;
 
-        state[tabName].selectedSource = getStoredSource(tabName);
-        var sources = getUniqueSources(tabName);
-        var currentSource = state[tabName].selectedSource;
-        if (sources.indexOf(currentSource) === -1) currentSource = "All";
-        state[tabName].selectedSource = currentSource;
+        var catalogIds = [];
+        var seenIds = {};
+        Object.values(categories || {}).forEach(function (arr) {
+            (arr || []).forEach(function (s) {
+                var id = s && s.source_file;
+                if (!id || id === LORA_SOURCE_SENTINEL) return;
+                if (seenIds[id]) return;
+                seenIds[id] = true;
+                catalogIds.push(id);
+            });
+        });
+        var stored = getStoredSource(tabName);
+        var resolved = resolveStoredSourceSelection(stored, catalogIds);
+        state[tabName].selectedSource = resolved.selectedSource;
+        state[tabName].selectedSourceFile = resolved.selectedSourceFile;
+        if (resolved.storeValue !== stored) {
+            setStoredSource(tabName, resolved.storeValue);
+        }
         syncSourceInput(tabName);
 
         loadThumbnailList(tabName);

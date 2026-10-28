@@ -96,11 +96,51 @@ function migrateFavoritesInMemory(tabName) {
                 next.add(styleIdentityKey(matches[0].name, matches[0].source_file || matches[0].source || ""));
                 changed = true;
             } else {
-                changed = true; // drop ambiguous / missing bare names
+                // Keep ambiguous or missing bare names as-is (never drop).
+                next.add(entry);
             }
         });
         if (changed) setFavorites(tabName, next);
         return next;
+    }
+
+/** Last path segment after / or \\ (for button labels and legacy leaf matching). */
+function sourceLeaf(value) {
+        var s = String(value || "").replace(/\\/g, "/");
+        var parts = s.split("/");
+        return parts[parts.length - 1] || s;
+    }
+
+/**
+ * Resolve a stored source preference against catalog public ids.
+ * Returns { selectedSource, selectedSourceFile, storeValue }.
+ * storeValue is what to persist (id or "All"); rewrite when it differs from stored.
+ */
+function resolveStoredSourceSelection(stored, catalogSourceIds) {
+        var ids = Array.isArray(catalogSourceIds) ? catalogSourceIds : [];
+        var raw = (stored === null || stored === undefined || stored === "") ? "All" : String(stored);
+        if (raw === "All") {
+            return { selectedSource: "All", selectedSourceFile: null, storeValue: "All" };
+        }
+        if (ids.indexOf(raw) !== -1) {
+            return {
+                selectedSource: sourceLeaf(raw) || raw,
+                selectedSourceFile: raw,
+                storeValue: raw,
+            };
+        }
+        var leaf = sourceLeaf(raw).toLowerCase();
+        var matches = ids.filter(function (id) {
+            return sourceLeaf(id).toLowerCase() === leaf;
+        });
+        if (matches.length === 1) {
+            return {
+                selectedSource: sourceLeaf(matches[0]) || matches[0],
+                selectedSourceFile: matches[0],
+                storeValue: matches[0],
+            };
+        }
+        return { selectedSource: "All", selectedSourceFile: null, storeValue: "All" };
     }
 
 function getRecentHistory(t) {
@@ -184,11 +224,18 @@ function getUniqueSources(t) {
     }
 
 function findStyleByName(t, n) {
-        for (const styles of Object.values(state[t].categories)) {
-            const f = styles.find(function (s) { return s.name === n; });
-            if (f) return f;
-        }
-        return null;
+        var matches = [];
+        var seen = {};
+        Object.values((state[t] && state[t].categories) || {}).forEach(function (styles) {
+            (styles || []).forEach(function (s) {
+                if (s.name !== n) return;
+                var key = styleIdentityKey(s.name, s.source_file || s.source || "");
+                if (seen[key]) return;
+                seen[key] = true;
+                matches.push(s);
+            });
+        });
+        return matches.length === 1 ? matches[0] : null;
     }
 
 function styleCacheIdentity(s) {
@@ -249,4 +296,6 @@ export {
     styleCacheIdentity,
     pushStyleIntoCategories,
     findStyleByNameAndSource,
+    sourceLeaf,
+    resolveStoredSourceSelection,
 };

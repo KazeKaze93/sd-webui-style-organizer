@@ -50,7 +50,19 @@ function applyStyleImmediate(tabName, styleName, opts) {
                 negative_prompt: opts.neg !== undefined ? opts.neg : style.negative_prompt,
             });
         }
-        if (!style) return;
+        if (!style) {
+            if (!restoreOnly && !opts.source_file) {
+                var frAmb = state[tabName] && state[tabName].sgFrame;
+                if (frAmb && frAmb.contentWindow) {
+                    postToFrame(frAmb, {
+                        type: "SG_TOAST",
+                        message: '"' + styleName + '" exists in several packs; pick it from the panel with its pack.',
+                        variant: "info",
+                    });
+                }
+            }
+            return;
+        }
         var idKey = styleIdentityKey(style.name, style.source_file || opts.source_file || "");
         if (!restoreOnly && state[tabName].applied.has(idKey)) return;
 

@@ -1,6 +1,7 @@
 """Presets, favorites/recent, CSV backups (JSON / filesystem under data/)."""
 
 import io
+import logging
 import os
 import re
 import shutil
@@ -19,6 +20,7 @@ from stylegrid.config import (
     THUMBNAILS_DIR,
     get_all_styles_file_paths,
 )
+from stylegrid.lora_scan import LORA_SOURCE
 from stylegrid.safe_persistence import (
     CorruptDataError,
     cleanup_stale_tmp,
@@ -27,7 +29,10 @@ from stylegrid.safe_persistence import (
     write_atomic,
     write_json_atomic,
 )
+from stylegrid.source_ids import is_source_id, to_source_id
 from stylegrid.wildcards import TOKEN_SGD
+
+log = logging.getLogger(__name__)
 
 __all__ = [
     "CorruptDataError",
@@ -38,18 +43,205 @@ __all__ = [
     "normalize_wildcard_entry",
     "preset_styles_payload_ok",
     "update_presets",
+    "migrate_presets_source_ids_once",
     "load_favorites",
     "save_favorites",
     "migrate_favorites_once",
     "load_recent",
     "save_recent",
     "migrate_recent_once",
+    "classify_identity_items",
+    "migrate_identity_files_once",
+    "style_row_key",
     "backup_csv_files",
     "list_backups",
     "restore_from_backup",
     "thumbnails_dir_size",
     "metadata_backup_files",
 ]
+
+
+def style_row_key(source_file: str, name: str) -> str:
+    """Composite identity matching the iframe ``styleRowKey`` (``source\\0name``)."""
+    return f"{source_file}\0{name}"
+
+
+def _source_leaf(value: str) -> str:
+    base = value.replace("\\", "/").rsplit("/", 1)[-1]
+    return base.lower()
+
+
+def _same_prompt_negative(a: dict, b: dict) -> bool:
+    return (a.get("prompt") or "") == (b.get("prompt") or "") and (
+        a.get("negative_prompt") or ""
+    ) == (b.get("negative_prompt") or "")
+
+
+def classify_identity_items(
+    items,
+    styles,
+    *,
+    link_identical_to_all: bool,
+) -> dict:
+    """Classify favorites/recent entries against the style catalog.
+
+    Returns ``{keys, stored, ambiguous_names}``:
+    - ``keys``: successfully linked ``styleRowKey`` composites
+    - ``stored``: full list to persist (linked keys + every unlinked original,
+      first-occurrence order, deduped)
+    - ``ambiguous_names``: name parts of diverging multi-pack entries (unique,
+      insertion order; callers may sort for the API)
+    """
+    keys: list[str] = []
+    stored: list[str] = []
+    ambiguous_names: list[str] = []
+    seen_keys: set[str] = set()
+    seen_stored: set[str] = set()
+    seen_ambiguous_names: set[str] = set()
+
+    catalog_keys = {
+        style_row_key(s.get("source_file") or "", s.get("name") or "")
+        for s in styles
+        if s.get("name") and s.get("source_file")
+    }
+
+    def push_key(key: str) -> None:
+        if key not in seen_keys:
+            seen_keys.add(key)
+            keys.append(key)
+        if key not in seen_stored:
+            seen_stored.add(key)
+            stored.append(key)
+
+    def keep_stored(entry: str) -> None:
+        if entry not in seen_stored:
+            seen_stored.add(entry)
+            stored.append(entry)
+
+    def note_ambiguous_name(name: str) -> None:
+        if name and name not in seen_ambiguous_names:
+            seen_ambiguous_names.add(name)
+            ambiguous_names.append(name)
+
+    def resolve_multi(entry: str, name: str, candidates: list) -> None:
+        first = candidates[0]
+        all_identical = all(_same_prompt_negative(first, c) for c in candidates)
+        if all_identical:
+            if link_identical_to_all:
+                for c in candidates:
+                    push_key(style_row_key(c.get("source_file") or "", c.get("name") or ""))
+            else:
+                keep_stored(entry)
+            return
+        keep_stored(entry)
+        note_ambiguous_name(name)
+
+    if not isinstance(items, list):
+        return {"keys": keys, "stored": stored, "ambiguous_names": ambiguous_names}
+
+    for entry in items:
+        if not isinstance(entry, str) or not entry:
+            continue
+        if "\0" in entry:
+            sep = entry.index("\0")
+            source_part = entry[:sep]
+            name = entry[sep + 1 :]
+            if entry in catalog_keys or is_source_id(source_part):
+                push_key(entry)
+                continue
+            if os.path.isabs(source_part):
+                sid = to_source_id(source_part)
+                if sid is not None:
+                    push_key(style_row_key(sid, name))
+                    continue
+            leaf = _source_leaf(source_part)
+            candidates = [
+                s
+                for s in styles
+                if (s.get("name") or "") == name
+                and _source_leaf(s.get("source_file") or "") == leaf
+            ]
+            if len(candidates) == 1:
+                c = candidates[0]
+                push_key(style_row_key(c.get("source_file") or "", c.get("name") or ""))
+            elif len(candidates) > 1:
+                resolve_multi(entry, name, candidates)
+            else:
+                keep_stored(entry)
+            continue
+
+        matches = [s for s in styles if (s.get("name") or "") == entry]
+        if len(matches) == 1:
+            m = matches[0]
+            push_key(style_row_key(m.get("source_file") or "", m.get("name") or ""))
+        elif len(matches) > 1:
+            resolve_multi(entry, entry, matches)
+        else:
+            keep_stored(entry)
+
+    return {"keys": keys, "stored": stored, "ambiguous_names": ambiguous_names}
+
+
+def _catalog_styles_for_identity():
+    return [
+        s
+        for s in get_cached_styles()
+        if (s.get("source_file") or "") != LORA_SOURCE
+    ]
+
+
+def _migrate_one_identity_file(path, *, link_identical_to_all: bool, max_len=None) -> bool:
+    """Rewrite one favorites/recent file when classify changes ``stored``. Returns True if written."""
+    styles = _catalog_styles_for_identity()
+    with locked_path(path):
+        cleanup_stale_tmp(path)
+        if not os.path.isfile(path):
+            return False
+        try:
+            raw = load_json_object(path)
+        except CorruptDataError as exc:
+            log.warning(
+                "[Style Grid] identity migration skipped (corrupt): %s",
+                exc,
+            )
+            return False
+        current = _normalize_string_list(raw.get("items", []), max_len=max_len)
+        result = classify_identity_items(
+            current,
+            styles,
+            link_identical_to_all=link_identical_to_all,
+        )
+        stored = _normalize_string_list(result["stored"], max_len=max_len)
+        if stored == current:
+            return False
+        write_json_atomic(path, {"items": stored})
+        return True
+
+
+def migrate_identity_files_once() -> None:
+    """Eager rewrite of favorites.json / recent.json abs keys to public source ids.
+
+    Copy-never-delete: unlinked entries stay stored. Empty catalog: no-op (INFO).
+    Corrupt files: log and skip.
+    """
+    styles = _catalog_styles_for_identity()
+    if not styles:
+        log.info(
+            "[Style Grid] identity migration skipped: empty style catalog"
+        )
+        return
+    try:
+        _migrate_one_identity_file(
+            FAVORITES_FILE, link_identical_to_all=True, max_len=None
+        )
+    except Exception:
+        log.exception("[Style Grid] favorites identity migration failed")
+    try:
+        _migrate_one_identity_file(
+            RECENT_FILE, link_identical_to_all=False, max_len=RECENT_MAX
+        )
+    except Exception:
+        log.exception("[Style Grid] recent identity migration failed")
 
 
 def _normalize_string_list(raw_items, *, max_len=None):
@@ -281,6 +473,54 @@ def load_presets():
         cleanup_stale_tmp(PRESETS_FILE)
         raw = load_json_object(PRESETS_FILE, require_object_values=True)
         return normalize_presets(raw)
+
+
+def migrate_presets_source_ids_once() -> int:
+    """Eager rewrite of abs ``source_file`` values in presets.json to public ids.
+
+    Copy-never-delete: only rewrites mappable abs paths; unmappable stay as-is.
+    Corrupt or missing file: log and return 0 (never overwrite).
+    ``load_presets`` stays read-only.
+    """
+    changed = 0
+    with locked_path(PRESETS_FILE):
+        cleanup_stale_tmp(PRESETS_FILE)
+        if not os.path.isfile(PRESETS_FILE):
+            return 0
+        try:
+            raw = load_json_object(PRESETS_FILE, require_object_values=True)
+        except CorruptDataError as exc:
+            log.warning(
+                "[Style Grid] presets source-id migration skipped (corrupt): %s",
+                exc,
+            )
+            return 0
+        if not isinstance(raw, dict):
+            return 0
+        for _preset_name, preset in raw.items():
+            if not isinstance(preset, dict):
+                continue
+            styles_raw = preset.get("styles")
+            if not isinstance(styles_raw, list):
+                continue
+            for entry in styles_raw:
+                if not isinstance(entry, dict):
+                    continue
+                raw_source = entry.get("source_file", "")
+                if not isinstance(raw_source, str) or not raw_source.strip():
+                    continue
+                src = raw_source.strip()
+                if not os.path.isabs(src):
+                    continue
+                sid = to_source_id(src)
+                if sid is None:
+                    continue
+                if sid != src:
+                    entry["source_file"] = sid
+                    changed += 1
+        if changed:
+            write_json_atomic(PRESETS_FILE, raw, require_object_values=True)
+    return changed
 
 
 def save_presets(presets):

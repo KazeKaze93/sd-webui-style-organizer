@@ -477,3 +477,89 @@ def test_name_only_legacy_migrates_to_source_id_stem(source_id_roots):
     assert new_path.name == f"{new_stem}.webp"
     assert new_path.read_bytes() == b"NAMEONLY"
     assert legacy.exists()
+
+
+def _four_sources_styles(source_id_roots, n=2000):
+    sources = [str(source_id_roots["styles"] / f"pack{i}.csv") for i in range(4)]
+    for src in sources:
+        Path(src).write_text("name,prompt\n", encoding="utf-8")
+    styles = []
+    for i in range(n):
+        styles.append(
+            {
+                "name": f"STYLE_{i}",
+                "source_file": sources[i % 4],
+                "prompt": "x",
+                "negative_prompt": "",
+            }
+        )
+    return sources, styles
+
+
+def _counting_to_source_id(monkeypatch):
+    """Count every to_source_id hit (thumbnails binding + coerce_source_ref)."""
+    calls = {"n": 0}
+    real = source_ids.to_source_id
+
+    def counting(path):
+        calls["n"] += 1
+        return real(path)
+
+    monkeypatch.setattr(source_ids, "to_source_id", counting)
+    monkeypatch.setattr(sg_thumbs, "to_source_id", counting)
+    return calls
+
+
+def test_migrate_rel_to_source_id_calls_bounded(source_id_roots, monkeypatch):
+    _sources, styles = _four_sources_styles(source_id_roots)
+    calls = _counting_to_source_id(monkeypatch)
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["linked"] == 0
+    assert result["copied"] == 0
+    assert calls["n"] <= 4 * 3, calls["n"]
+
+
+def test_list_thumbnails_to_source_id_calls_bounded(source_id_roots, monkeypatch):
+    _sources, styles = _four_sources_styles(source_id_roots)
+    calls = _counting_to_source_id(monkeypatch)
+    monkeypatch.setattr(sg_thumbs, "get_cached_styles", lambda: styles)
+    listed = sg_thumbs.list_thumbnails()
+    assert listed == []
+    assert calls["n"] <= 4 * 3, calls["n"]
+
+
+def test_migrate_rel_lora_named_csv_style(source_id_roots):
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "pack.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    name = "LORA_Detail"
+    old = _write_rel(thumbs, name, src, b"LORA_CSV")
+    styles = [
+        {"name": name, "source_file": src, "prompt": "detail", "negative_prompt": ""}
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["linked"] + result["copied"] == 1
+    assert old.exists()
+    assert Path(sg_thumbs.get_thumbnail_path(name, src)).read_bytes() == b"LORA_CSV"
+
+
+def test_migrate_rel_lora_source_not_migrated(source_id_roots):
+    from stylegrid.lora_scan import LORA_SOURCE
+
+    thumbs = source_id_roots["thumbs"]
+    src = str(source_id_roots["styles"] / "pack.csv")
+    Path(src).write_text("name,prompt\n", encoding="utf-8")
+    # Rel stem for a CSV path must not be attributed to a LORA_SOURCE row.
+    _write_rel(thumbs, "LORA_Detail", src, b"CSV")
+    styles = [
+        {
+            "name": "LORA_Detail",
+            "source_file": LORA_SOURCE,
+            "prompt": "",
+            "negative_prompt": "",
+        }
+    ]
+    result = sg_thumbs.migrate_rel_thumbnails(styles)
+    assert result["linked"] == 0
+    assert result["copied"] == 0
+    assert result["need_regeneration"] == 0

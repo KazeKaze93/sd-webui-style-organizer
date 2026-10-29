@@ -199,6 +199,13 @@ def _needs_gradio_session(path: str, method: str) -> bool:
 
 
 def write_guarded(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+    """Apply Gradio session and write checks on a Style Grid route.
+
+    Gradio attaches ``Depends(login_check)`` only to its own routes; extension
+    paths stay open unless the access-token cookies are re-checked here. This
+    decorator also runs ``check_write_request`` per route, because a global
+    HTTP middleware cannot be added after the host app has started.
+    """
     orig_sig = inspect.signature(handler, eval_str=True)
     accepts_request = "request" in orig_sig.parameters
 
@@ -225,10 +232,6 @@ def write_guarded(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Await
 
 def install_write_auth(app) -> None:
     warn_if_share_unauthenticated()
-    marker = "_style_grid_write_auth_installed"
-    if getattr(app, marker, False):
-        return
-    setattr(app, marker, True)
 
 
 def inject_write_token_script(html: str) -> str:

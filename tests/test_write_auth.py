@@ -103,7 +103,7 @@ def test_public_listen_save_with_token_ok(client, public_cmd):
 
 def test_public_listen_form_urlencoded_rejected(client, public_cmd, tmp_csv):
     # Guard runs after FastAPI body parsing, so framework validation may reject with 422 first; the status depends on the host FastAPI version.
-    # Endpoint writes styles.csv via save_style_to_csv — assert that file is unchanged.
+    # Endpoint writes styles.csv via save_style_to_csv: assert that file is unchanged.
     before = tmp_csv.read_bytes()
     token = write_auth.get_session_token()
     r = client.post(
@@ -133,7 +133,7 @@ def test_localhost_save_unchanged_without_token(client, localhost_cmd):
 
 def test_localhost_form_encoded_post_is_rejected(client, localhost_cmd, tmp_csv):
     # Guard runs after FastAPI body parsing, so framework validation may reject with 422 first; the status depends on the host FastAPI version.
-    # Endpoint deletes from styles.csv via delete_style_from_csv — assert that file is unchanged.
+    # Endpoint deletes from styles.csv via delete_style_from_csv: assert that file is unchanged.
     before = tmp_csv.read_bytes()
     r = client.post(
         "/style_grid/style/delete",
@@ -146,7 +146,7 @@ def test_localhost_form_encoded_post_is_rejected(client, localhost_cmd, tmp_csv)
 
 def test_localhost_bodyless_post_is_rejected(client, localhost_cmd, tmp_csv):
     # Guard runs after FastAPI body parsing, so framework validation may reject with 422 first; the status depends on the host FastAPI version.
-    # Endpoint deletes from styles.csv via delete_style_from_csv — assert that file is unchanged.
+    # Endpoint deletes from styles.csv via delete_style_from_csv: assert that file is unchanged.
     before = tmp_csv.read_bytes()
     r = client.post(
         "/style_grid/style/delete",
@@ -171,22 +171,27 @@ def test_localhost_form_encoded_post_to_request_only_handler_is_403(
         sg_config.RECENT_FILE,
     )
 
+    def _read_bytes(path: str) -> bytes | None:
+        if not os.path.isfile(path):
+            return None
+        with open(path, "rb") as f:
+            return f.read()
+
     def _snapshot_dir(path: str) -> dict[str, bytes]:
         if not os.path.isdir(path):
             return {}
-        return {
-            name: open(os.path.join(path, name), "rb").read()
-            for name in sorted(os.listdir(path))
-            if os.path.isfile(os.path.join(path, name))
-        }
+        out: dict[str, bytes] = {}
+        for name in sorted(os.listdir(path)):
+            file_path = os.path.join(path, name)
+            if os.path.isfile(file_path):
+                with open(file_path, "rb") as f:
+                    out[name] = f.read()
+        return out
 
     before_csv = tmp_csv.read_bytes()
     before_styles = _snapshot_dir(str(styles_dir))
     before_import_styles = _snapshot_dir(import_styles_dir)
-    before_data = {
-        path: (open(path, "rb").read() if os.path.isfile(path) else None)
-        for path in data_paths
-    }
+    before_data = {path: _read_bytes(path) for path in data_paths}
     r = client.post(
         "/style_grid/import",
         data={"presets": "{}"},
@@ -198,8 +203,7 @@ def test_localhost_form_encoded_post_to_request_only_handler_is_403(
     assert _snapshot_dir(str(styles_dir)) == before_styles
     assert _snapshot_dir(import_styles_dir) == before_import_styles
     for path, before in before_data.items():
-        after = open(path, "rb").read() if os.path.isfile(path) else None
-        assert after == before, path
+        assert _read_bytes(path) == before, path
 
 
 def test_localhost_evil_host_header_is_403(localhost_cmd):
@@ -450,7 +454,23 @@ def test_register_api_after_middleware_stack_built_gradio_auth(
         r = client.get("/style_grid/ui")
         assert r.status_code == 401
         assert r.json().get("ok") is False
-        assert r.status_code != 404
+
+
+def test_public_listen_get_ui_ok(tmp_csv, monkeypatch, public_cmd):
+    from stylegrid import routes as sg_routes
+
+    _patch_styles_paths(tmp_csv, monkeypatch)
+    stub_html = "<html><head></head><body>style-grid-ui</body></html>"
+    monkeypatch.setattr(
+        sg_routes, "_get_ui_html", lambda: write_auth.inject_write_token_script(stub_html)
+    )
+    app = FastAPI()
+    register_api(None, app)
+    with TestClient(app, base_url="http://127.0.0.1:7860") as client:
+        r = client.get("/style_grid/ui")
+        assert r.status_code == 200
+        assert r.headers["content-type"].startswith("text/html")
+        assert write_auth.get_session_token() in r.text
 
 
 def test_write_guarded_typed_body_save_style(client, localhost_cmd):

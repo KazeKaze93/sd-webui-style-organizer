@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import functools
+import inspect
 import logging
 import re
 import secrets
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -194,23 +198,37 @@ def _needs_gradio_session(path: str, method: str) -> bool:
     return is_write_route(path, method)
 
 
-def install_write_auth(app) -> None:
-    warn_if_share_unauthenticated()
+def write_guarded(handler: Callable[..., Awaitable[Any]]) -> Callable[..., Awaitable[Any]]:
+    orig_sig = inspect.signature(handler, eval_str=True)
+    accepts_request = "request" in orig_sig.parameters
 
-    @app.middleware("http")
-    async def style_grid_write_auth(request: Request, call_next):
-        # Gradio only Depends(login_check) its own routes; extension paths are open
-        # unless we re-check the same access-token-* cookies here.
+    @functools.wraps(handler)
+    async def wrapper(**kwargs: Any) -> Any:
+        request = kwargs["request"] if accepts_request else kwargs.pop("request")
         if _needs_gradio_session(request.url.path, request.method):
             from stylegrid.gradio_session import require_gradio_session
-
             denied_session = require_gradio_session(request)
             if denied_session is not None:
                 return denied_session
         denied = check_write_request(request)
         if denied is not None:
             return denied
-        return await call_next(request)
+        return await handler(**kwargs)
+
+    params = list(orig_sig.parameters.values())
+    if not accepts_request:
+        params.insert(0, inspect.Parameter("request", inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=Request))
+    wrapper.__signature__ = inspect.Signature(parameters=params, return_annotation=orig_sig.return_annotation)
+    wrapper.__write_guarded__ = True
+    return wrapper
+
+
+def install_write_auth(app) -> None:
+    warn_if_share_unauthenticated()
+    marker = "_style_grid_write_auth_installed"
+    if getattr(app, marker, False):
+        return
+    setattr(app, marker, True)
 
 
 def inject_write_token_script(html: str) -> str:

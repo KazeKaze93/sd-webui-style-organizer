@@ -79,7 +79,7 @@ from stylegrid.thumbnails import (
     list_thumbnails,
     thumbnail_generation_manager,
 )
-from stylegrid.write_auth import inject_write_token_script, install_write_auth
+from stylegrid.write_auth import inject_write_token_script, install_write_auth, write_guarded
 
 log = logging.getLogger(__name__)
 
@@ -132,6 +132,7 @@ def _register_style_routes(app):
             raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
 
     @app.post("/style_grid/import")
+    @write_guarded
     async def api_import(request: Request):
         # Old exports may include a legacy "usage" key; it is ignored intentionally.
         raw = await request.body()
@@ -224,6 +225,7 @@ def _register_style_routes(app):
         return {"ok": True}
 
     @app.post("/style_grid/category_order/save")
+    @write_guarded
     async def api_save_category_order(data: dict):
         order = data.get("order", [])
         if not isinstance(order, list):
@@ -254,6 +256,7 @@ def _register_preset_routes(app):
             raise HTTPException(status_code=409, detail=_corrupt_response(exc)) from exc
 
     @app.post("/style_grid/presets/save")
+    @write_guarded
     async def api_save_preset(data: dict):
         name = data.get("name", "").strip()
         styles = data.get("styles", [])
@@ -296,6 +299,7 @@ def _register_preset_routes(app):
         return {"ok": True, "presets": saved}
 
     @app.post("/style_grid/presets/delete")
+    @write_guarded
     async def api_delete_preset(data: dict):
         name = data.get("name", "")
         try:
@@ -310,6 +314,7 @@ def _register_preset_routes(app):
             return _corrupt_response(exc)
 
     @app.post("/style_grid/presets/rename")
+    @write_guarded
     async def api_rename_preset(data: dict):
         old_name = (data.get("old_name") or "").strip()
         new_name = (data.get("new_name") or "").strip()
@@ -331,6 +336,7 @@ def _register_preset_routes(app):
         return {"ok": True, "presets": saved}
 
     @app.post("/style_grid/presets/touch")
+    @write_guarded
     async def api_touch_preset(data: dict):
         name = (data.get("name") or "").strip()
         if not name:
@@ -379,6 +385,7 @@ def _register_favorites_recent_routes(app):
         return _items_payload(items, persisted, ambiguous=_favorites_ambiguous_names(items))
 
     @app.post("/style_grid/favorites/save")
+    @write_guarded
     async def api_save_favorites(data: dict):
         try:
             items = save_favorites(data.get("items", []))
@@ -387,6 +394,7 @@ def _register_favorites_recent_routes(app):
         return {"ok": True, "items": items}
 
     @app.post("/style_grid/favorites/migrate")
+    @write_guarded
     async def api_migrate_favorites(data: dict):
         """Write localStorage favorites only when favorites.json is absent."""
         try:
@@ -405,6 +413,7 @@ def _register_favorites_recent_routes(app):
         return _items_payload(items, persisted, ambiguous=[])
 
     @app.post("/style_grid/recent/save")
+    @write_guarded
     async def api_save_recent(data: dict):
         try:
             items = save_recent(data.get("items", []))
@@ -413,6 +422,7 @@ def _register_favorites_recent_routes(app):
         return {"ok": True, "items": items}
 
     @app.post("/style_grid/recent/migrate")
+    @write_guarded
     async def api_migrate_recent(data: dict):
         """Write localStorage recent only when recent.json is absent."""
         try:
@@ -507,6 +517,7 @@ def _remap_presets_after_rename(old_name, new_name, resolved_path=None, source=N
 def _register_crud_routes(app):
     """Register style save/delete/rename and backup routes."""
     @app.post("/style_grid/style/save")
+    @write_guarded
     async def api_save_style(data: dict):
         name = data.get("name", "").strip()
         if not name:
@@ -540,6 +551,7 @@ def _register_crud_routes(app):
         return {"ok": True}
 
     @app.post("/style_grid/style/delete")
+    @write_guarded
     async def api_del_style(data: dict):
         name = data.get("name", "").strip()
         if not name:
@@ -574,6 +586,7 @@ def _register_crud_routes(app):
         return {"ok": True}
 
     @app.post("/style_grid/style/rename")
+    @write_guarded
     async def api_rename_style(data: dict):
         old_name = data.get("old_name", "").strip()
         new_name = data.get("new_name", "").strip()
@@ -631,6 +644,7 @@ def _register_crud_routes(app):
         }
 
     @app.post("/style_grid/backup")
+    @write_guarded
     async def api_backup(request: Request):
         include_thumbnails = False
         try:
@@ -648,6 +662,7 @@ def _register_crud_routes(app):
             return {"error": str(e)}
 
     @app.post("/style_grid/restore")
+    @write_guarded
     async def api_restore(data: dict):
         name = (data.get("snapshot") or data.get("name") or "").strip()
         if not name:
@@ -714,6 +729,7 @@ def _register_thumbnail_routes(app):
         return Response(status_code=404)
 
     @app.post("/style_grid/thumbnail/upload")
+    @write_guarded
     async def api_upload_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
         image_data = data.get("image", "")
@@ -800,6 +816,7 @@ def _register_thumbnail_routes(app):
         return mgr.get_status(job_id)
 
     @app.post("/style_grid/thumbnail/generate")
+    @write_guarded
     async def api_generate_thumbnail(data: dict):
         style_name = data.get("name", "").strip()
         requested_source = data.get("source", "").strip()
@@ -828,6 +845,7 @@ def _register_thumbnail_routes(app):
         return {"ok": True, "job_id": job_id, "status": "queued"}
 
     @app.post("/style_grid/thumbnail/cancel")
+    @write_guarded
     async def api_cancel_thumbnail(data: dict):
         job_id = (data.get("job_id") or "").strip()
         if not job_id:
@@ -838,6 +856,7 @@ def _register_thumbnail_routes(app):
         return {"ok": mgr.cancel(job_id)}
 
     @app.delete("/style_grid/thumbnail")
+    @write_guarded
     async def api_delete_thumbnail(name: str = "", source: str = ""):
         if not source:
             return JSONResponse(
@@ -857,6 +876,7 @@ def _register_thumbnail_routes(app):
 def _register_lora_routes(app):
     """Register LoRA title-fetch routes."""
     @app.post("/style_grid/lora/fetch_titles")
+    @write_guarded
     async def api_lora_fetch_titles(data: dict = None):
         force = bool((data or {}).get("force"))
         model_ids = list(get_lora_model_ids().values())
@@ -897,6 +917,7 @@ def _register_ui_routes(app):
     """Serve V2 React iframe HTML with cache-busted asset URLs."""
 
     @app.get("/style_grid/ui")
+    @write_guarded
     async def serve_ui():
         return HTMLResponse(content=_get_ui_html())
 

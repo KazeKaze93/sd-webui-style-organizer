@@ -27,7 +27,6 @@ const jsRules = {
 export default [
   {
     files: [
-      "javascript/sg_prompt_utils.js",
       "javascript/style_grid.mjs",
       "javascript/style_grid/**/*.js",
     ],

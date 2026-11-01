@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Console SyntaxError on every Gradio page load:** removed legacy `javascript/sg_prompt_utils.js`, which used an ESM `import` while Forge injects top-level `*.js` as classic scripts (`Cannot use import statement outside a module`). Prompt helpers still load through `style_grid.mjs` → `main.js` → `prompt-utils-bridge.js`.
+
 ## [5.4.2] - 2026-10-28
 
 ### Fixed

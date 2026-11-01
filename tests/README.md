@@ -23,7 +23,7 @@ Root `npm test` / `npm run check` run this suite (not the UI Vitest suite).
 
 ## Manual JS helpers
 
-Open `tests/test_js.html` in a browser (`file://`). It loads helpers from `javascript/sg_prompt_utils.js` (Forge also auto-injects that file) and includes brace-aware `splitTopLevelCommas` cases for slice tokens such as `{sg:cat:A,B}`. The same helper body must stay in sync with **`javascript/style_grid/prompt-utils.js`** (host single source; `sg_prompt_utils.js` is the legacy ESM bridge) — both files ship.
+Open `tests/test_js.html` in a browser (serve as an ES module; `file://` alone may block imports). It loads helpers from `javascript/style_grid/prompt-utils-bridge.js` and includes brace-aware `splitTopLevelCommas` cases for slice tokens such as `{sg:cat:A,B}`. **Single source:** `javascript/style_grid/prompt-utils.js`. In the Gradio UI the same helpers load through `style_grid.mjs` → `main.js` → `prompt-utils-bridge.js` (Forge injects only top-level `javascript/*.mjs` as `type="module"`; there is no classic-script helper file).
 
 ## UI (React / Vitest)
 

@@ -1,9 +1,9 @@
 /**
- * Characterization of Forge-injected prompt helpers (sg_prompt_utils.js).
+ * Characterization of host prompt helpers via prompt-utils-bridge.js.
  * After the host split these must keep matching the single prompt-utils module.
  */
 import { describe, expect, it } from 'vitest'
-import '../../../javascript/sg_prompt_utils.js'
+import '../../../javascript/style_grid/prompt-utils-bridge.js'
 
 type PromptUtils = {
   splitTopLevelCommas: (s: string) => string[]
@@ -14,7 +14,7 @@ type PromptUtils = {
 
 const g = globalThis as typeof globalThis & PromptUtils
 
-describe('characterization: sg_prompt_utils', () => {
+describe('characterization: prompt-utils-bridge', () => {
   it('splitTopLevelCommas keeps brace and paren groups intact', () => {
     expect(g.splitTopLevelCommas('a, (b, c:1.2), {sg:CAT:A,B}, d')).toEqual([
       'a',

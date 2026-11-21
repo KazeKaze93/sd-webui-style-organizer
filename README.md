@@ -275,6 +275,8 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 **What this means:** not a separate “toolbar” window — it is the **top header row** of the Style Grid panel: **Style Grid** title, `txt2img`/`img2img` tag, **source** dropdown, **search**, then a row of **small icon buttons on the right** (`ToolBtn` with lucide icons + tooltips). Hover an icon for its label. **Presets** are in the **left sidebar**, not here. There is no Random button.
 
+**Grid / Gallery** (the two-segment switch right of the search box): **Gallery** shows each style's preview as a square tile with its name below; **Grid** stays the text-only tiles. The hover popup (preview image, prompt, negative prompt) works in both, and the choice is remembered in this browser.
+
 ![Top bar — icon buttons (right of search)](docs/screenshots/top-bar-icons.png)
 
 | Control | What it does |

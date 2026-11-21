@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../../bridge'
 import { __resetGridFocusForTests } from '../../lib/gridFocus'
 import { useStylesStore } from '../../store/stylesStore'
-import { cardRowHeightPx, headerRowHeightPx } from './constants'
+import {
+  cardRowHeightPx,
+  galleryCardHeightPx,
+  galleryCardWidthPx,
+  galleryRowHeightPx,
+  headerRowHeightPx,
+} from './constants'
 import { GridScroller } from './GridScroller'
 import { MISSING_GRID_SCROLLER_MESSAGE } from './GridScrollerContext'
 import { VirtualStyleGrid } from './VirtualStyleGrid'
@@ -129,7 +135,7 @@ describe('VirtualStyleGrid virtualizes against the provided grid scroller', () =
     }
   }
 
-  async function renderGrid() {
+  async function renderGrid(opts: { viewMode?: 'grid' | 'gallery'; windowed?: boolean } = {}) {
     await act(async () => {
       root!.render(
         <GridScroller data-testid="scroller" style={{ overflowY: 'auto' }}>
@@ -138,7 +144,8 @@ describe('VirtualStyleGrid virtualizes against the provided grid scroller', () =
             <VirtualStyleGrid
               groups={groups}
               collapsedCategories={new Set()}
-              windowed
+              windowed={opts.windowed ?? true}
+              viewMode={opts.viewMode ?? 'grid'}
               onToggleCollapse={() => {}}
               onSelectAll={() => {}}
             />
@@ -347,6 +354,66 @@ describe('VirtualStyleGrid virtualizes against the provided grid scroller', () =
     const pageRows = Math.floor((VIEWPORT_H - HEADER_H) / CARD_ROW_H)
     expect(after - before).toBeGreaterThan(0)
     expect(after - before).toBeLessThanOrEqual(pageRows + 2) // header rows on the way
+  })
+  describe('gallery', () => {
+    const totalSize = () => Number.parseFloat(grid().querySelector<HTMLElement>(':scope > div')!.style.height)
+    const cardRows = () => rowsInDom().filter((r) => r.querySelector('[data-sg-card]'))
+
+    it('card rows take galleryRowHeightPx for the measured width; cards the gallery card height', async () => {
+      await renderGrid({ viewMode: 'gallery' })
+      // windowed gallery: min 130 → floor((765 + 8) / 138) = 5 columns
+      const cardW = galleryCardWidthPx(GRID_W, 5, 8)
+      expect(cardW).toBe(146)
+      const row = cardRows()[0]
+      expect(row.style.height).toBe(`${galleryRowHeightPx(cardW)}px`)
+      expect(row.querySelectorAll('[data-sg-card]')).toHaveLength(5)
+      const card = row.querySelector<HTMLElement>('[data-sg-card]')!
+      expect(card.style.height).toBe(`${galleryCardHeightPx(cardW)}px`)
+      expect(card.querySelector('[data-sg-gallery-thumb]')).not.toBeNull()
+    })
+
+    it('switching viewMode re-measures: the total size follows the new row height', async () => {
+      // Fullscreen: grid and gallery share the 150px minimum, so columns and rows stay
+      // the same and only the card row height changes — nothing but the re-measure
+      // can update the virtualizer.
+      await renderGrid({ viewMode: 'grid', windowed: false })
+      const columns = 4
+      const cardRowsPerCat = (c: number) => Math.ceil(catSize(c) / columns)
+      let cardRowCount = 0
+      for (let c = 0; c < CATEGORIES; c++) cardRowCount += cardRowsPerCat(c)
+      const headers = CATEGORIES * HEADER_H
+      expect(totalSize()).toBe(headers + cardRowCount * cardRowHeightPx(false))
+
+      await renderGrid({ viewMode: 'gallery', windowed: false })
+      const cardW = galleryCardWidthPx(GRID_W, columns, 8)
+      expect(totalSize()).toBe(headers + cardRowCount * galleryRowHeightPx(cardW))
+
+      await renderGrid({ viewMode: 'grid', windowed: false })
+      expect(totalSize()).toBe(headers + cardRowCount * cardRowHeightPx(false))
+    })
+
+    it('the sticky header is a header row in gallery too', async () => {
+      await renderGrid({ viewMode: 'gallery' })
+      expect(stickyCategory()).toBe('CAT01')
+      expect(stickyRow()!.style.height).toBe(`${HEADER_H}px`)
+    })
+
+    it('PageDown moves by the gallery page size', async () => {
+      await renderGrid({ viewMode: 'gallery' })
+      const firstCard = grid().querySelector<HTMLElement>('[data-sg-card]')!
+      act(() => {
+        firstCard.focus()
+      })
+      const before = Number(document.activeElement!.getAttribute('data-cell-row'))
+      await pressKey('PageDown')
+      const after = Number(document.activeElement!.getAttribute('data-cell-row'))
+      const galleryPage = Math.floor((VIEWPORT_H - HEADER_H) / galleryRowHeightPx(146))
+      const gridPage = Math.floor((VIEWPORT_H - HEADER_H) / CARD_ROW_H)
+      expect(galleryPage).toBe(2)
+      expect(gridPage).toBe(13)
+      expect(after - before).toBeGreaterThan(0)
+      expect(after - before).toBeLessThanOrEqual(galleryPage + 1) // a header row on the way
+    })
   })
 })
 

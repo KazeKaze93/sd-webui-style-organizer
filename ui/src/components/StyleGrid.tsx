@@ -38,7 +38,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
   const {
     styles, search, activeCategory, activeSource,
     favorites, recentNames,
-    collapsedCategories, toggleCollapse,
+    collapsedCategories, toggleCollapse, viewMode,
     selectAllInCategory,
     sliceMode, sliceSelection,
     exitSliceMode, toggleSliceSelection,
@@ -56,6 +56,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         favorites: cat === FAVORITES_VIEW ? s.favorites : EMPTY_FAVORITES,
         recentNames: cat === RECENT_VIEW ? s.recentNames : EMPTY_RECENT,
         collapsedCategories: s.collapsedCategories,
+        viewMode: s.viewMode,
         toggleCollapse: s.toggleCollapse,
         selectAllInCategory: s.selectAllInCategory,
         sliceMode: s.sliceMode,
@@ -356,6 +357,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         groups={flatGroups}
         collapsedCategories={collapsedCategories}
         windowed={windowed}
+        viewMode={viewMode}
         includeHeaders={false}
         onToggleCollapse={toggleCollapse}
         onSelectAll={selectAllInCategory}
@@ -368,6 +370,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
       groups={sortedGroups}
       collapsedCategories={collapsedCategories}
       windowed={windowed}
+      viewMode={viewMode}
       includeHeaders
       enableLoraContextMenu={activeCategory === LORA_VIEW}
       onToggleCollapse={toggleCollapse}

@@ -53,6 +53,7 @@ from stylegrid.data_files import (
     migrate_presets_source_ids_once,
     migrate_recent_once,
     preset_styles_payload_ok,
+    rename_identity_items,
     restore_from_backup,
     save_favorites,
     save_presets,
@@ -514,6 +515,29 @@ def _remap_presets_after_rename(old_name, new_name, resolved_path=None, source=N
             save_presets(presets)
 
 
+def _rename_target_source_id(resolved_path=None, source=None):
+    """Public source id of the file a rename happened in, or None."""
+    target_id = None
+    if resolved_path:
+        target_id = to_source_id(resolved_path) or source_id_for_compare(resolved_path)
+    if target_id is None and source:
+        target_id = source_id_for_compare(str(source).strip())
+    return target_id
+
+
+def _name_in_single_source(name):
+    """True when exactly one source file holds a style called *name* (LoRA excluded)."""
+    sources = set()
+    for s in load_all_styles():
+        if s.get("name") != name:
+            continue
+        source_file = s.get("source_file") or s.get("source") or ""
+        if source_file == LORA_SOURCE:
+            continue
+        sources.add(source_file)
+    return len(sources) == 1
+
+
 def _register_crud_routes(app):
     """Register style save/delete/rename and backup routes."""
     @app.post("/style_grid/style/save")
@@ -616,6 +640,10 @@ def _register_crud_routes(app):
             if key in data:
                 fields[key] = data[key]
 
+        # Before the rename: a legacy name-only favorite / recent entry can only be
+        # attributed to this style if the name lived in exactly one source file.
+        legacy_unique = _name_in_single_source(old_name)
+
         try:
             rename_style_in_csv(old_name, new_name, data.get("source") or source, **fields)
         except ValueError as e:
@@ -634,6 +662,15 @@ def _register_crud_routes(app):
             )
         except Exception:
             pass
+        # Best-effort, same contract: favorites / recent follow the style to its new name.
+        try:
+            target_id = _rename_target_source_id(resolved_path, source)
+            if target_id:
+                rename_identity_items(
+                    old_name, new_name, target_id, legacy_unique=legacy_unique
+                )
+        except Exception:
+            log.exception("[Style Grid] rename: favorites/recent migration failed")
         return {"ok": True}
 
     @app.get("/style_grid/backups")

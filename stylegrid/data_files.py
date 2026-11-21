@@ -29,13 +29,15 @@ from stylegrid.safe_persistence import (
     write_atomic,
     write_json_atomic,
 )
-from stylegrid.source_ids import is_source_id, to_source_id
+from stylegrid.source_ids import is_source_id, source_id_for_compare, to_source_id
 from stylegrid.wildcards import TOKEN_SGD
 
 log = logging.getLogger(__name__)
 
 __all__ = [
     "CorruptDataError",
+    "remap_identity_key",
+    "rename_identity_items",
     "load_presets",
     "save_presets",
     "normalize_presets",
@@ -338,6 +340,86 @@ def migrate_recent_once(items):
                 items, styles, link_identical_to_all=False
             )["stored"]
     return _migrate_items_once(RECENT_FILE, items, max_len=RECENT_MAX)
+
+
+IDENTITY_KEY_SEP = "\0"
+
+
+def remap_identity_key(entry, old_name, new_name, source_id, *, legacy_unique=False):
+    """Return *entry* rewritten for a style rename, or *entry* itself when it is not that style.
+
+    Favorites/recent store ``"<source id>\\0<name>"`` (the client's styleRowKey).
+    Only the key of ``(source_id, old_name)`` is rewritten; the stored source part
+    is kept byte for byte. A same-named style in another file is never touched.
+
+    A legacy entry is a bare name with no file. It is rewritten only when
+    *legacy_unique* is true (``old_name`` existed in exactly one source file before
+    the rename, so the bare name could only mean this style), and becomes a full
+    ``source_id + name`` key. Otherwise it is left as it is.
+    """
+    if not isinstance(entry, str):
+        return entry
+    sep = entry.find(IDENTITY_KEY_SEP)
+    if sep == -1:
+        if legacy_unique and entry == old_name:
+            return source_id + IDENTITY_KEY_SEP + new_name
+        return entry
+    stored_source = entry[:sep]
+    if entry[sep + 1:] != old_name:
+        return entry
+    if stored_source != source_id and source_id_for_compare(stored_source) != source_id:
+        return entry
+    return stored_source + IDENTITY_KEY_SEP + new_name
+
+
+def _rename_in_items_file(path, old_name, new_name, source_id, *, legacy_unique, max_len=None):
+    """Rewrite one ``{"items": [...]}`` file for a rename. Returns True when it changed.
+
+    Order is kept. If the new key was already present, the two entries collapse
+    into the earlier one (recent.json is most-recent-first, so the more recent
+    position wins). Missing or corrupt files are left alone.
+    """
+    with locked_path(path):
+        cleanup_stale_tmp(path)
+        if not os.path.isfile(path):
+            return False
+        try:
+            raw = load_json_object(path)
+        except CorruptDataError as exc:
+            log.warning("[Style Grid] rename: identity file skipped (corrupt): %s", exc)
+            return False
+        current = _normalize_string_list(raw.get("items", []), max_len=max_len)
+        remapped = [
+            remap_identity_key(
+                entry, old_name, new_name, source_id, legacy_unique=legacy_unique
+            )
+            for entry in current
+        ]
+        stored = _normalize_string_list(remapped, max_len=max_len)
+        if stored == current:
+            return False
+        write_json_atomic(path, {"items": stored})
+        return True
+
+
+def rename_identity_items(old_name, new_name, source_id, *, legacy_unique=False):
+    """Carry favorites.json and recent.json entries over a style rename.
+
+    *source_id* is the public source id of the file the style lives in.
+    Returns ``{"favorites": bool, "recent": bool}`` (which files changed).
+    """
+    if not old_name or not new_name or old_name == new_name or not source_id:
+        return {"favorites": False, "recent": False}
+    return {
+        "favorites": _rename_in_items_file(
+            FAVORITES_FILE, old_name, new_name, source_id,
+            legacy_unique=legacy_unique, max_len=None,
+        ),
+        "recent": _rename_in_items_file(
+            RECENT_FILE, old_name, new_name, source_id,
+            legacy_unique=legacy_unique, max_len=RECENT_MAX,
+        ),
+    }
 
 
 def _coerce_weight(raw):

@@ -166,6 +166,10 @@ export function parseFrameMessage(data) {
             if (!(data.source === null || typeof data.source === "string")) return null;
             return { type: type, source: data.source };
 
+        case "SG_SET_FULLSCREEN":
+            if (typeof data.fullscreen !== "boolean") return null;
+            return { type: type, fullscreen: data.fullscreen };
+
         default:
             return null;
     }

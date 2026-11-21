@@ -82,8 +82,15 @@ export function parseFrameMessage(data) {
         case "SG_READY":
         case "SG_CLOSE_REQUEST":
         case "SG_CLEAR_ALL":
-        case "SG_REFRESH":
             return { type: type };
+
+        case "SG_REFRESH":
+            // quiet_vanished: the iframe removed a style on purpose (delete), so
+            // the "no longer in the library" toast must not appear.
+            if (data.quiet_vanished !== undefined && typeof data.quiet_vanished !== "boolean") {
+                return null;
+            }
+            return { type: type, quiet_vanished: data.quiet_vanished === true };
 
         case "SG_APPLY":
             if (!isNonEmptyString(data.styleId)) return null;

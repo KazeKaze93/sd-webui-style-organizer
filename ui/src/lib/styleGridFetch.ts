@@ -36,6 +36,43 @@ export function styleGridPost(url: string, body: unknown): Promise<Response> {
   })
 }
 
+export type ApiResult =
+  | { ok: true; body: Record<string, unknown> }
+  | { ok: false; error: string; body: Record<string, unknown> }
+
+/**
+ * Read a Style Grid response the way the host's parseApiResponse (api.js) did:
+ * a non-JSON body is "HTTP <status>" (or "Invalid JSON in response" on 2xx);
+ * a failed status reports `error`, a string `detail`, or the `detail[].msg`
+ * list. A 2xx body with an `error` is a failure too (the host's callers
+ * checked `body.error`).
+ */
+export async function readApiResponse(res: Response): Promise<ApiResult> {
+  const text = await res.text().catch(() => '')
+  let body: Record<string, unknown> = {}
+  if (text) {
+    try {
+      const data: unknown = JSON.parse(text)
+      if (data && typeof data === 'object') body = data as Record<string, unknown>
+    } catch {
+      return { ok: false, error: res.ok ? 'Invalid JSON in response' : `HTTP ${res.status}`, body }
+    }
+  }
+  if (typeof body.error === 'string' && body.error) return { ok: false, error: body.error, body }
+  if (res.ok) return { ok: true, body }
+  if (typeof body.detail === 'string' && body.detail) return { ok: false, error: body.detail, body }
+  if (Array.isArray(body.detail)) {
+    const msg = body.detail
+      .map((d) => (d && typeof d === 'object' && typeof (d as { msg?: unknown }).msg === 'string'
+        ? (d as { msg: string }).msg
+        : ''))
+      .filter(Boolean)
+      .join('; ')
+    if (msg) return { ok: false, error: msg, body }
+  }
+  return { ok: false, error: `HTTP ${res.status}`, body }
+}
+
 export function styleGridDelete(url: string): Promise<Response> {
   return fetch(url, {
     method: 'DELETE',

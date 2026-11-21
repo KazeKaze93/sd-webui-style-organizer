@@ -7,7 +7,6 @@ import {
   formatBytes,
   restoreConfirmationText,
   snapshotLabel,
-  snapshotsPrunedBySafety,
   type Snapshot,
 } from '../lib/backups'
 import { __resetLayerStackForTests, closeTopLayer, hasOpenLayer } from '../lib/layerStack'
@@ -26,14 +25,14 @@ function snap(name: string, extra: Partial<Snapshot> = {}): Snapshot {
   return { name, has_dir: true, has_zip: true, size: 2048, members: [], has_thumbnails: false, ...extra }
 }
 
-const VERIFIED_TEXT = (date: string, thumbs: boolean) => [
+const VERIFIED_TEXT = (date: string, thumbs: boolean, keep = 20) => [
   `Restore the snapshot from ${date}?`,
   'Replaced from the snapshot: presets, favorites, recent, category order, and style CSVs in the ' +
     `extension's styles folder${thumbs ? ', and thumbnails' : ''}.`,
   "Not touched: style CSVs outside the extension's styles folder, such as the packs in the WebUI root " +
     'folder and the bundled samples. Files that are not in the snapshot are kept.',
   'A safety snapshot of the current state is created first, without thumbnails. Only the newest ' +
-    '10 snapshots are kept, so the oldest one may be removed.',
+    `${keep} snapshots are kept, so the oldest one may be removed.`,
 ]
 
 describe('backup helpers', () => {
@@ -60,20 +59,12 @@ describe('backup helpers', () => {
     expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB')
   })
 
-  it('the confirmation text, with and without the thumbnails clause', () => {
-    expect(restoreConfirmationText(snap('20261011_012128'), false)).toEqual(VERIFIED_TEXT('11 Oct 2026, 01:21', false))
-    expect(restoreConfirmationText(snap('20261011_012128', { has_thumbnails: true }), false)).toEqual(
+  it('the confirmation text, with and without the thumbnails clause; 20 kept by default', () => {
+    expect(restoreConfirmationText(snap('20261011_012128'))).toEqual(VERIFIED_TEXT('11 Oct 2026, 01:21', false))
+    expect(restoreConfirmationText(snap('20261011_012128', { has_thumbnails: true }))).toEqual(
       VERIFIED_TEXT('11 Oct 2026, 01:21', true),
     )
-  })
-
-  it('prune: 9 full snapshots leave room; 10 lose the oldest to the safety snapshot', () => {
-    const names = (n: number) => Array.from({ length: n }, (_, i) => snap(`2026010${Math.floor(i / 10)}_0000${String(i % 10).padStart(2, '0')}`))
-    expect([...snapshotsPrunedBySafety(names(9))]).toEqual([])
-    expect([...snapshotsPrunedBySafety(names(10))]).toEqual(['20260100_000000'])
-    // A zip-only snapshot is one entry: 10 snapshots with one zip-only fit (19 + 2 = 21 -> 1 entry goes).
-    const mixed = names(10).map((s, i) => (i === 5 ? { ...s, has_dir: false } : s))
-    expect([...snapshotsPrunedBySafety(mixed)]).toEqual([])
+    expect(restoreConfirmationText(snap('20261011_012128'), 7)).toEqual(VERIFIED_TEXT('11 Oct 2026, 01:21', false, 7))
   })
 })
 
@@ -82,7 +73,7 @@ describe('BackupRestoreDialog', () => {
   let root: Root | null = null
   type Call = { url: string; method: string; body: unknown; token: string | null }
   let calls: Call[] = []
-  let listing: { backups: Snapshot[]; thumbnails_bytes: number }
+  let listing: { backups: Snapshot[]; thumbnails_bytes: number; keep_snapshots?: number }
   let respond: (url: string, body: unknown) => { status: number; body: unknown } | Promise<{ status: number; body: unknown }>
 
   const dialogs = () => [...document.querySelectorAll<HTMLElement>('[role="dialog"]')]
@@ -317,23 +308,32 @@ describe('BackupRestoreDialog', () => {
     expect(calls.filter((c) => c.url === '/style_grid/backups')).toHaveLength(1)
   })
 
-  it('a full list: restoring the snapshot the safety snapshot would delete is not offered', async () => {
+  it('a full list: the oldest snapshot can be restored; the limit comes from the API', async () => {
     listing = {
-      backups: Array.from({ length: 10 }, (_, i) => snap(`2026110${Math.floor(i / 10) + 1}_0000${String(i).padStart(2, '0')}`)),
+      backups: Array.from({ length: 20 }, (_, i) => snap(`20261101_0000${String(i).padStart(2, '0')}`)),
       thumbnails_bytes: 0,
+      keep_snapshots: 20,
     }
+    respond = () => ({ status: 200, body: { ok: true, safety_snapshot: '20261122_130000_safety' } })
     await renderDialog()
     const oldest = rows()[rows().length - 1]
+    expect(oldest.getAttribute('data-sg-snapshot')).toBe('20261101_000000')
     await click(btn(oldest, 'Restore…'))
     const text = [...confirm()!.querySelectorAll('[data-sg-restore-text] p')].map((p) => p.textContent)
-    expect(text[4]).toBe(
-      'The list is full: the safety snapshot would delete this snapshot before it is read, so it cannot be restored from here.',
-    )
-    expect(btn(confirm()!, 'Restore').disabled).toBe(true)
-    await click(btn(confirm()!, 'Cancel'))
-    await click(btn(rows()[0], 'Restore…'))
+    expect(text).toEqual(VERIFIED_TEXT('1 Nov 2026, 00:00', false, 20))
     expect(btn(confirm()!, 'Restore').disabled).toBe(false)
-    expect(confirm()!.querySelectorAll('[data-sg-restore-text] p')).toHaveLength(4)
+    await click(btn(confirm()!, 'Restore'))
+    expect(posts()).toEqual([
+      { url: '/style_grid/restore', method: 'POST', body: { snapshot: '20261101_000000' }, token: TOKEN },
+    ])
+  })
+
+  it('the confirmation shows the limit the server reports', async () => {
+    listing = { ...listing, keep_snapshots: 12 }
+    await renderDialog()
+    await click(btn(rows()[0], 'Restore…'))
+    const text = [...confirm()!.querySelectorAll('[data-sg-restore-text] p')].map((p) => p.textContent)
+    expect(text[3]).toContain('Only the newest 12 snapshots are kept')
   })
 
   it('a list error is inline', async () => {

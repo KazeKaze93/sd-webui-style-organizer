@@ -7,7 +7,6 @@ import {
   restoreBackup,
   restoreConfirmationText,
   snapshotLabel,
-  snapshotsPrunedBySafety,
   type Snapshot,
 } from '../lib/backups'
 import { cn } from '../lib/utils'
@@ -25,7 +24,7 @@ type Props = {
 type ListState =
   | { status: 'loading' }
   | { status: 'error'; error: string }
-  | { status: 'ready'; backups: Snapshot[]; thumbnailsBytes: number }
+  | { status: 'ready'; backups: Snapshot[]; thumbnailsBytes: number; keepSnapshots: number }
 
 const button = (kind: 'primary' | 'secondary' | 'danger') =>
   cn(
@@ -75,7 +74,6 @@ export function BackupRestoreDialog({ open, onClose }: Props) {
   }, [open])
 
   const backups = useMemo(() => (list.status === 'ready' ? list.backups : []), [list])
-  const lost = useMemo(() => snapshotsPrunedBySafety(backups), [backups])
 
   const runCreate = async () => {
     if (creating) return
@@ -136,8 +134,6 @@ export function BackupRestoreDialog({ open, onClose }: Props) {
       ? `Include thumbnails (~${formatBytes(list.thumbnailsBytes)})`
       : 'Include thumbnails (empty)'
   })()
-
-  const targetLost = restoreTarget ? lost.has(restoreTarget.name) : false
 
   return (
     <>
@@ -237,7 +233,7 @@ export function BackupRestoreDialog({ open, onClose }: Props) {
             </button>
             <button
               type="button"
-              disabled={restoring || targetLost}
+              disabled={restoring}
               onClick={() => void runRestore()}
               className={button('danger')}
             >
@@ -248,8 +244,8 @@ export function BackupRestoreDialog({ open, onClose }: Props) {
       >
         {restoreTarget && (
           <div id={ids.confirmBody} data-sg-restore-text="true" className="space-y-2 text-sm text-sg-muted leading-relaxed">
-            {restoreConfirmationText(restoreTarget, targetLost).map((line, i) => (
-              <p key={i} className={cn(i === 0 && 'text-sg-text', targetLost && i === 4 && 'text-sg-danger-text')}>
+            {restoreConfirmationText(restoreTarget, list.status === 'ready' ? list.keepSnapshots : undefined).map((line, i) => (
+              <p key={i} className={cn(i === 0 && 'text-sg-text')}>
                 {line}
               </p>
             ))}

@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { setFocusedCell } from '../../lib/gridFocus'
 import { useCategoryColor, useCategorySelectedCount } from '../../store/stylesStore'
 import { categoryPanelId } from './buildGridRows'
+import { HEADER_CONTENT_HEIGHT_PX } from './constants'
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -53,7 +54,10 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
       role="presentation"
       data-sg-category-header={category}
       data-sg-sticky-header={isStickyActive ? 'true' : undefined}
-      className={`flex items-center gap-2 py-1
+      // Fixed height: the virtualizer positions the next row from this constant.
+      // Natural height (py-1 + 24px glyph line) was 36px and covered the first cards row.
+      style={{ height: HEADER_CONTENT_HEIGHT_PX }}
+      className={`flex items-center gap-2
                  rounded-md transition-colors -mx-1 px-1
                  hover:bg-sg-surface/30
                  ${isStickyActive ? 'bg-sg-bg z-10' : 'bg-sg-bg/95'}`}

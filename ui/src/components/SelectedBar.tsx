@@ -8,6 +8,7 @@ import { describeSpec } from '../lib/wildcardSlice'
 import { wildcardKey } from '../lib/wildcardKey'
 import { DeckIcon } from './DeckIcon'
 import { SaveSetDialog } from './SaveSetDialog'
+import { ConflictsControl, SelectedCountLabel } from './SelectionStatus'
 
 const CHIP_FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -65,6 +66,12 @@ export function SelectedBar() {
 
   return (
     <>
+      {selectedStyles.length > 0 && (
+        <div className="flex items-center gap-2 px-4 pt-2">
+          <SelectedCountLabel />
+          <ConflictsControl />
+        </div>
+      )}
       <div className="flex items-start gap-2 px-4 py-2">
         <div className="min-w-0 flex-1">
           {selectedStyles.length > 0 && (

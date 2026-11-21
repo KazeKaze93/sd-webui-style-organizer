@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../bridge'
 import {
   __resetAmbiguousToastForTests,
+  resolvePresetMembers,
+  resolvePresetStyleEntry,
   resolveSourceInList,
   styleRowKey,
   useStylesStore,
@@ -336,5 +338,77 @@ describe('style identity (name, source_file)', () => {
     expect(useStylesStore.getState().thumbVersions[newKey]).toBe('v2')
     expect(localStorage.getItem(`sg_thumb_v_${absKey}`)).toBe('v1')
     expect(useStylesStore.getState().thumbVersions[absKey]).toBe('v1')
+  })
+})
+
+describe('preset member resolution: exact (file, name), then unambiguous name', () => {
+  const FILE_C = 'webui/c.csv'
+  const same = { prompt: 'shared prompt', negative_prompt: 'shared neg' }
+
+  it('exact (file, name) hit wins even when other files hold diverging rows', () => {
+    const a = row('BODY_Ears', FILE_A)
+    const b = row('BODY_Ears', FILE_B)
+    expect(resolvePresetStyleEntry({ name: 'BODY_Ears', source_file: FILE_B }, [a, b])).toBe(b)
+  })
+
+  it('single candidate by name resolves when the stored file is gone', () => {
+    const b = row('BODY_Ears', FILE_B)
+    expect(resolvePresetStyleEntry({ name: 'BODY_Ears', source_file: FILE_A }, [b])).toBe(b)
+  })
+
+  it('several byte-identical candidates resolve by name', () => {
+    const b = row('BODY_Ears', FILE_B, same)
+    const c = row('BODY_Ears', FILE_C, same)
+    const hit = resolvePresetStyleEntry({ name: 'BODY_Ears', source_file: FILE_A }, [b, c])
+    expect(hit).toBe(b)
+  })
+
+  it('several diverging candidates are Missing: prompt differs', () => {
+    const b = row('BODY_Ears', FILE_B, same)
+    const c = row('BODY_Ears', FILE_C, { ...same, prompt: 'other prompt' })
+    expect(
+      resolvePresetStyleEntry({ name: 'BODY_Ears', source_file: FILE_A }, [b, c]),
+    ).toBeUndefined()
+  })
+
+  it('several diverging candidates are Missing: only negative_prompt differs', () => {
+    const b = row('BODY_Ears', FILE_B, same)
+    const c = row('BODY_Ears', FILE_C, { ...same, negative_prompt: 'other neg' })
+    expect(
+      resolvePresetStyleEntry({ name: 'BODY_Ears', source_file: FILE_A }, [b, c]),
+    ).toBeUndefined()
+  })
+
+  it('zero candidates are Missing', () => {
+    const b = row('BODY_Tail', FILE_B)
+    expect(
+      resolvePresetStyleEntry({ name: 'BODY_Ears', source_file: FILE_A }, [b]),
+    ).toBeUndefined()
+  })
+
+  it('legacy bare-name entries follow the same name rule', () => {
+    const b = row('BODY_Ears', FILE_B, same)
+    const c = row('BODY_Ears', FILE_C, same)
+    const d = row('BODY_Ears', FILE_A)
+    expect(resolvePresetStyleEntry('BODY_Ears', [b])).toBe(b)
+    expect(resolvePresetStyleEntry('BODY_Ears', [b, c])).toBe(b)
+    expect(resolvePresetStyleEntry('BODY_Ears', [b, c, d])).toBeUndefined()
+    expect(resolvePresetStyleEntry('BODY_Ears', [])).toBeUndefined()
+  })
+
+  it('resolvePresetMembers reports ambiguous and absent members as missing with their pack', () => {
+    const b = row('BODY_Ears', FILE_B)
+    const c = row('BODY_Ears', FILE_C)
+    const members = resolvePresetMembers(
+      [
+        { name: 'BODY_Ears', source_file: FILE_B },
+        { name: 'BODY_Ears', source_file: FILE_A },
+        { name: 'BODY_Gone', source_file: FILE_A },
+      ],
+      [b, c],
+    )
+    expect(members.map((m) => m.status)).toEqual(['found', 'missing', 'missing'])
+    expect(members[1]).toMatchObject({ status: 'missing', name: 'BODY_Ears', pack: 'a' })
+    expect(members[2]).toMatchObject({ status: 'missing', name: 'BODY_Gone', pack: 'a' })
   })
 })

@@ -41,5 +41,7 @@ export {
   autoFillGridClass,
 } from './constants'
 export { VirtualStyleGrid, type VirtualStyleGridProps } from './VirtualStyleGrid'
+export { GridScroller } from './GridScroller'
+export { GridScrollerContext, useGridScroller } from './GridScrollerContext'
 export { CategoryHeaderRow, type CategoryHeaderRowProps } from './CategoryHeaderRow'
 export { CardsRow, type CardsRowProps } from './CardsRow'

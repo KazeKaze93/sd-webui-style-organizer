@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Save, Import, Eraser, Rows3, ChevronsUpDown, ChevronsDownUp, Plus, Globe,
-  Palette, AlertTriangle, Maximize2, Minimize2, X,
+  Palette, Maximize2, Minimize2, X,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
-import { onHostMessage, sendToHost, type Style } from './bridge'
+import { onHostMessage, sendToHost } from './bridge'
 import { LORA_VIEW, styleRowKey, useStylesStore } from './store/stylesStore'
 import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
+import { GridScroller } from './components/grid/GridScroller'
 import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
 import { Toast } from './components/Toast'
@@ -19,12 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from './components/ui/tooltip'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from './components/ui/popover'
-import { closeTopLayer, hasOpenLayer, useLayer } from './lib/layerStack'
+import { closeTopLayer, hasOpenLayer } from './lib/layerStack'
 import { cn } from './lib/utils'
 import { styleGridPost } from './lib/styleGridFetch'
 import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
@@ -59,6 +55,9 @@ function clearSearchField(searchRoot: HTMLElement | null): boolean {
 }
 
 const WINDOWED_SIZE_KEY = 'sg_windowed_size'
+
+/** Search is the primary tool: it grows (flex-1) but never collapses below this. */
+const SEARCH_MIN_WIDTH_PX = 200
 
 const ToolBtn = ({
   icon: Icon,
@@ -114,94 +113,6 @@ const ToolBtn = ({
         <p className="text-xs max-w-[240px] whitespace-pre-line">{label}</p>
       </TooltipContent>
     </Tooltip>
-  )
-}
-
-const EMPTY_SELECTED: Style[] = []
-
-/** Profile (P toggle N=5000): App 17 stack hits — selection chrome only. */
-function SelectedCountLabel() {
-  const count = useStylesStore((s) => s.selectedStyles.length)
-  if (count <= 0) return null
-  return (
-    <span className="text-xs text-sg-muted">
-      {count} selected
-    </span>
-  )
-}
-
-/** Profile (P toggle): keep conflict UI off App so grid/sidebar do not cascade. */
-function ConflictsControl() {
-  const [conflictsOpen, setConflictsOpen] = useState(false)
-  const { conflicts, styles, toggleStyle } = useStylesStore(
-    useShallow((s) => ({
-      conflicts: s.conflicts,
-      styles: s.styles,
-      toggleStyle: s.toggleStyle,
-    })),
-  )
-  const selectedStyles = useStylesStore((s) =>
-    s.conflicts.length > 0 ? s.selectedStyles : EMPTY_SELECTED,
-  )
-
-  useLayer(conflictsOpen, () => setConflictsOpen(false))
-
-  if (conflicts.length === 0) return null
-
-  return (
-    <Popover open={conflictsOpen} onOpenChange={setConflictsOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          aria-label={`${conflicts.length} style conflicts`}
-          className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded',
-            'bg-red-500/20 border border-red-500/40',
-            'text-red-400 text-xs',
-            'motion-safe:animate-pulse',
-            FOCUS_RING,
-          )}
-        >
-          <AlertTriangle size={14} aria-hidden />
-          {conflicts.length}
-        </button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        onEscapeKeyDown={(e) => e.preventDefault()}
-        className="w-auto min-w-64 max-w-[min(20rem,calc(100vw-2.5rem))] p-3 bg-sg-popover border border-sg-border rounded-lg shadow-xl"
-      >
-        <div className="text-xs font-semibold text-white mb-2">
-          Style Conflicts
-        </div>
-        {conflicts.map((c, i) => {
-          const conflictingStyle = selectedStyles.find(s => styleRowKey(s) === c.styleBKey)
-            ?? styles.find(s => styleRowKey(s) === c.styleBKey)
-          return (
-            <div key={i} className="flex items-start justify-between gap-2 py-0.5">
-              <span className="text-xs text-red-400 min-w-0 flex-1 break-words">
-                {c.reason}
-              </span>
-              {conflictingStyle && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    toggleStyle(conflictingStyle)
-                    setConflictsOpen(false)
-                  }}
-                  className="text-xs px-1.5 py-0.5 rounded border
-                    border-red-500/40 text-red-400 hover:bg-red-500/20
-                    transition-colors shrink-0"
-                  title={`Remove "${c.styleB}"`}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </PopoverContent>
-    </Popover>
   )
 }
 
@@ -455,7 +366,8 @@ export default function App() {
     <div className="flex flex-col bg-sg-bg text-sg-text"
       style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
-      <div className="shrink-0 flex items-center gap-3 px-4 py-2.5
+      {/* flex-wrap: below the search minimum the toolbar wraps to a second row instead of clipping. */}
+      <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5
                     border-b border-sg-border">
         <span className="text-sg-accent font-semibold inline-flex items-center gap-1.5">
           <Palette size={16} aria-hidden />
@@ -466,11 +378,15 @@ export default function App() {
           {tab}
         </span>
         <SourceFilter />
-        <div className="flex-1" ref={searchRootRef}>
+        <div
+          className="flex-1"
+          style={{ minWidth: SEARCH_MIN_WIDTH_PX }}
+          ref={searchRootRef}
+        >
           <SearchBar />
         </div>
         <TooltipProvider>
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
             <ToolBtn
               icon={Save}
               label="Backup / Restore"
@@ -532,8 +448,6 @@ export default function App() {
                 onClick={fetchLoraTitles}
               />
             )}
-            <SelectedCountLabel />
-            <ConflictsControl />
             <ToolBtn
               icon={isFullscreen ? Minimize2 : Maximize2}
               label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -571,20 +485,23 @@ export default function App() {
       )}
 
       {/* Body */}
-      <div className="flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>
+      <div className="relative flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>
         {/* Sidebar */}
         <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
           style={{ width: isFullscreen ? '210px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
           <Sidebar />
         </div>
 
-        {/* Grid */}
-        <div className="px-3 pb-3 min-h-0"
+        {/* Grid — GridScroller is the scroll element the virtualized grid measures. */}
+        <GridScroller className="px-3 pb-3 min-h-0"
           style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
           <div className="pt-3">
             <StyleGrid windowed={!isFullscreen} />
           </div>
-        </div>
+        </GridScroller>
+
+        {/* Bottom-center of the body: clipped to it, so never over the header toolbar or the tray. */}
+        <Toast />
       </div>
 
       {/* Bottom panels — fixed height */}
@@ -592,7 +509,6 @@ export default function App() {
         <BottomPanel />
       </div>
       <ThumbProgressModal />
-      <Toast />
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Check,
   Copy,
   CopyPlus,
   FolderInput,
@@ -13,6 +14,7 @@ import {
 import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
 import { setFocusedCell } from '../lib/gridFocus'
+import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import {
   LORA_SOURCE,
   styleRowKey,
@@ -134,6 +136,9 @@ export const StyleCard = memo(function StyleCard({
 
   const openMenuAt = (x: number, y: number) => {
     setRestoreFocusEl(cardRef.current)
+    // The menu backdrop appears under a still pointer, so no mouseleave reaches
+    // the card: close the preview (and any pending show) explicitly.
+    dismissAllHoverIntents()
     setMenuPos({ x, y })
   }
 
@@ -150,7 +155,6 @@ export const StyleCard = memo(function StyleCard({
             tabIndex={tabIndex}
             aria-pressed={isSelected}
             aria-label={accessibleName}
-            title={`${style.name}\nRight-click for options`}
             onFocus={() => {
               if (cellRow != null && cellCol != null) {
                 setFocusedCell({ row: cellRow, col: cellCol })
@@ -225,9 +229,16 @@ export const StyleCard = memo(function StyleCard({
           className="fixed z-[9999] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1 min-w-48"
         >
           <MenuItem
+            className="flex items-center gap-2"
             onSelect={() => { toggleStyle(style); setMenuPos(null) }}
           >
-            {isSelected ? '✕ Deselect' : '✓ Select'}
+            {/* Check mark is state, not action: shown only while selected. */}
+            <Check
+              size={14}
+              aria-hidden="true"
+              className={isSelected ? undefined : 'invisible'}
+            />
+            {isSelected ? 'Deselect' : 'Select'}
           </MenuItem>
           <MenuItem
             onSelect={() => { toggleFavorite(style); setMenuPos(null) }}

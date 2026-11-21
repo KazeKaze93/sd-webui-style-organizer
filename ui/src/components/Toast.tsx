@@ -28,8 +28,8 @@ export function Toast() {
   return (
     <div
       aria-live="polite"
-      className="fixed top-4 right-4 z-[99999] flex flex-col gap-2
-                    pointer-events-none"
+      className="absolute inset-x-0 bottom-3 z-[99999] flex flex-col items-center gap-2
+                    px-4 pointer-events-none"
     >
       <AnimatePresence>
         {toasts.map(toast => {
@@ -38,11 +38,11 @@ export function Toast() {
             <motion.div
               key={toast.id}
               role={toast.variant === 'error' ? 'alert' : 'status'}
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 50 }}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 16 }}
               transition={{ duration: 0.2 }}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium
+              className={`flex max-w-full items-center gap-2 px-4 py-2.5 rounded-lg shadow-xl text-sm font-medium
               pointer-events-auto ${className}`}
             >
               <Icon size={16} aria-hidden="true" />

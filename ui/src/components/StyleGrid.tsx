@@ -1,10 +1,19 @@
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { sendToHost, WILDCARD_KIND_DECK, type Style } from '../bridge'
+import {
+  sendToHost,
+  WILDCARD_KIND_DECK,
+  WILDCARD_KIND_DICE,
+  type Style,
+  type WildcardKind,
+} from '../bridge'
 import {
   SLICE_ADD_SHUFFLE,
   SLICE_ADD_SHUFFLE_ARIA,
   SLICE_BAR_TITLE_SHUFFLE,
+  SLICE_MODE_GROUP_LABEL,
+  SLICE_MODE_RANDOM,
+  SLICE_MODE_SHUFFLE,
 } from '../lib/wildcardLabels'
 import { buildSliceSpec } from '../lib/wildcardSlice'
 import {
@@ -17,6 +26,7 @@ import {
 } from '../store/stylesStore'
 import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
+import { SegmentedControl, type SegmentOption } from './SegmentedControl'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
 import { WildcardMenuItems } from './WildcardMenuItems'
 import { autoFillGridClass, VirtualStyleGrid } from './grid'
@@ -26,6 +36,10 @@ const RECENT_VIEW = '🕑 Recent'
 /** Stable stubs so Favorites/Recent store churn does not invalidate All/category memos. */
 const EMPTY_FAVORITES = new Set<string>()
 const EMPTY_RECENT: string[] = []
+const SLICE_KIND_OPTIONS: ReadonlyArray<SegmentOption<WildcardKind>> = [
+  { value: WILDCARD_KIND_DICE, label: SLICE_MODE_RANDOM },
+  { value: WILDCARD_KIND_DECK, label: SLICE_MODE_SHUFFLE },
+]
 
 /**
  * Profile (P toggle N=5000): StyleGrid 18 hits; `selectFilteredStyles` 2.9% —
@@ -41,7 +55,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
     collapsedCategories, toggleCollapse, viewMode,
     selectAllInCategory,
     sliceMode, sliceSelection,
-    exitSliceMode, toggleSliceSelection,
+    exitSliceMode, toggleSliceSelection, setSliceKind,
     selectAllSlice, clearSliceSelection,
     setSearch, setCategory, setActiveSource,
   } = useStylesStore(
@@ -63,6 +77,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         sliceSelection: s.sliceSelection,
         exitSliceMode: s.exitSliceMode,
         toggleSliceSelection: s.toggleSliceSelection,
+        setSliceKind: s.setSliceKind,
         selectAllSlice: s.selectAllSlice,
         clearSliceSelection: s.clearSliceSelection,
         setSearch: s.setSearch,
@@ -260,6 +275,13 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         className="flex flex-wrap items-center gap-2 px-1 py-2 mb-2 rounded-md
                    border border-sg-wildcard/40 bg-sg-wildcard/10"
       >
+        <SegmentedControl
+          options={SLICE_KIND_OPTIONS}
+          value={sliceMode.kind}
+          onChange={setSliceKind}
+          ariaLabel={SLICE_MODE_GROUP_LABEL}
+          data={{ 'data-sg-slice-kind': 'true' }}
+        />
         <span className="text-sm text-sg-text font-medium">
           {isDeck ? SLICE_BAR_TITLE_SHUFFLE : 'Slice: '}
           <span className="text-sg-wildcard-text">{cat}</span>

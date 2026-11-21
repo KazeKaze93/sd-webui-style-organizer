@@ -3,10 +3,9 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { WILDCARD_KIND_DECK } from '../bridge'
 import { PRESET_SHUFFLE_SUFFIX } from '../lib/wildcardLabels'
 import { wildcardKey } from '../lib/wildcardKey'
-import { useLayer } from '../lib/layerStack'
-import { useFocusTrap } from '../lib/useFocusTrap'
 import { cn } from '../lib/utils'
 import { DeckIcon } from './DeckIcon'
+import { ModalShell } from './ModalShell'
 import {
   resolvePresetMembers,
   styleDisplayName,
@@ -39,13 +38,9 @@ export function PresetRow({ name, preset }: Props) {
   const [renameValue, setRenameValue] = useState(name)
   const [renameExists, setRenameExists] = useState(false)
   const [busy, setBusy] = useState(false)
-  const renameDialogRef = useRef<HTMLDivElement>(null)
   const renameRef = useRef<HTMLInputElement>(null)
-  const deleteDialogRef = useRef<HTMLDivElement>(null)
   const deleteCancelRef = useRef<HTMLButtonElement>(null)
   const renameTitleId = useId()
-  const renameInputId = useId()
-  const deleteTitleId = useId()
 
   const members = resolvePresetMembers(preset.styles ?? [], styles)
   const foundMembers = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
@@ -65,16 +60,6 @@ export function PresetRow({ name, preset }: Props) {
   const isActive = foundMembers.length > 0 &&
     foundMembers.every((m) => selectedStyles.some((s) => s.name === m.style.name)) &&
     [...presetWcKeys].every((k) => activeWcKeys.has(k))
-
-  useLayer(renameOpen, () => {
-    if (!busy) setRenameOpen(false)
-  })
-  useFocusTrap(renameDialogRef, renameOpen, { initialFocus: renameRef })
-
-  useLayer(deleteOpen, () => {
-    if (!busy) setDeleteOpen(false)
-  })
-  useFocusTrap(deleteDialogRef, deleteOpen, { initialFocus: deleteCancelRef })
 
   useEffect(() => {
     if (!renameOpen) return
@@ -266,136 +251,123 @@ export function PresetRow({ name, preset }: Props) {
         )}
       </AnimatePresence>
 
-      {renameOpen && (
-        <div className="fixed inset-0 z-[9999]">
-          <div className="absolute inset-0 bg-black/50" onClick={() => { if (!busy) setRenameOpen(false) }} />
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div
-              ref={renameDialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={renameTitleId}
-              className="pointer-events-auto bg-sg-surface border border-sg-border rounded-lg shadow-xl p-4 w-80"
-              onClick={(e) => e.stopPropagation()}
+      <ModalShell
+        open={renameOpen}
+        onClose={() => setRenameOpen(false)}
+        title="Rename set"
+        titleId={renameTitleId}
+        busy={busy}
+        initialFocus={renameRef}
+        widthClassName="w-80"
+        footer={
+          <>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setRenameOpen(false)}
+              className={cn(
+                'px-3 py-1.5 text-sm border border-sg-border rounded hover:bg-sg-accent/20',
+                FOCUS_RING,
+              )}
             >
-              <label htmlFor={renameInputId} id={renameTitleId} className="block text-sm font-medium text-sg-text mb-2">
-                Rename set
-              </label>
-              <input
-                id={renameInputId}
-                ref={renameRef}
-                type="text"
-                value={renameValue}
-                disabled={busy}
-                onChange={(e) => {
-                  setRenameValue(e.target.value)
-                  setRenameExists(false)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    void doRename(renameExists)
-                  }
-                }}
+              Cancel
+            </button>
+            {renameExists ? (
+              <button
+                type="button"
+                disabled={busy || !renameValue.trim()}
+                onClick={() => void doRename(true)}
                 className={cn(
-                  'w-full h-9 px-3 rounded border border-sg-border bg-sg-surface text-sg-text text-sm',
-                  'focus:border-sg-accent focus:outline-none disabled:opacity-45',
+                  'px-3 py-1.5 text-sm rounded bg-amber-500/90 text-white',
                   FOCUS_RING,
                 )}
-              />
-              {renameExists && (
-                <div className="mt-2 text-xs text-amber-300/90">
-                  A set named &ldquo;{renameValue.trim()}&rdquo; already exists.
-                </div>
-              )}
-              <div className="flex justify-end gap-2 mt-3">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setRenameOpen(false)}
-                  className={cn(
-                    'px-3 py-1.5 text-sm border border-sg-border rounded hover:bg-sg-accent/20',
-                    FOCUS_RING,
-                  )}
-                >
-                  Cancel
-                </button>
-                {renameExists ? (
-                  <button
-                    type="button"
-                    disabled={busy || !renameValue.trim()}
-                    onClick={() => void doRename(true)}
-                    className={cn(
-                      'px-3 py-1.5 text-sm rounded bg-amber-500/90 text-white',
-                      FOCUS_RING,
-                    )}
-                  >
-                    Overwrite
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    disabled={busy || !renameValue.trim()}
-                    onClick={() => void doRename(false)}
-                    className={cn(
-                      'px-3 py-1.5 text-sm rounded bg-sg-accent text-white',
-                      FOCUS_RING,
-                    )}
-                  >
-                    Rename
-                  </button>
+              >
+                Overwrite
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={busy || !renameValue.trim()}
+                onClick={() => void doRename(false)}
+                className={cn(
+                  'px-3 py-1.5 text-sm rounded bg-sg-accent text-white',
+                  FOCUS_RING,
                 )}
-              </div>
-            </div>
+              >
+                Rename
+              </button>
+            )}
+          </>
+        }
+      >
+        <input
+          ref={renameRef}
+          type="text"
+          aria-labelledby={renameTitleId}
+          value={renameValue}
+          disabled={busy}
+          onChange={(e) => {
+            setRenameValue(e.target.value)
+            setRenameExists(false)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              void doRename(renameExists)
+            }
+          }}
+          className={cn(
+            'w-full h-9 px-3 rounded border border-sg-border bg-sg-surface text-sg-text text-sm',
+            'focus:border-sg-accent focus:outline-none disabled:opacity-45',
+            FOCUS_RING,
+          )}
+        />
+        {renameExists && (
+          <div className="mt-2 text-xs text-amber-300/90">
+            A set named &ldquo;{renameValue.trim()}&rdquo; already exists.
           </div>
-        </div>
-      )}
+        )}
+      </ModalShell>
 
-      {deleteOpen && (
-        <div className="fixed inset-0 z-[9999]">
-          <div className="absolute inset-0 bg-black/50" onClick={() => { if (!busy) setDeleteOpen(false) }} />
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div
-              ref={deleteDialogRef}
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby={deleteTitleId}
-              className="pointer-events-auto bg-sg-surface border border-sg-border rounded-lg shadow-xl p-4 w-80"
-              onClick={(e) => e.stopPropagation()}
+      <ModalShell
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete set?"
+        busy={busy}
+        initialFocus={deleteCancelRef}
+        widthClassName="w-80"
+        footer={
+          <>
+            <button
+              ref={deleteCancelRef}
+              type="button"
+              disabled={busy}
+              onClick={() => setDeleteOpen(false)}
+              className={cn(
+                'px-3 py-1.5 text-sm border border-sg-border rounded hover:bg-sg-accent/20',
+                FOCUS_RING,
+              )}
             >
-              <div id={deleteTitleId} className="text-sm font-medium text-sg-text mb-2">Delete set?</div>
-              <p className="text-xs text-sg-muted leading-relaxed">
-                Delete &ldquo;{name}&rdquo; permanently? This cannot be undone.
-              </p>
-              <div className="flex justify-end gap-2 mt-3">
-                <button
-                  ref={deleteCancelRef}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setDeleteOpen(false)}
-                  className={cn(
-                    'px-3 py-1.5 text-sm border border-sg-border rounded hover:bg-sg-accent/20',
-                    FOCUS_RING,
-                  )}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void doDelete()}
-                  className={cn(
-                    'px-3 py-1.5 text-sm rounded bg-red-500/90 text-white hover:bg-red-500',
-                    FOCUS_RING,
-                  )}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void doDelete()}
+              className={cn(
+                'px-3 py-1.5 text-sm rounded bg-red-500/90 text-white hover:bg-red-500',
+                FOCUS_RING,
+              )}
+            >
+              Delete
+            </button>
+          </>
+        }
+      >
+        <p className="text-xs text-sg-muted leading-relaxed">
+          Delete &ldquo;{name}&rdquo; permanently? This cannot be undone.
+        </p>
+      </ModalShell>
     </div>
   )
 }

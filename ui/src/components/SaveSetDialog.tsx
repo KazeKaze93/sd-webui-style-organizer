@@ -1,8 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { wildcardKey } from '../lib/wildcardKey'
-import { useLayer } from '../lib/layerStack'
-import { useFocusTrap } from '../lib/useFocusTrap'
 import { cn } from '../lib/utils'
+import { ModalShell } from './ModalShell'
 import {
   resolvePresetMembers,
   suggestPresetName,
@@ -31,19 +30,12 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
   const [includeWildcards, setIncludeWildcards] = useState(true)
   const [existsWarning, setExistsWarning] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const dialogRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const titleId = useId()
   const nameId = useId()
   const noteId = useId()
   const wildcardsId = useId()
 
   const hasWildcards = activeWildcards.length > 0
-
-  useLayer(open, () => {
-    if (!isSubmitting) onClose()
-  })
-  useFocusTrap(dialogRef, open, { initialFocus: inputRef })
 
   useEffect(() => {
     if (!open) {
@@ -122,133 +114,125 @@ export function SaveSetDialog({ open, onClose }: SaveSetDialogProps) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 z-[9999]">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => { if (!isSubmitting) onClose() }}
-      />
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-          className="pointer-events-auto bg-sg-surface border border-sg-border rounded-lg shadow-xl p-4 w-[22rem]"
-          onClick={(e) => e.stopPropagation()}
+  const footer = (
+    <>
+      <button
+        type="button"
+        disabled={isSubmitting}
+        onClick={onClose}
+        className={cn(
+          'px-3 py-1.5 text-sm text-sg-text border border-sg-border rounded',
+          'hover:bg-sg-accent/20 transition-colors',
+          'disabled:opacity-45 disabled:cursor-not-allowed',
+          FOCUS_RING,
+        )}
+      >
+        Cancel
+      </button>
+      {existsWarning ? (
+        <button
+          type="button"
+          disabled={isSubmitting || !trimmed}
+          onClick={() => void doSave(true)}
+          className={cn(
+            'px-3 py-1.5 text-sm rounded bg-amber-500/90 text-white',
+            'hover:bg-amber-500 transition-colors',
+            'disabled:opacity-45 disabled:cursor-not-allowed',
+            FOCUS_RING,
+          )}
         >
-          <div id={titleId} className="text-sm font-medium text-sg-text mb-3">Save set</div>
-
-          <label htmlFor={nameId} className="block text-xs text-sg-muted mb-1">Name</label>
-          <input
-            id={nameId}
-            ref={inputRef}
-            type="text"
-            value={name}
-            disabled={isSubmitting}
-            onChange={(e) => {
-              setName(e.target.value)
-              setExistsWarning(false)
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && canSave) {
-                e.preventDefault()
-                void doSave(existsWarning)
-              }
-            }}
-            className={cn(
-              'w-full h-9 px-3 rounded border border-sg-border',
-              'bg-sg-surface text-sg-text text-sm',
-              'placeholder:text-sg-muted focus:border-sg-accent',
-              'focus:outline-none transition-colors disabled:opacity-45',
-              FOCUS_RING,
-            )}
-            placeholder="Set name"
-          />
-
-          <label htmlFor={noteId} className="block text-xs text-sg-muted mb-1 mt-3">Note (optional)</label>
-          <textarea
-            id={noteId}
-            value={note}
-            disabled={isSubmitting}
-            onChange={(e) => setNote(e.target.value)}
-            rows={2}
-            className={cn(
-              'w-full px-3 py-2 rounded border border-sg-border',
-              'bg-sg-surface text-sg-text text-sm resize-none',
-              'placeholder:text-sg-muted focus:border-sg-accent',
-              'focus:outline-none transition-colors disabled:opacity-45',
-              FOCUS_RING,
-            )}
-            placeholder="Short note"
-          />
-
-          {hasWildcards && (
-            <label htmlFor={wildcardsId} className="flex items-center gap-2 mt-3 text-sm text-sg-text cursor-pointer select-none">
-              <input
-                id={wildcardsId}
-                type="checkbox"
-                checked={includeWildcards}
-                disabled={isSubmitting}
-                onChange={(e) => setIncludeWildcards(e.target.checked)}
-                className={cn('rounded border-sg-border', FOCUS_RING)}
-              />
-              Include active wildcards ({activeWildcards.length})
-            </label>
+          Overwrite
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={!canSave}
+          onClick={() => void doSave(false)}
+          className={cn(
+            'px-3 py-1.5 text-sm rounded bg-sg-accent text-white',
+            'hover:bg-sg-accent/90 transition-colors',
+            'disabled:opacity-45 disabled:cursor-not-allowed',
+            FOCUS_RING,
           )}
+        >
+          Save
+        </button>
+      )}
+    </>
+  )
 
-          {existsWarning && (
-            <div className="mt-3 text-xs text-amber-300/90 leading-relaxed">
-              A set named &ldquo;{trimmed}&rdquo; already exists. Overwrite it?
-            </div>
-          )}
+  return (
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title="Save set"
+      busy={isSubmitting}
+      initialFocus={inputRef}
+      footer={footer}
+    >
+    <label htmlFor={nameId} className="block text-xs text-sg-muted mb-1">Name</label>
+    <input
+      id={nameId}
+      ref={inputRef}
+      type="text"
+      value={name}
+      disabled={isSubmitting}
+      onChange={(e) => {
+        setName(e.target.value)
+        setExistsWarning(false)
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && canSave) {
+          e.preventDefault()
+          void doSave(existsWarning)
+        }
+      }}
+      className={cn(
+        'w-full h-9 px-3 rounded border border-sg-border',
+        'bg-sg-surface text-sg-text text-sm',
+        'placeholder:text-sg-muted focus:border-sg-accent',
+        'focus:outline-none transition-colors disabled:opacity-45',
+        FOCUS_RING,
+      )}
+      placeholder="Set name"
+    />
 
-          <div className="flex justify-end gap-2 mt-3">
-            <button
-              type="button"
-              disabled={isSubmitting}
-              onClick={onClose}
-              className={cn(
-                'px-3 py-1.5 text-sm text-sg-text border border-sg-border rounded',
-                'hover:bg-sg-accent/20 transition-colors',
-                'disabled:opacity-45 disabled:cursor-not-allowed',
-                FOCUS_RING,
-              )}
-            >
-              Cancel
-            </button>
-            {existsWarning ? (
-              <button
-                type="button"
-                disabled={isSubmitting || !trimmed}
-                onClick={() => void doSave(true)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded bg-amber-500/90 text-white',
-                  'hover:bg-amber-500 transition-colors',
-                  'disabled:opacity-45 disabled:cursor-not-allowed',
-                  FOCUS_RING,
-                )}
-              >
-                Overwrite
-              </button>
-            ) : (
-              <button
-                type="button"
-                disabled={!canSave}
-                onClick={() => void doSave(false)}
-                className={cn(
-                  'px-3 py-1.5 text-sm rounded bg-sg-accent text-white',
-                  'hover:bg-sg-accent/90 transition-colors',
-                  'disabled:opacity-45 disabled:cursor-not-allowed',
-                  FOCUS_RING,
-                )}
-              >
-                Save
-              </button>
-            )}
-          </div>
-        </div>
+    <label htmlFor={noteId} className="block text-xs text-sg-muted mb-1 mt-3">Note (optional)</label>
+    <textarea
+      id={noteId}
+      value={note}
+      disabled={isSubmitting}
+      onChange={(e) => setNote(e.target.value)}
+      rows={2}
+      className={cn(
+        'w-full px-3 py-2 rounded border border-sg-border',
+        'bg-sg-surface text-sg-text text-sm resize-none',
+        'placeholder:text-sg-muted focus:border-sg-accent',
+        'focus:outline-none transition-colors disabled:opacity-45',
+        FOCUS_RING,
+      )}
+      placeholder="Short note"
+    />
+
+    {hasWildcards && (
+      <label htmlFor={wildcardsId} className="flex items-center gap-2 mt-3 text-sm text-sg-text cursor-pointer select-none">
+        <input
+          id={wildcardsId}
+          type="checkbox"
+          checked={includeWildcards}
+          disabled={isSubmitting}
+          onChange={(e) => setIncludeWildcards(e.target.checked)}
+          className={cn('rounded border-sg-border', FOCUS_RING)}
+        />
+        Include active wildcards ({activeWildcards.length})
+      </label>
+    )}
+
+    {existsWarning && (
+      <div className="mt-3 text-xs text-amber-300/90 leading-relaxed">
+        A set named &ldquo;{trimmed}&rdquo; already exists. Overwrite it?
       </div>
-    </div>
+    )}
+    </ModalShell>
   )
 }

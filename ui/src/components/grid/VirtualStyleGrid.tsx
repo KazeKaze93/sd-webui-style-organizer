@@ -15,6 +15,7 @@ import {
   type Range,
 } from '@tanstack/react-virtual'
 import type { Style } from '../../bridge'
+import type { ViewMode } from '../../store/stylesStore'
 import {
   getFocusedCell,
   setFocusedCell,
@@ -40,12 +41,15 @@ import { CategoryHeaderRow } from './CategoryHeaderRow'
 import {
   cardRowHeightPx,
   columnsForWidth,
+  galleryCardHeightPx,
+  galleryCardWidthPx,
+  galleryRowHeightPx,
   GRID_VIRTUAL_OVERSCAN,
   headerRowHeightPx,
   rowGapPx,
   VIRTUALIZER_TEST_INITIAL_RECT,
   gridGapPx,
-  minCardWidthPx,
+  minCardWidthForViewPx,
 } from './constants'
 import { MISSING_GRID_SCROLLER_MESSAGE, useGridScroller } from './GridScrollerContext'
 import {
@@ -68,6 +72,8 @@ export type VirtualStyleGridProps = {
   groups: readonly CategoryGroup[]
   collapsedCategories: ReadonlySet<string>
   windowed: boolean
+  /** Text tiles (grid) or square preview tiles (gallery). Default grid. */
+  viewMode?: ViewMode
   includeHeaders?: boolean
   enableLoraContextMenu?: boolean
   onToggleCollapse: (category: string) => void
@@ -78,13 +84,9 @@ export type VirtualStyleGridProps = {
   children?: ReactNode
 }
 
-function estimateRowSize(
-  row: GridRow | undefined,
-  windowed: boolean,
-): number {
-  if (!row || row.kind === 'cards') {
-    return cardRowHeightPx(windowed)
-  }
+/** Fixed virtualizer size of a row: card rows take the current card row height. */
+function estimateRowSize(row: GridRow | undefined, cardRowHeight: number): number {
+  if (!row || row.kind === 'cards') return cardRowHeight
   return headerRowHeightPx()
 }
 
@@ -121,6 +123,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   groups,
   collapsedCategories,
   windowed,
+  viewMode = 'grid',
   includeHeaders = true,
   enableLoraContextMenu = false,
   onToggleCollapse,
@@ -152,13 +155,21 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   const focusedCell = useFocusedCell()
   const focusedRow = focusedCell?.row ?? null
 
-  const minW = minCardWidthPx(windowed)
+  const minW = minCardWidthForViewPx(windowed, viewMode)
   const gapPx = gridGapPx()
   const rowGap = rowGapPx()
   const columns = useMemo(
     () => columnsForWidth(widthPx, minW, gapPx),
     [widthPx, minW, gapPx],
   )
+  // Gallery: square thumbnail + label, so the row height follows the column width.
+  const galleryCardWidth = galleryCardWidthPx(widthPx, columns, gapPx)
+  const galleryCardHeight = galleryCardHeightPx(galleryCardWidth)
+  const cardRowHeight =
+    viewMode === 'gallery' ? galleryRowHeightPx(galleryCardWidth) : cardRowHeightPx(windowed)
+  /** Read by the stable estimateSize; updated on every render like rowsRef. */
+  const cardRowHeightRef = useRef(cardRowHeight)
+  cardRowHeightRef.current = cardRowHeight
 
   const rows = useMemo(
     () => buildGridRows(groups, collapsedCategories, columns, { includeHeaders }),
@@ -276,8 +287,8 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
 
   // Stable identity — profile: recreated estimateSize closed over `rows` forced remounts.
   const estimateSize = useCallback(
-    (index: number) => estimateRowSize(rowsRef.current[index], windowed),
-    [windowed],
+    (index: number) => estimateRowSize(rowsRef.current[index], cardRowHeightRef.current),
+    [],
   )
 
   // TanStack Virtual returns unstable function identities; React Compiler skips this file.
@@ -304,6 +315,13 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     rangeCacheRef.current = null
     virtualizer.measure()
   }, [columns, windowed, focusedRow, rows.length, scrollMargin, virtualizer])
+
+  // Switching Grid / Gallery or a new gallery row height changes every card
+  // row size: drop the cached sizes before paint (fixed heights, no measureElement).
+  useLayoutEffect(() => {
+    rangeCacheRef.current = null
+    virtualizer.measure()
+  }, [viewMode, cardRowHeight, virtualizer])
 
   const scrollToHeader = useCallback(
     (category: string) => {
@@ -373,7 +391,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         const viewportH = scroller?.clientHeight ?? VIRTUALIZER_TEST_INITIAL_RECT.height
         const pageRows = Math.max(
           1,
-          Math.floor((viewportH - scrollPaddingStart) / cardRowHeightPx(windowed)),
+          Math.floor((viewportH - scrollPaddingStart) / cardRowHeightRef.current),
         )
         const next = nextCell(
           rowsRef.current,
@@ -417,7 +435,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         openCardMenuAtCell(cell)
       }
     },
-    [columns, scroller, scrollPaddingStart, windowed, virtualizer, openCardMenuAtCell],
+    [columns, scroller, scrollPaddingStart, virtualizer, openCardMenuAtCell],
   )
 
   // Stable sticky style across scroll frames.
@@ -519,6 +537,8 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                   styles={row.styles}
                   columns={columns}
                   windowed={windowed}
+                  viewMode={viewMode}
+                  galleryCardHeightPx={viewMode === 'gallery' ? galleryCardHeight : undefined}
                   rowIndex={virtualRow.index}
                   focusedCol={rowFocusedCol}
                   categoryPanelId={

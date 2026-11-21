@@ -36,7 +36,6 @@ function row(name: string, category: string, extra: Partial<Row> = {}): Row {
     negative_prompt: `n:${name}`,
     description: '',
     category,
-    has_thumbnail: false,
     ...extra,
   }
 }

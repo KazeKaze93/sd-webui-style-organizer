@@ -48,7 +48,6 @@ function generatePickerStyles(n, withThumb) {
         description: `Synthetic bench style ${i} (${cat})`,
         category: cat,
         source_file: source,
-        has_thumbnail: withThumb,
       })
     }
   }
@@ -62,7 +61,6 @@ function generatePickerStyles(n, withThumb) {
       description: `pad ${i}`,
       category: cat,
       source_file: SOURCES[0],
-      has_thumbnail: withThumb,
     })
   }
   return styles.slice(0, n)
@@ -421,11 +419,12 @@ async function openMenuBench(browser, baseUrl, n, withThumb) {
       return
     }
     if (url.includes('/style_grid/thumbnails/list')) {
-      const names = withThumb ? styles.map((s) => s.name) : []
+      // Same shape as the server: one { name, source_file } per style with a thumbnail.
+      const entries = withThumb ? styles.map((s) => ({ name: s.name, source_file: s.source_file })) : []
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ has_thumbnail: [...new Set(names)] }),
+        body: JSON.stringify({ has_thumbnail: entries }),
       })
       return
     }

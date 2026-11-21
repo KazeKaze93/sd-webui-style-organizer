@@ -7,6 +7,7 @@ import { sendToHost } from './bridge'
 import { __resetFocusSourceForTests } from './lib/focusSource'
 import { __resetGridFocusForTests } from './lib/gridFocus'
 import { __resetLayerStackForTests } from './lib/layerStack'
+import { LORA_VIEW, useStylesStore } from './store/stylesStore'
 
 vi.mock('./bridge', async () => {
   const actual = await vi.importActual<typeof import('./bridge')>('./bridge')
@@ -74,6 +75,8 @@ describe('one-row header', () => {
     __resetGridFocusForTests()
     __resetLayerStackForTests()
     __resetFocusSourceForTests()
+    localStorage.removeItem('sg_view_mode')
+    useStylesStore.setState({ viewMode: 'grid', activeCategory: null })
     sendToHostMock.mockClear()
     vi.stubGlobal(
       'fetch',
@@ -112,6 +115,30 @@ describe('one-row header', () => {
     'Import/Export',
   ])('has no "%s" button', (label) => {
     expect(headerLabels()).not.toContain(label)
+  })
+
+  it('order: search → View toggle → globe (LoRA only) → + → ⋯ → Fullscreen → Close', async () => {
+    const before = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
+    const search = header().querySelector('input')!
+    const toggle = header().querySelector('[role="radiogroup"]')!
+    const plus = headerButton('Select a specific CSV source before creating a style')
+    expect(header().querySelector('button[aria-label^="Fetch LoRA"]')).toBeNull()
+    for (const [a, b] of [
+      [search, toggle],
+      [toggle, plus],
+      [plus, headerButton('More')],
+      [headerButton('More'), headerButton('Fullscreen')],
+      [headerButton('Fullscreen'), headerButton('Close Style Grid')],
+    ] as const) {
+      expect(before(a, b)).toBe(true)
+    }
+
+    await act(async () => useStylesStore.setState({ activeCategory: LORA_VIEW }))
+    const globe = header().querySelector('button[aria-label^="Fetch LoRA"]')!
+    expect(globe).not.toBeNull()
+    expect(before(header().querySelector('[role="radiogroup"]')!, globe)).toBe(true)
+    expect(before(globe, headerButton('Select a specific CSV source before creating a style'))).toBe(true)
   })
 
   it('buttons run New style, More, Fullscreen, Close, in that order', () => {
@@ -169,7 +196,7 @@ describe('one-row header', () => {
   })
 
   it('below HEADER_NARROW_MAX_PX the title text is sr-only and the tab badge is hidden', () => {
-    expect(HEADER_NARROW_MAX_PX).toBe(719)
+    expect(HEADER_NARROW_MAX_PX).toBe(759)
     const variant = `max-[${HEADER_NARROW_MAX_PX}px]:`
     const titleText = header().querySelector('[data-sg-header-title] span')!
     expect(titleText.textContent).toBe('Style Grid')
@@ -228,6 +255,67 @@ describe('one-row header', () => {
       expect(menu()).not.toBeNull()
       await hover(more)
       expect(moreTooltipShown()).toBe(false)
+    })
+  })
+  describe('Grid / Gallery toggle', () => {
+    const group = () => header().querySelector<HTMLElement>('[role="radiogroup"]')!
+    const radio = (label: string) =>
+      [...group().querySelectorAll<HTMLButtonElement>('[role="radio"]')].find((b) => b.getAttribute('aria-label') === label)!
+    const tipShown = (text: string) => tooltipTexts().includes(text)
+    const viewMode = () => useStylesStore.getState().viewMode
+
+    it('is a labelled radiogroup; only the checked segment is tabbable', () => {
+      expect(group().getAttribute('aria-label')).toBe('View')
+      const radios = [...group().querySelectorAll<HTMLButtonElement>('[role="radio"]')]
+      expect(radios.map((r) => r.getAttribute('aria-label'))).toEqual(['Grid', 'Gallery'])
+      expect(radios.map((r) => r.getAttribute('aria-checked'))).toEqual(['true', 'false'])
+      expect(radios.map((r) => r.tabIndex)).toEqual([0, -1])
+    })
+
+    it('click selects, updates the store and persists', async () => {
+      await act(async () => radio('Gallery').click())
+      expect(viewMode()).toBe('gallery')
+      expect(localStorage.getItem('sg_view_mode')).toBe('gallery')
+      expect(radio('Gallery').getAttribute('aria-checked')).toBe('true')
+      expect(radio('Gallery').tabIndex).toBe(0)
+      expect(radio('Grid').tabIndex).toBe(-1)
+    })
+
+    it('arrows, Home and End move the focus and select', async () => {
+      await act(async () => radio('Grid').focus())
+      await pressKey('ArrowRight')
+      expect(viewMode()).toBe('gallery')
+      expect(document.activeElement).toBe(radio('Gallery'))
+      await pressKey('ArrowRight') // wraps
+      expect(viewMode()).toBe('grid')
+      expect(document.activeElement).toBe(radio('Grid'))
+      await pressKey('ArrowLeft') // wraps back
+      expect(viewMode()).toBe('gallery')
+      await pressKey('ArrowUp')
+      expect(viewMode()).toBe('grid')
+      await pressKey('ArrowDown')
+      expect(viewMode()).toBe('gallery')
+      await pressKey('Home')
+      expect(viewMode()).toBe('grid')
+      expect(document.activeElement).toBe(radio('Grid'))
+      await pressKey('End')
+      expect(viewMode()).toBe('gallery')
+      expect(document.activeElement).toBe(radio('Gallery'))
+    })
+
+    it('tooltips: hover shows, a click-selected segment loses it when the pointer leaves; Tab focus shows it', async () => {
+      const gallery = radio('Gallery')
+      await hover(gallery)
+      expect(tipShown('Gallery')).toBe(true)
+      await act(async () => gallery.click())
+      await unhover(gallery)
+      expect(tipShown('Gallery')).toBe(false)
+      expect(document.activeElement === gallery || document.activeElement === document.body).toBe(true)
+
+      await act(async () => (document.activeElement as HTMLElement)?.blur?.())
+      await pressKey('Tab')
+      await act(async () => radio('Gallery').focus())
+      expect(tipShown('Gallery')).toBe(true)
     })
   })
 })

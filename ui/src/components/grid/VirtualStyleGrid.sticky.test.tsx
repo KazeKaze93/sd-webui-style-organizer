@@ -43,7 +43,6 @@ function style(name: string, category: string): Style {
     negative_prompt: '',
     description: '',
     category,
-    has_thumbnail: false,
   }
 }
 
@@ -126,7 +125,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
     expect(nonStickyRow!.classList.contains('bg-sg-bg')).toBe(false)
   })
 
-  function renderGrid() {
+  function renderGrid(viewMode: 'grid' | 'gallery' = 'grid') {
     const groups: Array<[string, Style[]]> = [
       ['BODY', [style('BODY_A', 'BODY'), style('BODY_B', 'BODY')]],
     ]
@@ -143,6 +142,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
             groups={groups}
             collapsedCategories={new Set()}
             windowed={false}
+            viewMode={viewMode}
             onToggleCollapse={() => {}}
             onSelectAll={() => {}}
           />
@@ -151,9 +151,9 @@ describe('VirtualStyleGrid sticky row chrome', () => {
     })
   }
 
-  it('sticky header row is exactly one virtual header row tall, so the first cards row starts below it', () => {
+  it.each(['grid', 'gallery'] as const)('%s: sticky header row is exactly one virtual header row tall, so the first cards row starts below it', (viewMode) => {
     expect(headerRowHeightPx()).toBe(40)
-    renderGrid()
+    renderGrid(viewMode)
 
     const stickyRow = host!.querySelector<HTMLElement>('[role="row"][data-index="0"]')
     const firstCardsRow = host!.querySelector<HTMLElement>('[role="row"][data-index="1"]')

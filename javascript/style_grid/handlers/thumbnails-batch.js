@@ -218,6 +218,16 @@ function startBatchThumbnails(tabName, catName, styles) {
                        _thumbVersions[batchThumbKey] = Date.now();
                        localStorage.setItem("sg_thumb_v_" + batchThumbKey, _thumbVersions[batchThumbKey].toString());
                        _saveThumbVersions();
+                       // Same message as a single upload: the panel shows the new preview now.
+                       var frBatchDone = state[tabName2] && state[tabName2].sgFrame;
+                       if (frBatchDone && frBatchDone.contentWindow) {
+                           postToFrame(frBatchDone, {
+                               type: "SG_THUMB_DONE",
+                               styleId: styleName,
+                               version: _thumbVersions[batchThumbKey],
+                               source_file: styleSourceFile,
+                           });
+                       }
                        updateProgress(index + 1, styleName, "✓");
                        setTimeout(function () { processNext(index + 1); }, 300);
                    } else if (r.status === "error" || r.status === "cancelled") {

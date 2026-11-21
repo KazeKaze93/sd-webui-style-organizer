@@ -11,15 +11,13 @@ export type Snapshot = {
   has_thumbnails: boolean
 }
 
-export type BackupList = { backups: Snapshot[]; thumbnailsBytes: number }
+export type BackupList = { backups: Snapshot[]; thumbnailsBytes: number; keepSnapshots: number }
 
 /**
- * Entries `_prune_old_backups` keeps in data/backups/. It counts directory
- * entries, not snapshots, and every snapshot is a folder plus a .zip
- * (backup_csv_files), so 20 entries hold 10 snapshots.
+ * Snapshots the server keeps, when GET /style_grid/backups does not say
+ * (`keep_snapshots`): stylegrid/data_files.py BACKUP_KEEP_SNAPSHOTS.
  */
-export const BACKUP_DIR_ENTRY_LIMIT = 20
-export const SNAPSHOTS_KEPT = BACKUP_DIR_ENTRY_LIMIT / 2
+export const DEFAULT_KEEP_SNAPSHOTS = 20
 
 /** Sizes as the host printed them (render.js formatBytes). */
 export function formatBytes(n: number): string {
@@ -57,53 +55,24 @@ export function snapshotLabel(name: string): SnapshotLabel {
 }
 
 /**
- * Snapshots that restoring any snapshot would delete before it is read:
- * restore_from_backup first writes a safety snapshot (a folder and a .zip),
- * and its prune drops the alphabetically first entries while there are
- * more than 20. A snapshot is lost when all of its entries go. Entries that
- * are not snapshots are invisible to the API, so this is a lower bound.
- */
-export function snapshotsPrunedBySafety(backups: readonly Snapshot[]): Set<string> {
-  const entries: Array<{ entry: string; name: string }> = []
-  for (const b of backups) {
-    if (b.has_dir) entries.push({ entry: b.name, name: b.name })
-    if (b.has_zip) entries.push({ entry: `${b.name}.zip`, name: b.name })
-  }
-  // The two safety entries carry the newest timestamp and sort last.
-  const excess = entries.length + 2 - BACKUP_DIR_ENTRY_LIMIT
-  if (excess <= 0) return new Set()
-  entries.sort((a, b) => (a.entry < b.entry ? -1 : a.entry > b.entry ? 1 : 0))
-  const removed = entries.slice(0, excess)
-  const out = new Set<string>()
-  for (const b of backups) {
-    const own = entries.filter((e) => e.name === b.name)
-    if (own.length && own.every((e) => removed.includes(e))) out.add(b.name)
-  }
-  return out
-}
-
-/**
  * The restore confirmation, checked against restore_from_backup and
- * _resolve_restore_dest (stylegrid/data_files.py) and _prune_old_backups.
+ * _resolve_restore_dest (stylegrid/data_files.py) and _prune_old_backups,
+ * which never deletes the snapshot being restored.
  */
-export function restoreConfirmationText(snapshot: Pick<Snapshot, 'name' | 'has_thumbnails'>, lost: boolean): string[] {
+export function restoreConfirmationText(
+  snapshot: Pick<Snapshot, 'name' | 'has_thumbnails'>,
+  keepSnapshots: number = DEFAULT_KEEP_SNAPSHOTS,
+): string[] {
   const { date } = snapshotLabel(snapshot.name)
-  const lines = [
+  return [
     `Restore the snapshot from ${date}?`,
     'Replaced from the snapshot: presets, favorites, recent, category order, and style CSVs in the ' +
       `extension's styles folder${snapshot.has_thumbnails ? ', and thumbnails' : ''}.`,
     "Not touched: style CSVs outside the extension's styles folder, such as the packs in the WebUI root " +
       'folder and the bundled samples. Files that are not in the snapshot are kept.',
     'A safety snapshot of the current state is created first, without thumbnails. Only the newest ' +
-      `${SNAPSHOTS_KEPT} snapshots are kept, so the oldest one may be removed.`,
+      `${keepSnapshots} snapshots are kept, so the oldest one may be removed.`,
   ]
-  if (lost) {
-    lines.push(
-      'The list is full: the safety snapshot would delete this snapshot before it is read, so it cannot be ' +
-        'restored from here.',
-    )
-  }
-  return lines
 }
 
 function asSnapshot(raw: unknown): Snapshot | null {
@@ -136,7 +105,15 @@ export async function fetchBackups(): Promise<Result<BackupList>> {
   const backups = raw.map(asSnapshot).filter((s): s is Snapshot => s !== null)
   backups.sort((a, b) => (a.name < b.name ? 1 : a.name > b.name ? -1 : 0))
   const bytes = result.body.thumbnails_bytes
-  return { ok: true, value: { backups, thumbnailsBytes: typeof bytes === 'number' ? bytes : 0 } }
+  const keep = result.body.keep_snapshots
+  return {
+    ok: true,
+    value: {
+      backups,
+      thumbnailsBytes: typeof bytes === 'number' ? bytes : 0,
+      keepSnapshots: typeof keep === 'number' && keep > 0 ? keep : DEFAULT_KEEP_SNAPSHOTS,
+    },
+  }
 }
 
 export type CreateOutcome = { created: true; snapshot: string | null } | { created: false }

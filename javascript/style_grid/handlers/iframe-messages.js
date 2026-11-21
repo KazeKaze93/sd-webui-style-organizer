@@ -55,6 +55,10 @@ import {
     isTrustedIframeEvent,
     parseFrameMessage,
 } from "../post-message.js";
+import {
+    answerFullscreenRequest,
+    announceFullscreenState,
+} from "./panel-resize.js";
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
             // Same-origin + this iframe's contentWindow only (two tabs each register a listener).
@@ -117,6 +121,8 @@ function installIframeMessageBridge(tab, frame) {
             if (msg.type === "SG_READY") {
                 // Fresh detect at READY time - do not reuse a mode cached at iframe creation.
                 postToFrame(frame, buildThemeMessage(detectHostThemeMode()));
+                // A (re)loaded iframe starts windowed; the host frame may not be.
+                announceFullscreenState(state[tab].sgPanelResize, frame, postToFrame);
                 if (state[tab].sgV2HostInitSent) return;
                 fetch("/style_grid/styles")
                     .then(function (r) { return r.json(); })
@@ -183,13 +189,7 @@ function installIframeMessageBridge(tab, frame) {
             // The host owns the panel frame: the iframe asks, the host applies and
             // answers with the resulting state (the request may be a no-op).
             if (msg.type === "SG_SET_FULLSCREEN") {
-                var panelResize = state[tab].sgPanelResize;
-                if (panelResize) {
-                    postToFrame(frame, {
-                        type: "SG_FULLSCREEN_STATE",
-                        fullscreen: panelResize.setFullscreen(msg.fullscreen),
-                    });
-                }
+                answerFullscreenRequest(state[tab].sgPanelResize, frame, msg.fullscreen, postToFrame);
             }
 
             if (msg.type === "SG_CLOSE_REQUEST") {

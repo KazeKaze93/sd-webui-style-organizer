@@ -27,9 +27,9 @@ const PANEL_BOX_SHADOW = "0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,25
 const FULLSCREEN_ATTR = "data-sg-fullscreen";
 const RESIZING_ATTR = "data-sg-resizing";
 const HANDLE_CLASS = "sg-resize-handle";
-/** Sizes the iframe writes when it toggles fullscreen itself (ui/src/App.tsx toggleFullscreen). */
-const LEGACY_FULLSCREEN_WIDTH = "100vw";
-const LEGACY_FULLSCREEN_HEIGHT = "100vh";
+const FULLSCREEN_WIDTH = "100vw";
+const FULLSCREEN_HEIGHT = "100vh";
+const SG_FULLSCREEN_STATE_TYPE = "SG_FULLSCREEN_STATE";
 
 function viewportWidth() {
     var el = document.documentElement;
@@ -63,10 +63,8 @@ function installPanelResize(wrapper, frame) {
     var current = desired;
     /** No custom geometry stored: follow the default as the viewport changes. */
     var usingDefault = !hasStoredGeometry(panelStorage());
+    /** Changed only by setFullscreen, i.e. by SG_SET_FULLSCREEN from the iframe. */
     var fullscreen = false;
-    /** True when the iframe entered fullscreen by writing wrapper styles itself. */
-    var fullscreenByIframe = false;
-    var wasVisible = wrapper.style.display === "block";
     var drag = null;
     var rafId = 0;
 
@@ -103,8 +101,8 @@ function installPanelResize(wrapper, frame) {
         s.left = "0";
         s.right = "auto";
         s.transform = "none";
-        s.width = LEGACY_FULLSCREEN_WIDTH;
-        s.height = LEGACY_FULLSCREEN_HEIGHT;
+        s.width = FULLSCREEN_WIDTH;
+        s.height = FULLSCREEN_HEIGHT;
         s.minWidth = "";
         s.minHeight = "";
         s.maxWidth = "";
@@ -118,13 +116,12 @@ function installPanelResize(wrapper, frame) {
         return fullscreen;
     }
 
-    /** Host-driven fullscreen (SG_SET_FULLSCREEN). */
+    /** The only way in or out of fullscreen. Returns the resulting state. */
     function setFullscreen(on) {
         var next = !!on;
-        if (next === fullscreen && !fullscreenByIframe) return fullscreen;
+        if (next === fullscreen) return fullscreen;
         if (drag) endDrag(false);
         fullscreen = next;
-        fullscreenByIframe = false;
         if (fullscreen) {
             wrapper.setAttribute(FULLSCREEN_ATTR, "true");
             applyFullscreenStyles();
@@ -243,48 +240,15 @@ function installPanelResize(wrapper, frame) {
     });
 
     /**
-     * The wrapper's inline style is also written from outside this module:
-     * - render.js shows / hides the panel (display);
-     * - TRANSITIONAL: the iframe still toggles fullscreen by writing wrapper
-     *   styles directly (ui/src/App.tsx). Detect that, hide the handles while
-     *   it lasts, and restore the stored geometry when it ends. Remove this
-     *   branch once the iframe sends SG_SET_FULLSCREEN instead.
+     * Called by the host when the panel is shown. The other tab's panel shares
+     * the stored geometry and may have changed it while this one was hidden.
+     * Fullscreen is kept across hide / show.
      */
-    function syncFromWrapperStyle() {
-        var s = wrapper.style;
-        var visible = s.display === "block";
-        var becameVisible = visible && !wasVisible;
-        wasVisible = visible;
-
-        var iframeFullscreen =
-            s.width === LEGACY_FULLSCREEN_WIDTH && s.height === LEGACY_FULLSCREEN_HEIGHT;
-        if (iframeFullscreen && !fullscreen) {
-            if (drag) endDrag(false);
-            fullscreen = true;
-            fullscreenByIframe = true;
-            wrapper.setAttribute(FULLSCREEN_ATTR, "true");
-            return;
-        }
-        if (!iframeFullscreen && fullscreen && fullscreenByIframe) {
-            fullscreen = false;
-            fullscreenByIframe = false;
-            wrapper.removeAttribute(FULLSCREEN_ATTR);
-            applyDesired();
-            return;
-        }
-        if (becameVisible && !fullscreen) {
-            // The other tab's panel may have changed the shared geometry meanwhile.
-            usingDefault = !hasStoredGeometry(panelStorage());
-            desired = readStoredGeometry(panelStorage(), viewportWidth(), viewportHeight());
-            applyDesired();
-        }
-    }
-
-    if (typeof MutationObserver === "function") {
-        new MutationObserver(syncFromWrapperStyle).observe(wrapper, {
-            attributes: true,
-            attributeFilter: ["style"],
-        });
+    function syncOnShow() {
+        if (fullscreen) return;
+        usingDefault = !hasStoredGeometry(panelStorage());
+        desired = readStoredGeometry(panelStorage(), viewportWidth(), viewportHeight());
+        applyDesired();
     }
 
     applyGeometry(current);
@@ -292,9 +256,45 @@ function installPanelResize(wrapper, frame) {
     return {
         isFullscreen: isFullscreen,
         setFullscreen: setFullscreen,
+        syncOnShow: syncOnShow,
     };
+}
+
+/** Host -> iframe message carrying the panel's fullscreen state. */
+function buildFullscreenStateMessage(fullscreen) {
+    return { type: SG_FULLSCREEN_STATE_TYPE, fullscreen: !!fullscreen };
+}
+
+/**
+ * Apply an SG_SET_FULLSCREEN request and answer the iframe with the resulting
+ * state. The answer is sent even when nothing changed: the iframe sets its own
+ * state from it and from nothing else.
+ * @param {{setFullscreen: function(boolean): boolean} | null | undefined} controller
+ * @param {HTMLIFrameElement} frame
+ * @param {boolean} fullscreen requested state
+ * @param {function(HTMLIFrameElement, object): void} post postToFrame
+ * @returns {boolean} true when a reply was sent
+ */
+function answerFullscreenRequest(controller, frame, fullscreen, post) {
+    if (!controller) return false;
+    post(frame, buildFullscreenStateMessage(controller.setFullscreen(fullscreen)));
+    return true;
+}
+
+/**
+ * Tell the iframe the current state without changing it. Sent when the iframe
+ * reports SG_READY: a reloaded iframe starts windowed while the host frame may
+ * still be fullscreen.
+ */
+function announceFullscreenState(controller, frame, post) {
+    if (!controller) return false;
+    post(frame, buildFullscreenStateMessage(controller.isFullscreen()));
+    return true;
 }
 
 export {
     installPanelResize,
+    buildFullscreenStateMessage,
+    answerFullscreenRequest,
+    announceFullscreenState,
 };

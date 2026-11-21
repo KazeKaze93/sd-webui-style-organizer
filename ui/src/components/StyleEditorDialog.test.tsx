@@ -271,7 +271,7 @@ describe('StyleEditorDialog', () => {
     __resetLayerStackForTests()
   })
 
-  it('edit: title, source file, fields prefilled; the tail is shown read-only; Save disabled until a change', async () => {
+  it('edit: title, source file, fields prefilled; the tail as chips; Save disabled until a change', async () => {
     await renderEdit()
     expect(titleOf(dialog())).toBe('Edit style')
     expect(dialog().querySelector('[data-sg-editor-source]')!.textContent).toBe('styles_core.csv')
@@ -282,9 +282,13 @@ describe('StyleEditorDialog', () => {
     expect(field('Prompt').className).toContain('font-mono')
     expect(field('Negative prompt').className).toContain('font-mono')
     expect(field('Description').value).toBe('Tall build.')
-    expect(dialog().querySelector('[data-sg-works-with]')!.textContent).toBe(
-      'Works with: BODY_Muscular + POSE_Stand (works best);  LIGHT_Rim. (editable in a later update)',
-    )
+    expect([...dialog().querySelectorAll('[data-sg-works-chip]')].map((c) => c.getAttribute('aria-label'))).toEqual([
+      // BODY_Muscular: category entry (BODY exists in this file); POSE_Stand: a style here;
+      // LIGHT_Rim exists only in another file, so here it is "not in this pack".
+      'BODY_Muscular + Stand',
+      'LIGHT_Rim',
+    ])
+    expect(dialog().textContent).toContain('not in this pack')
     expect(helper().textContent).toBe('Name stays BODY_Tall_Amazon')
     expect(button('Save').disabled).toBe(true)
   })

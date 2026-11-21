@@ -20,6 +20,7 @@ import {
     watchHostThemeMode,
 } from "../theme.js";
 import { postToFrame } from "../post-message.js";
+import { installPanelResize } from "./panel-resize.js";
 
 const THEME_DARK_FALLBACK = "dark";
 
@@ -44,33 +45,27 @@ function initSGFrame(tab) {
             console.error("[Style Grid] theme init failed", err);
             initialTheme = THEME_DARK_FALLBACK;
         }
-        frame.src = `/style_grid/ui?t=${Date.now()}&theme=${initialTheme}`;
+        frame.src = "/style_grid/ui?t=" + Date.now() + "&theme=" + initialTheme;
         var wrapper = document.createElement("div");
         wrapper.id = "sg-panel-wrapper-" + tab;
+        // Position and size (left/top/width/height) come from installPanelResize:
+        // stored geometry, fitted to the viewport. No native CSS resize, no right anchor.
+        // overflow stays visible: the resize handles sit just outside the frame edge,
+        // so they never cover the iframe's own scrollbars; the iframe clips itself
+        // to the wrapper's radius instead.
         wrapper.style.cssText = [
             "position:fixed",
-            "top:80px",
-            "right:16px",
-            "left:auto",
-            "width:1000px",
-            "height:650px",
-            "min-width:600px",
-            "min-height:400px",
-            "max-width:95vw",
-            "max-height:90vh",
             "border:none",
-            "border-radius:12px",
-            "box-shadow:0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)",
             "z-index:10000",
             "display:none",
-            "overflow:hidden",
-            "resize:both",
+            "overflow:visible",
         ].join(";");
-        frame.style.cssText = "width:100%;height:100%;border:none;display:block;";
+        frame.style.cssText = "width:100%;height:100%;border:none;display:block;border-radius:inherit;";
         if (!document.body) return frame;
         document.body.appendChild(wrapper);
         wrapper.appendChild(frame);
         state[tab].sgFrameWrapper = wrapper;
+        state[tab].sgPanelResize = installPanelResize(wrapper, frame);
         document.addEventListener("mousedown", function (e) {
             if (wrapper.style.display !== "block") return;
             var target = e.target;

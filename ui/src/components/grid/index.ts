@@ -32,6 +32,8 @@ export {
   GRID_CARD_ROW_ESTIMATE_NORMAL_PX,
   GRID_CARD_ROW_ESTIMATE_COMPACT_PX,
   GRID_VIRTUAL_OVERSCAN,
+  GRID_MIN_VISIBLE_CARD_ROWS,
+  gridMinVisibleHeightPx,
   columnsForWidth,
   minCardWidthPx,
   gridGapPx,

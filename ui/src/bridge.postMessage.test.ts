@@ -91,6 +91,20 @@ describe('parseFrameMessage (host)', () => {
     expect(parseFrameMessage({ type: 'SG_APPLY', styleId: 'A' })).toBeNull()
     expect(parseFrameMessage({ type: 'SG_SOURCE_CHANGE', source: 1 })).toBeNull()
   })
+
+  // The iframe owns these dialogs; the host no longer accepts the requests.
+  it.each([
+    { type: 'SG_NEW_STYLE', sourceFile: 'styles/a.csv' },
+    { type: 'SG_NEW_STYLE' },
+    { type: 'SG_EDIT_STYLE', styleId: 'A', source_file: 'styles/a.csv' },
+    { type: 'SG_MOVE_TO_CATEGORY', styleId: 'A', source_file: 'styles/a.csv' },
+    { type: 'SG_DELETE_STYLE', styleId: 'A', source_file: 'styles/a.csv' },
+    { type: 'SG_DUPLICATE_STYLE', styleId: 'A', source_file: 'styles/a.csv' },
+    { type: 'SG_IMPORT_EXPORT' },
+    { type: 'SG_BACKUP' },
+  ])('rejects the retired $type', (msg) => {
+    expect(parseFrameMessage(msg)).toBeNull()
+  })
 })
 
 describe('host↔iframe trust guards', () => {

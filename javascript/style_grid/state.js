@@ -60,51 +60,6 @@ function parseStyleIdentityKey(key) {
         return { source_file: s.slice(0, sep), name: s.slice(sep + 1) };
     }
 
-function getFavorites(t) {
-        try {
-            const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
-            return new Set(d[t] || []);
-        } catch (_) {
-            return new Set();
-        }
-    }
-
-function setFavorites(t, s) {
-        try {
-            const d = JSON.parse(localStorage.getItem("sg_favorites") || "{}");
-            d[t] = [...s];
-            localStorage.setItem("sg_favorites", JSON.stringify(d));
-        } catch (_) { }
-    }
-
-function migrateFavoritesInMemory(tabName) {
-        var fav = getFavorites(tabName);
-        if (!fav.size) return fav;
-        var allStyles = [];
-        Object.values(state[tabName].categories || {}).forEach(function (arr) {
-            arr.forEach(function (s) { allStyles.push(s); });
-        });
-        if (!allStyles.length) return fav;
-        var next = new Set();
-        var changed = false;
-        fav.forEach(function (entry) {
-            if (String(entry).indexOf("\0") !== -1) {
-                next.add(entry);
-                return;
-            }
-            var matches = allStyles.filter(function (s) { return s.name === entry; });
-            if (matches.length === 1) {
-                next.add(styleIdentityKey(matches[0].name, matches[0].source_file || matches[0].source || ""));
-                changed = true;
-            } else {
-                // Keep ambiguous or missing bare names as-is (never drop).
-                next.add(entry);
-            }
-        });
-        if (changed) setFavorites(tabName, next);
-        return next;
-    }
-
 /** Last path segment after / or \\ (for button labels and legacy leaf matching). */
 function sourceLeaf(value) {
         var s = String(value || "").replace(/\\/g, "/");
@@ -144,14 +99,11 @@ function resolveStoredSourceSelection(stored, catalogSourceIds) {
         return { selectedSource: "All", selectedSourceFile: null, storeValue: "All" };
     }
 
-function getRecentHistory(t) {
-        try {
-            return JSON.parse(localStorage.getItem("sg_recent_" + t) || "[]");
-        } catch (_) {
-            return [];
-        }
-    }
-
+/**
+ * Point the host's per-tab selection and applied text at a renamed style.
+ * Favorites and recent live on the server (data/favorites.json, recent.json),
+ * which the rename route migrates itself.
+ */
 function remapStyleNameReferences(tabName, oldName, newName, sourceFile) {
         if (!oldName || !newName || oldName === newName) return;
         var st = state[tabName];
@@ -188,32 +140,6 @@ function remapStyleNameReferences(tabName, oldName, newName, sourceFile) {
                 if (n === oldKey || n === oldName) return newKey;
                 return n;
             });
-        }
-
-        var fav = getFavorites(tabName);
-        if (fav.has(oldKey) || fav.has(oldName)) {
-            fav.delete(oldKey);
-            fav.delete(oldName);
-            fav.add(newKey);
-            setFavorites(tabName, fav);
-        }
-
-        var recent = getRecentHistory(tabName);
-        var recentChanged = false;
-        var remappedRecent = [];
-        var seenRecent = {};
-        recent.forEach(function (n) {
-            var next = (n === oldKey || n === oldName) ? newKey : n;
-            if (n === oldKey || n === oldName) recentChanged = true;
-            if (seenRecent[next]) return;
-            seenRecent[next] = true;
-            remappedRecent.push(next);
-        });
-        if (recentChanged) {
-            localStorage.setItem(
-                "sg_recent_" + tabName,
-                JSON.stringify(remappedRecent.slice(0, 10))
-            );
         }
     }
 
@@ -287,10 +213,6 @@ export {
     setStoredSource,
     styleIdentityKey,
     parseStyleIdentityKey,
-    getFavorites,
-    setFavorites,
-    migrateFavoritesInMemory,
-    getRecentHistory,
     remapStyleNameReferences,
     getUniqueSources,
     findStyleByName,

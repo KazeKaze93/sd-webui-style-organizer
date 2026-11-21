@@ -452,7 +452,6 @@ interface StylesStore {
   bumpThumbVersion: (key: string, version: string) => void
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
-  compactMode: boolean
   themeMode: ThemeMode
   /** Favorite style row keys (styleRowKey) persisted in data/favorites.json. */
   favorites: Set<string>
@@ -484,11 +483,8 @@ interface StylesStore {
   setSearch: (q: string) => void
   setCategory: (cat: string | null) => void
   setActiveSource: (src: string | null) => void
-  toggleCompact: () => void
   setThemeMode: (mode: ThemeMode) => void
   toggleCollapse: (cat: string) => void
-  collapseAll: () => void
-  expandAll: () => void
   selectAllInCategory: (cat: string) => void
   toggleStyle: (style: Style) => void
   setSelectedStyles: (styles: Style[]) => void
@@ -553,7 +549,7 @@ interface StylesStore {
   /**
    * Merge preset styles/wildcards into the current selection
    * (SG_APPLY / SG_WILDCARD_*). The host no longer has its own
-   * preset-loading path. Toolbar Eraser still uses SG_CLEAR_ALL.
+   * preset-loading path. The tray's Clear button uses SG_CLEAR_ALL.
    */
   loadPreset: (name: string) => void
   unapplyPreset: (name: string) => void
@@ -627,7 +623,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     localStorage.getItem('sg_v2_category_order') || '[]'
   ) as string[],
   collapsedCategories: new Set(),
-  compactMode: false,
   themeMode: 'dark',
   favorites: new Set(),
   recentNames: [],
@@ -713,7 +708,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({ activeSource })
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
-  toggleCompact: () => set((s) => ({ compactMode: !s.compactMode })),
   setThemeMode: (themeMode) => set({ themeMode }),
   toggleCollapse: (cat) => set((s) => {
     const next = new Set(s.collapsedCategories)
@@ -721,15 +715,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     else next.add(cat)
     return { collapsedCategories: next }
   }),
-  collapseAll: () => {
-    const { styles, activeSource } = get()
-    const src = activeSource
-      ? styles.filter(s => s.source_file === activeSource)
-      : styles
-    const cats = [...new Set(src.map(s => s.category).filter(Boolean))]
-    set({ collapsedCategories: new Set(cats) })
-  },
-  expandAll: () => set({ collapsedCategories: new Set() }),
   selectAllInCategory: (cat) => {
     const { styles, activeSource, selectedStyles } = get()
     const src = activeSource

@@ -31,8 +31,8 @@ const STYLES_TOTAL = 1670
 /** visible rows at the smallest row height + 2 x overscan + sticky row + focused row */
 const MAX_ROWS_IN_DOM = 26
 
-const HEADER_H = headerRowHeightPx(false)
-const CARD_ROW_H = cardRowHeightPx(false, true)
+const HEADER_H = headerRowHeightPx()
+const CARD_ROW_H = cardRowHeightPx(true)
 
 function catName(index: number): string {
   return `CAT${String(index + 1).padStart(2, '0')}`
@@ -138,7 +138,6 @@ describe('VirtualStyleGrid virtualizes against the provided grid scroller', () =
             <VirtualStyleGrid
               groups={groups}
               collapsedCategories={new Set()}
-              compactMode={false}
               windowed
               onToggleCollapse={() => {}}
               onSelectAll={() => {}}
@@ -364,7 +363,6 @@ describe('VirtualStyleGrid without a grid scroller provider', () => {
             <VirtualStyleGrid
               groups={buildGroups().slice(0, 1)}
               collapsedCategories={new Set()}
-              compactMode={false}
               windowed
               onToggleCollapse={() => {}}
               onSelectAll={() => {}}

@@ -384,19 +384,17 @@ describe('selection tray', () => {
 
   it('grid minimum is a header plus two card rows and fits beside a capped tray in the smallest panel', () => {
     expect(GRID_MIN_VISIBLE_CARD_ROWS).toBe(2)
-    for (const compact of [false, true]) {
-      for (const windowed of [false, true]) {
-        expect(gridMinVisibleHeightPx(compact, windowed)).toBe(
-          headerRowHeightPx(compact) + 2 * cardRowHeightPx(compact, windowed),
-        )
-      }
+    for (const windowed of [false, true]) {
+      expect(gridMinVisibleHeightPx(windowed)).toBe(
+        headerRowHeightPx() + 2 * cardRowHeightPx(windowed),
+      )
     }
     // Smallest windowed panel is 400px tall (host min-height); the toolbar may wrap to two rows.
     const PANEL_MIN_H = 400
     const HEADER_TWO_ROWS = 100
     const GRID_PAD_TOP = 12
     const trayMax = PANEL_MIN_H * TRAY_MAX_HEIGHT_RATIO
-    expect(HEADER_TWO_ROWS + trayMax + GRID_PAD_TOP + gridMinVisibleHeightPx(false, true)).toBeLessThanOrEqual(
+    expect(HEADER_TWO_ROWS + trayMax + GRID_PAD_TOP + gridMinVisibleHeightPx(true)).toBeLessThanOrEqual(
       PANEL_MIN_H,
     )
   })

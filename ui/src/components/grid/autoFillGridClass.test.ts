@@ -2,36 +2,25 @@ import { describe, expect, it } from 'vitest'
 import constantsSource from './constants.ts?raw'
 import { autoFillGridClass, minCardWidthPx } from './constants'
 
-const COMBOS: ReadonlyArray<readonly [boolean, boolean]> = [
-  [false, false],
-  [false, true],
-  [true, false],
-  [true, true],
-]
+const WINDOWED: readonly boolean[] = [false, true]
 
 describe('autoFillGridClass', () => {
-  it.each(COMBOS)(
-    'minmax matches minCardWidthPx(compact=%s, windowed=%s)',
-    (compactMode, windowed) => {
-      const result = autoFillGridClass(compactMode, windowed)
-      const minW = minCardWidthPx(compactMode, windowed)
-      expect(result).toContain(`minmax(${minW}px,1fr)`)
-    },
-  )
+  it.each(WINDOWED)('minmax matches minCardWidthPx(windowed=%s)', (windowed) => {
+    const result = autoFillGridClass(windowed)
+    const minW = minCardWidthPx(windowed)
+    expect(result).toContain(`minmax(${minW}px,1fr)`)
+  })
 
-  it.each(COMBOS)(
-    'every utility is a literal substring of constants.ts (compact=%s, windowed=%s)',
-    (compactMode, windowed) => {
-      const result = autoFillGridClass(compactMode, windowed)
-      for (const utility of result.split(' ')) {
-        expect(constantsSource).toContain(utility)
-      }
-    },
-  )
+  it.each(WINDOWED)('every utility is a literal substring of constants.ts (windowed=%s)', (windowed) => {
+    const result = autoFillGridClass(windowed)
+    for (const utility of result.split(' ')) {
+      expect(constantsSource).toContain(utility)
+    }
+  })
 
-  it('no combo result contains template residue', () => {
-    for (const [compactMode, windowed] of COMBOS) {
-      expect(autoFillGridClass(compactMode, windowed)).not.toContain('${')
+  it('no result contains template residue', () => {
+    for (const windowed of WINDOWED) {
+      expect(autoFillGridClass(windowed)).not.toContain('${')
     }
   })
 })

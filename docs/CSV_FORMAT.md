@@ -26,7 +26,7 @@ Parser and writer logic come from `parse_styles_csv` and `save_style_to_csv` in 
 | `name` | Yes (for loading) | Not enforced in code | Primary style identifier. Parsed as `row[0].strip()`. Rows with empty `name` are skipped. Save API also rejects empty name. | `BODY_Furry` |
 | `prompt` | No | Not enforced in code | Positive prompt fragment. Parsed as `row[1].strip()` if present, otherwise `""`. | `masterpiece, highres` |
 | `negative_prompt` | No | Not enforced in code | Negative prompt fragment. Parsed as `row[2].strip()` if present, otherwise `""`. | `lowres, blurry` |
-| `description` | No | Not enforced in code | Free text used for combo/conflict chips parsing in UI. Parsed as `row[3].strip()` if present, otherwise `""`. | `Painterly look. Combos: LIGHTING_SOFT; COLOR_PASTEL.` |
+| `description` | No | Not enforced in code | Free text; its `Combos:` block gives the "Works with" chips (see Recommended Combos). Parsed as `row[3].strip()` if present, otherwise `""`. | `Painterly look. Combos: LIGHTING_SOFT; COLOR_PASTEL.` |
 | `category` | No | Not enforced in code | Explicit category override (`category_explicit`). Parsed as `row[4].strip()` if present, otherwise `""`. If empty, category is derived from name/filename rules. | `BODY` |
 
 ### Parsing and sanitization details
@@ -98,21 +98,24 @@ LoRAs are **not** stored in style CSVs. `stylegrid/lora_scan.py` builds syntheti
 
 ## Recommended Combos
 
-"Works with" chips are rendered in UI by parsing the `description` field (`javascript/style_grid.mjs` / host modules).
+"Works with" chips are read from the `description` field by one parser, `ui/src/lib/combosBlock.ts` (`splitCombos`), shared by the style panel's chips (`ComboChips`) and the style editor's Works with field.
 
 | Item | Actual behavior |
 |---|---|
 | UI label | Chips are shown under the label `Works with:`. |
-| Description syntax parsed | `Combos: ...` (not `Works with:` in raw CSV text). |
-| Combo block capture | Regex: `Combos:\s*([^.]+)` (text up to first period). |
-| Token splitting | Split by `;` or `or` (case-insensitive). |
-| Style token resolution | Exact style name -> fallback with first two underscore segments swapped -> case-insensitive variants of both. |
-| Wildcard combo token | Token ending with `_*` is treated as wildcard chip and applies a search prefix filter. |
-| Unresolvable token | Rendered as gray hint text (non-clickable). |
+| Description syntax parsed | `Combos: ...` (also `Combo:`, any case; not `Works with:` in raw CSV text). |
+| Combo block | `Combos:` and its list up to and including the **first period** after it, **anywhere** in the description (regex `Combos?:\s*[^.]+`, first match). Without a period the block runs to the end. A period inside parentheses ends the block too. |
+| Text around the block | Free text may come before and **after** the block, e.g. `… Combos: A; B. Conflicts: C.` or `… Combos: A. Good for profile images.` The editor shows the text after the block in its own field, "After Works with", and keeps it byte for byte. |
+| Token splitting | Split by `;` **outside parentheses** only. `or` does not split (`A or B` is one entry). Inside an entry, `+` (outside parentheses) groups styles into one chip; `NAME (note)` attaches a comment. |
+| Style token resolution | Only among styles of the **same CSV file**: an exact style name gives a style chip (click toggles it). Otherwise, if the part before the first `_` is a category present in that file (for example `CATEGORY_*` or `POSE_Kneel`), a category chip (click filters by that category). |
+| Unresolvable token | Not shown in the panel; the editor shows it as "not in this pack" and keeps it until removed. A piece without a name (only `(note)`) is shown as plain text. |
+| Editing | Adding an entry in the editor appends `; NAME` inside the block, before its period. A description with no block gets `<text>. Combos: NAME.` |
 
 Example description format that current parser supports:
 
-`Short desc. Combos: TOKEN1; TOKEN2; CATEGORY_*.`
+`Short desc. Combos: TOKEN1; TOKEN2 + TOKEN3 (note); CATEGORY_*. Conflicts: TOKEN4.`
+
+No code reads `Conflicts:`; it is free text after the block (search strips both `Combos:` and `Conflicts:` blocks from description text).
 
 ## Example CSV
 

@@ -6,14 +6,15 @@ Gradio/FastAPI. All endpoints return HTTP 200 even on errors unless otherwise no
 
 ## V2 Integration Notes
 
-Style Grid V2 UI (React iframe) communicates with the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`), then the host calls these API routes. The iframe document is loaded via **GET `/style_grid/ui`** (see **GET /ui**). The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
+Style Grid V2 UI (React iframe) calls the style, preset, import/export and backup routes itself (write token via `ui/src/lib/styleGridFetch.ts`) and talks to the host script via `postMessage` (`SG_*` types in `ui/src/bridge.ts`) for what touches the Forge page: applying styles to the prompt, wildcards, thumbnail generation, panel geometry, and `SG_REFRESH` / `SG_STYLE_RENAMED` after a change. The iframe document is loaded via **GET `/style_grid/ui`** (see **GET /ui**). The host keeps **two** `message` listeners (txt2img and img2img iframes); handlers should only act when `event.source === <that tab’s iframe>.contentWindow` so a message from one frame is not applied to the wrong tab.
 
 Thumbnail **image** requests use `GET /style_grid/thumbnail?name=…&source=…`. For normal CSV styles **`source` is required** (absolute or resolvable CSV path / `source_file`) — the handler calls `get_thumbnail_path(name, source)` only (**400** if `source` is missing). When `source` is `__style_grid_lora__` or `name` starts with `LORA_`, the handler serves the sibling preview file from the LoRA scan cache (or 404). Clients may still append `v` for cache busting. **Generation / upload / delete** also require `source` in the body or query — and are refused for LoRA rows.
 
 ```mermaid
 flowchart LR
   UI[React iframe UI] -->|SG_* postMessage| HOST[javascript/style_grid.mjs]
-  HOST -->|fetch /style_grid/*| API[FastAPI routes]
+  UI -->|fetch /style_grid/*| API[FastAPI routes]
+  HOST -->|fetch /style_grid/*| API
   API --> DATA[(CSV + data files)]
 ```
 
@@ -570,6 +571,9 @@ Success:
 | ----- | ---- | ----------- |
 | `backups` | array[object] | `{ name, has_dir, has_zip, size, members, has_thumbnails }` |
 | `thumbnails_bytes` | number | Total size of files under `data/thumbnails/`. |
+| `keep_snapshots` | number | How many snapshots the server keeps (`BACKUP_KEEP_SNAPSHOTS` in `stylegrid/data_files.py`, 20). |
+
+**Retention:** after every backup (including a restore's safety snapshot) the oldest snapshots beyond `keep_snapshots` are deleted. A snapshot's folder and `.zip` count as one snapshot, and so does an orphan (only one of them). Only entries whose name matches the snapshot pattern are counted or deleted; other files in `data/backups/` are left alone.
 
 ## POST /backup
 
@@ -624,12 +628,12 @@ On unexpected failure while copying (exception in `backup_csv_files()`):
 | Exception during backup I/O  | `{ "error": "<message>" }` (HTTP 200). |
 
 
-The host UI (`SG_BACKUP` → Backup / Restore modal) creates backups via this route and lists/restores via `/backups` and `/restore`.
+The iframe's **Backup & restore** dialog (`ui/src/components/BackupRestoreDialog.tsx`) creates backups via this route and lists/restores via `/backups` and `/restore`.
 
 ## POST /restore
 
 **Method:** POST  
-**Description:** Restores CSVs and metadata (and `thumbnails/` when present in the snapshot) from a chosen backup. Creates an automatic **safety** backup of the current state first (`…_safety`). Only metadata JSON basenames, `styles/*.csv`, and `thumbnails/<hash>.webp` members are restored; `samples/` and `external/` members are reported in `skipped`.
+**Description:** Restores CSVs and metadata (and `thumbnails/` when present in the snapshot) from a chosen backup. Creates an automatic **safety** backup of the current state first (`…_safety`, without thumbnails); its retention prune never deletes the snapshot being restored. Only metadata JSON basenames, `styles/*.csv`, and `thumbnails/<hash>.webp` members are restored; `samples/` and `external/` members are reported in `skipped`. Nothing is deleted: files that are not in the snapshot are kept.
 
 **Parameters:**
 

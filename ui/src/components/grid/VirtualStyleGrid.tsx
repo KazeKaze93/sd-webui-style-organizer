@@ -107,7 +107,7 @@ function clampFocusedCell(
   return { row: cell.row, col: Math.max(0, Math.min(cell.col, count - 1)) }
 }
 
-/** Sticky overlay chrome — shared object; only paddingBottom varies with compactMode. */
+/** Sticky overlay chrome — shared object; height and paddingBottom vary with compactMode. */
 const STICKY_ROW_STYLE_BASE = {
   position: 'sticky',
   top: 0,
@@ -388,13 +388,16 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     [columns, pageRows, virtualizer, openCardMenuAtCell],
   )
 
-  // Stable sticky padding across scroll frames (compactMode rarely flips).
+  // Stable sticky style across scroll frames (compactMode rarely flips).
+  // Explicit height = the virtual header row size: the sticky row is in normal
+  // flow, so anything taller would overlap the first cards row below it.
   const stickyRowStyle = useMemo(
     () => ({
       ...STICKY_ROW_STYLE_BASE,
+      height: `${headerRowHeightPx(compactMode)}px`,
       paddingBottom: `${rowGap}px`,
     }),
-    [rowGap],
+    [rowGap, compactMode],
   )
 
   /** Index of the first cards row per category (for aria-controls targets). */

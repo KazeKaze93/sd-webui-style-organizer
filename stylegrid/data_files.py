@@ -55,6 +55,7 @@ __all__ = [
     "classify_identity_items",
     "migrate_identity_files_once",
     "style_row_key",
+    "BACKUP_KEEP_SNAPSHOTS",
     "backup_csv_files",
     "list_backups",
     "restore_from_backup",
@@ -724,24 +725,68 @@ def _copy_into_backup(backup_subdir, src, arcname, members):
     members.append(arcname)
 
 
-def _prune_old_backups():
+BACKUP_KEEP_SNAPSHOTS = 20
+"""How many snapshots ``_prune_old_backups`` keeps (ui/src/lib/backups.ts mirrors it)."""
+
+
+def _snapshot_entries():
+    """Snapshot name -> its paths in BACKUP_DIR (the folder, the .zip, or both).
+
+    Only entries whose stem matches the snapshot naming pattern are listed:
+    a folder ``<name>`` and a file ``<name>.zip``. Anything else in the
+    backups folder is not a snapshot and is left alone.
+    """
+    out = {}
     if not os.path.isdir(BACKUP_DIR):
+        return out
+    for entry in os.listdir(BACKUP_DIR):
+        path = os.path.join(BACKUP_DIR, entry)
+        if entry.endswith(".zip"):
+            stem = entry[:-4]
+            if not os.path.isfile(path):
+                continue
+        else:
+            stem = entry
+            if not os.path.isdir(path):
+                continue
+        if _SNAPSHOT_NAME_RE.match(stem):
+            out.setdefault(stem, []).append(path)
+    return out
+
+
+def _prune_old_backups(protect=()):
+    """Delete the oldest snapshots beyond BACKUP_KEEP_SNAPSHOTS.
+
+    A snapshot's folder and .zip go together and count once; an orphan
+    (only one of them) counts once too. Names in *protect* are never
+    deleted: the next oldest goes instead.
+    """
+    snapshots = _snapshot_entries()
+    excess = len(snapshots) - BACKUP_KEEP_SNAPSHOTS
+    if excess <= 0:
         return
-    backups = sorted(os.listdir(BACKUP_DIR))
-    while len(backups) > 20:
-        old_name = backups.pop(0)
-        old_path = os.path.join(BACKUP_DIR, old_name)
-        if os.path.isdir(old_path):
-            shutil.rmtree(old_path, ignore_errors=True)
-        elif os.path.isfile(old_path) and old_name.endswith(".zip"):
-            try:
-                os.remove(old_path)
-            except OSError:
-                pass
+    keep = set(protect)
+    for name in sorted(snapshots):
+        if excess <= 0:
+            break
+        if name in keep:
+            continue
+        for path in snapshots[name]:
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        excess -= 1
 
 
-def backup_csv_files(include_thumbnails=False, *, snapshot_name=None):
+def backup_csv_files(include_thumbnails=False, *, snapshot_name=None, protect=()):
     """Create a timestamped backup of CSVs + metadata JSON (+ optional thumbnails).
+
+    The retention prune that follows never deletes a snapshot named in
+    *protect*.
 
     Returns ``{"ok": bool, "snapshot": str|None, "members": list[str],
     "thumbnails_bytes": int}``.
@@ -792,7 +837,7 @@ def backup_csv_files(include_thumbnails=False, *, snapshot_name=None):
                 src = os.path.join(backup_subdir, *arcname.split("/"))
                 zf.write(src, arcname=arcname)
 
-    _prune_old_backups()
+    _prune_old_backups(protect=protect)
     return {
         "ok": bool(members),
         "snapshot": ts if members else None,
@@ -951,7 +996,13 @@ def restore_from_backup(snapshot_name, *, create_safety=True):
         # Avoid colliding with the snapshot being restored if names match.
         if safety_name == snapshot_name or safety_name.removesuffix("_safety") == snapshot_name:
             safety_name = time.strftime("%Y%m%d_%H%M%S") + "_safety2"
-        safety = backup_csv_files(include_thumbnails=False, snapshot_name=safety_name)
+        # The safety snapshot's prune must not delete the snapshot about to be
+        # read: on a full list that is the oldest one.
+        safety = backup_csv_files(
+            include_thumbnails=False,
+            snapshot_name=safety_name,
+            protect=(snapshot_name,),
+        )
 
     restored = []
     skipped = []

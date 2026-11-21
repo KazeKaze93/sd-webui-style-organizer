@@ -41,6 +41,7 @@ from stylegrid.csv_io import (
     save_style_to_csv,
 )
 from stylegrid.data_files import (
+    BACKUP_KEEP_SNAPSHOTS,
     CorruptDataError,
     backup_csv_files,
     classify_identity_items,
@@ -678,6 +679,7 @@ def _register_crud_routes(app):
         return {
             "backups": list_backups(),
             "thumbnails_bytes": thumbnails_dir_size(),
+            "keep_snapshots": BACKUP_KEEP_SNAPSHOTS,
         }
 
     @app.post("/style_grid/backup")

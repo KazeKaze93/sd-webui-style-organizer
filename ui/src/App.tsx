@@ -279,6 +279,14 @@ export default function App() {
             : useStylesStore.getState().tab,
         )
         void useStylesStore.getState().fetchPresets()
+        // Every catalog push (init, refresh after a save / import / restore /
+        // rename, a CSV change on disk) also reloads which styles have thumbnails.
+        void useStylesStore.getState().fetchThumbKeys()
+      }
+      if (msg.type === 'SG_TOAST') {
+        // Batch preview generation reports only its end (or cancel), and only
+        // with a toast: reload the thumbnails list on any host toast.
+        void useStylesStore.getState().fetchThumbKeys()
       }
       if (msg.type === 'SG_HOST_TAB') {
         // Intentionally ignored for tab identity: host broadcasts which Forge
@@ -304,10 +312,10 @@ export default function App() {
         useStylesStore.getState().setActiveWildcards(msg.categories)
       }
       if (msg.type === 'SG_THUMB_DONE') {
-        useStylesStore.getState().bumpThumbVersion(
-          styleRowKey({ name: msg.styleId, source_file: msg.source_file }),
-          String(msg.version),
-        )
+        // A generated or uploaded preview for this style now exists.
+        const thumbKey = styleRowKey({ name: msg.styleId, source_file: msg.source_file })
+        useStylesStore.getState().bumpThumbVersion(thumbKey, String(msg.version))
+        useStylesStore.getState().markThumb(thumbKey, true)
       }
     })
     sendToHost({ type: 'SG_READY' })

@@ -6,7 +6,7 @@ import type { Style } from '../bridge'
 import { __resetGridFocusForTests } from '../lib/gridFocus'
 import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests } from '../lib/layerStack'
-import { styleRowKey, useStylesStore } from '../store/stylesStore'
+import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
 import { GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
 import { StyleCard } from './StyleCard'
 
@@ -25,10 +25,11 @@ function style(overrides: Partial<Style> = {}): Style {
     negative_prompt: '',
     description: '',
     category: 'BODY',
-    has_thumbnail: true,
     ...overrides,
   }
 }
+
+const LORA = style({ name: 'detail_tweaker', source_file: LORA_SOURCE, category: 'LoRA' })
 
 describe('StyleCard in gallery', () => {
   let root: Root | null = null
@@ -39,8 +40,13 @@ describe('StyleCard in gallery', () => {
   const img = () => thumb().querySelector<HTMLImageElement>('img')
   const placeholder = () => thumb().querySelector<HTMLElement>('[data-sg-gallery-placeholder]')
   const menu = () => document.querySelector<HTMLElement>('[role="menu"]')
+  const menuTexts = () => [...(menu()?.querySelectorAll('[role="menuitem"]') ?? [])].map((el) => el.textContent?.trim())
 
-  function setStore(styles: Style[], extra: Partial<ReturnType<typeof useStylesStore.getState>> = {}) {
+  function setStore(
+    styles: Style[],
+    thumbs: Style[] = [],
+    extra: Partial<ReturnType<typeof useStylesStore.getState>> = {},
+  ) {
     const byName = new Map<string, Style[]>()
     for (const s of styles) byName.set(s.name, [...(byName.get(s.name) ?? []), s])
     useStylesStore.setState({
@@ -51,6 +57,8 @@ describe('StyleCard in gallery', () => {
       favorites: new Set(),
       activeSource: null,
       thumbVersions: {},
+      thumbKeys: new Set(thumbs.map(styleRowKey)),
+      thumbKeysLoaded: true,
       ...extra,
     })
   }
@@ -58,6 +66,12 @@ describe('StyleCard in gallery', () => {
   async function render(s: Style) {
     await act(async () => {
       root!.render(<StyleCard style={s} viewMode="gallery" galleryCardHeightPx={CARD_H} cellRow={0} cellCol={0} tabIndex={0} />)
+    })
+  }
+
+  const openMenu = async () => {
+    await act(async () => {
+      card().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }))
     })
   }
 
@@ -78,12 +92,13 @@ describe('StyleCard in gallery', () => {
     host?.remove()
     host = null
     __resetLayerStackForTests()
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
   it('keeps the card button contract and takes the gallery card height', async () => {
     const s = style()
-    setStore([s])
+    setStore([s], [s])
     await render(s)
     const b = card()
     expect(b.getAttribute('data-cell-row')).toBe('0')
@@ -95,27 +110,30 @@ describe('StyleCard in gallery', () => {
     expect(card().querySelector('[data-sg-gallery-label]')!.textContent).toBe('Tall Amazon')
   })
 
-  it('renders <img> only when the style has a thumbnail', async () => {
-    const withThumb = style()
-    setStore([withThumb])
-    await render(withThumb)
+  it('renders <img> when the style key is in thumbKeys', async () => {
+    const s = style()
+    setStore([s], [s])
+    await render(s)
     expect(img()).not.toBeNull()
     expect(img()!.getAttribute('src')).toBe('/style_grid/thumbnail?name=BODY_Tall_Amazon&source=webui%2Fa.csv&v=1')
     expect(img()!.getAttribute('alt')).toBe('')
     expect(img()!.getAttribute('loading')).toBe('lazy')
     expect(img()!.getAttribute('decoding')).toBe('async')
     expect(placeholder()).toBeNull()
+  })
 
-    const noThumb = style({ has_thumbnail: false })
-    setStore([noThumb])
-    await render(noThumb)
+  it('shows the placeholder and requests no image when the key is not in thumbKeys', async () => {
+    const s = style()
+    const other = style({ source_file: 'webui/b.csv' })
+    setStore([s, other], [other]) // same name, other source: not this style's thumbnail
+    await render(s)
     expect(img()).toBeNull()
     expect(placeholder()!.textContent).toBe('No preview')
   })
 
   it('a failed image shows the placeholder; a new thumb version retries the image', async () => {
     const s = style()
-    setStore([s])
+    setStore([s], [s])
     await render(s)
     await act(async () => {
       img()!.dispatchEvent(new Event('error'))
@@ -130,19 +148,72 @@ describe('StyleCard in gallery', () => {
     expect(img()!.getAttribute('src')).toBe('/style_grid/thumbnail?name=BODY_Tall_Amazon&source=webui%2Fa.csv&v=42')
   })
 
-  it('removing the preview (has_thumbnail false) shows the placeholder without a reload', async () => {
+  it('LoRA rows try the model preview optimistically and fall back on error', async () => {
+    setStore([LORA]) // LoRA previews are never in thumbKeys
+    await render(LORA)
+    expect(img()).not.toBeNull()
+    expect(img()!.getAttribute('src')).toBe(
+      `/style_grid/thumbnail?name=detail_tweaker&source=${encodeURIComponent(LORA_SOURCE)}&v=1`,
+    )
+    await act(async () => {
+      img()!.dispatchEvent(new Event('error'))
+    })
+    expect(img()).toBeNull()
+    expect(placeholder()).not.toBeNull()
+  })
+
+  it('"Remove preview" is offered only when the key is in thumbKeys, never for LoRA', async () => {
     const s = style()
-    setStore([s])
+    setStore([s], [s])
+    await render(s)
+    await openMenu()
+    expect(menuTexts()).toContain('Remove preview')
+
+    act(() => root!.render(<></>))
+    __resetLayerStackForTests()
+    setStore([s], [])
+    await render(s)
+    await openMenu()
+    expect(menuTexts()).not.toContain('Remove preview')
+
+    act(() => root!.render(<></>))
+    __resetLayerStackForTests()
+    setStore([LORA])
+    await render(LORA)
+    await openMenu()
+    expect(menuTexts()).not.toContain('Remove preview')
+  })
+
+  it('after a successful remove the tile switches to the placeholder without refetching the list', async () => {
+    const s = style()
+    setStore([s], [s])
+    const calls: string[] = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+        calls.push(`${init?.method ?? 'GET'} ${String(url)}`)
+        return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      }),
+    )
     await render(s)
     expect(img()).not.toBeNull()
-    await render({ ...s, has_thumbnail: false })
+    await openMenu()
+    const remove = [...menu()!.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (el) => el.textContent?.trim() === 'Remove preview',
+    )!
+    await act(async () => {
+      remove.click()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(calls).toEqual(['DELETE /style_grid/thumbnail?name=BODY_Tall_Amazon&source=webui%2Fa.csv'])
+    expect(useStylesStore.getState().thumbKeys.has(styleRowKey(s))).toBe(false)
     expect(img()).toBeNull()
     expect(placeholder()).not.toBeNull()
   })
 
   it('selected: accent border, the small accent dot over the thumbnail, no check badge', async () => {
     const s = style()
-    setStore([s], { selectedStyles: [s], selectedKeySet: new Set([styleRowKey(s)]) })
+    setStore([s], [s], { selectedStyles: [s], selectedKeySet: new Set([styleRowKey(s)]) })
     await render(s)
     expect(card().getAttribute('aria-pressed')).toBe('true')
     expect(card().className).toContain('border-sg-accent')
@@ -158,7 +229,7 @@ describe('StyleCard in gallery', () => {
 
   it('favorite: the grid star, top-right over the thumbnail; category strip when not selected', async () => {
     const s = style()
-    setStore([s], { favorites: new Set([styleRowKey(s)]) })
+    setStore([s], [s], { favorites: new Set([styleRowKey(s)]) })
     await render(s)
     const star = thumb().querySelector('svg.text-sg-warning-text')!
     expect(star.getAttribute('class')).toContain('top-1.5')
@@ -171,9 +242,7 @@ describe('StyleCard in gallery', () => {
     const s = style()
     setStore([s])
     await render(s)
-    await act(async () => {
-      card().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }))
-    })
+    await openMenu()
     expect(menu()).not.toBeNull()
     expect(menu()!.textContent).toContain('Copy prompt')
   })
@@ -185,7 +254,7 @@ describe('StyleCard in gallery', () => {
     await render(a)
     await act(async () => card().click())
     expect(menu()).not.toBeNull()
-    expect([...menu()!.querySelectorAll('[role="menuitem"]')].map((el) => el.textContent)).toEqual(['a', 'b'])
+    expect(menuTexts()).toEqual(['a', 'b'])
     expect(useStylesStore.getState().selectedStyles).toEqual([])
   })
 })

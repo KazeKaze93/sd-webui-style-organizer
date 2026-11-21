@@ -177,6 +177,5 @@ function makeStyle(name, category, source_file, seed) {
       `and any future card subtitle paths without affecting fixed card chrome height.`,
     category,
     source_file,
-    has_thumbnail: false,
   }
 }

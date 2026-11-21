@@ -61,7 +61,6 @@ function buildGroups(): Array<[string, Style[]]> {
         negative_prompt: '',
         description: '',
         category,
-        has_thumbnail: false,
       })
     }
     groups.push([category, styles])

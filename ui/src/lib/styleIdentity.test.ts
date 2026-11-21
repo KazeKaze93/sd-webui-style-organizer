@@ -49,7 +49,6 @@ function row(
     negative_prompt: extra.negative_prompt ?? `neg:${source_file}:${name}`,
     description: extra.description ?? '',
     category: extra.category ?? 'BODY',
-    has_thumbnail: false,
   }
 }
 

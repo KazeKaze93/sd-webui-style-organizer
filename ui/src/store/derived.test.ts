@@ -34,7 +34,6 @@ function row(
     negative_prompt: extra.negative_prompt ?? `neg:${name}`,
     description: extra.description ?? '',
     category: extra.category ?? 'BODY',
-    has_thumbnail: extra.has_thumbnail ?? false,
     ...extra,
   }
 }

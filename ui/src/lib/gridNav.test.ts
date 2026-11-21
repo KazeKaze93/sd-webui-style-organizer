@@ -12,7 +12,6 @@ function style(name: string, category: string): Style {
     negative_prompt: '',
     description: '',
     category,
-    has_thumbnail: false,
   }
 }
 

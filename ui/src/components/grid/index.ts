@@ -33,6 +33,13 @@ export {
   cardRowHeightPx,
   headerRowHeightPx,
   autoFillGridClass,
+  GALLERY_MIN_CARD_WIDTH_PX,
+  GALLERY_MIN_CARD_WIDTH_WINDOWED_PX,
+  GALLERY_LABEL_HEIGHT_PX,
+  minCardWidthForViewPx,
+  galleryCardWidthPx,
+  galleryCardHeightPx,
+  galleryRowHeightPx,
 } from './constants'
 export { VirtualStyleGrid, type VirtualStyleGridProps } from './VirtualStyleGrid'
 export { GridScroller } from './GridScroller'

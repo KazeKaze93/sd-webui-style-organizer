@@ -31,7 +31,6 @@ function row(
     negative_prompt: extra.negative_prompt ?? `neg:${name}`,
     description: extra.description ?? '',
     category: extra.category ?? 'BODY',
-    has_thumbnail: extra.has_thumbnail ?? false,
     ...extra,
   }
 }
@@ -413,18 +412,6 @@ describe('characterization: main Style Grid flows', () => {
   })
 
   describe('thumbnails', () => {
-    it('load preserves has_thumbnail flags on styles', () => {
-      const withThumb = row('BODY_Ears', FILE_A, { has_thumbnail: true })
-      const without = row('HAIR_Long', FILE_A, {
-        category: 'HAIR',
-        has_thumbnail: false,
-      })
-      useStylesStore.getState().setStyles([withThumb, without], 'txt2img')
-      const styles = useStylesStore.getState().styles
-      expect(styles.find((s) => s.name === 'BODY_Ears')?.has_thumbnail).toBe(true)
-      expect(styles.find((s) => s.name === 'HAIR_Long')?.has_thumbnail).toBe(false)
-    })
-
     it('preview generation is requested to host with style identity', () => {
       sendToHost({
         type: 'SG_GENERATE_PREVIEW',

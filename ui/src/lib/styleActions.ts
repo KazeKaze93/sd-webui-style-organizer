@@ -1,4 +1,5 @@
 import type { Style } from '../bridge'
+import { styleRowKey, useStylesStore } from '../store/stylesStore'
 import { styleGridDelete, styleGridPost } from './styleGridFetch'
 
 /** Suffix of a duplicated style's name (`NAME_copy`, then `NAME_copy_2`…). */
@@ -92,6 +93,8 @@ export async function deleteStyleRequest(
   const query =
     `name=${encodeURIComponent(style.name)}&source=${encodeURIComponent(style.source_file || '')}`
   await styleGridDelete(`/style_grid/thumbnail?${query}`).catch(() => undefined)
+  // The style row is gone, and its thumbnail with it (best-effort above).
+  useStylesStore.getState().markThumb(styleRowKey(style), false)
   return { ok: true }
 }
 

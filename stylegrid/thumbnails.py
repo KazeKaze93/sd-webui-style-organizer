@@ -8,10 +8,12 @@ import threading
 import time
 import uuid
 from collections import deque
+from typing import Any, Dict, Iterable, Optional
 
 from stylegrid.cache import get_cached_styles
 from stylegrid.config import DATA_DIR, EXT_DIR, THUMBNAILS_DIR, get_styles_dirs
-from stylegrid.source_ids import coerce_source_ref, to_source_id
+from stylegrid.lora_scan import LORA_SOURCE
+from stylegrid.source_ids import coerce_source_ref, resolve_client_source, to_source_id
 
 _RENAME_MAP_BASENAME = "RELEASE_NOTES_RENAMES.csv"
 
@@ -103,6 +105,50 @@ def get_thumbnail_path(style_name, csv_path):
     """Return deterministic thumbnail file path using md5(name + source path) hash naming."""
     safe = thumbnail_hash_key(style_name, csv_path)
     return os.path.join(THUMBNAILS_DIR, safe + ".webp")
+
+
+def _generation_source_id(source_ref):
+    """Public source id for a source ref, as the thumbnail key sees it; None when unresolvable.
+
+    Source ids and absolute paths go through coerce_source_ref -> to_source_id,
+    exactly as _source_suffix does. resolve_client_source adds only the
+    unique-basename case and returns None for an ambiguous basename.
+    """
+    if not isinstance(source_ref, str):
+        return None
+    raw = source_ref.strip()
+    if not raw or raw == "All" or raw == LORA_SOURCE:
+        return None
+    resolved = resolve_client_source(raw, for_write=False)
+    if not resolved:
+        return None
+    return to_source_id(resolved)
+
+
+def find_style_for_generation(
+    styles: Iterable[Dict[str, Any]], style_name: str, source_ref: str
+) -> Optional[Dict[str, Any]]:
+    """Return the style row for (source, name), or None.
+
+    A style is identified by its pack and its name together: there is no
+    name-only fallback. Empty, "All" or unresolvable sources return None, and
+    LoRA rows are never returned (preview generation does not apply to them).
+    """
+    if not style_name or style_name.startswith("LORA_"):
+        return None
+    want = _generation_source_id(source_ref)
+    if not want:
+        return None
+    for s in styles:
+        if s.get("name") != style_name:
+            continue
+        row_source = s.get("source_file") or ""
+        if not row_source or row_source == LORA_SOURCE or s.get("source") == LORA_SOURCE:
+            continue
+        resolved = coerce_source_ref(row_source)
+        if resolved and to_source_id(resolved) == want:
+            return s
+    return None
 
 
 def load_renamed_old_names(path):
@@ -559,20 +605,9 @@ class ThumbnailGenerationManager:
 
     def _run_generation(self, style_name, source_hint):
         """Resolve style and run SD preview; raises on failure. Does not update job status."""
-        all_cached = get_cached_styles()
-        style = None
-        if source_hint and source_hint != "All":
-            for s in all_cached:
-                if s.get("name") == style_name and source_hint in (
-                    s.get("source") or "", s.get("source_file") or ""
-                ):
-                    style = s
-                    break
-        if style is None:
-            style_map = {s["name"]: s for s in all_cached}
-            style = style_map.get(style_name)
+        style = find_style_for_generation(get_cached_styles(), style_name, source_hint)
         if not style:
-            raise ValueError("Style not found")
+            raise ValueError("Style not found in the requested source")
 
         thumb_csv_path = style.get("source_file") or ""
         if not thumb_csv_path:

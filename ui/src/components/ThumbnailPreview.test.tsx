@@ -22,7 +22,6 @@ const STYLE: Style = {
   negative_prompt: '',
   description: '',
   category: 'BODY',
-  has_thumbnail: false,
 }
 
 function previewOpen(): boolean {
@@ -135,5 +134,13 @@ describe('style card preview', () => {
     })
     expect(document.body.querySelector('[role="menu"]')).not.toBeNull()
     expect(previewOpen()).toBe(false)
+  })
+  it('the popup image URL is byte-identical to the one it always built', () => {
+    enterCard()
+    act(() => {
+      vi.advanceTimersByTime(SHOW_DELAY_MS)
+    })
+    const img = document.body.querySelector<HTMLImageElement>('.fixed img')!
+    expect(img.getAttribute('src')).toBe('/style_grid/thumbnail?name=BODY_Ears&source=webui%2Fa.csv&v=1')
   })
 })

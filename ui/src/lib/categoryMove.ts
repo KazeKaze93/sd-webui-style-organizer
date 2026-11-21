@@ -82,8 +82,10 @@ export type CategoryOption = {
  * current category is always listed, marked, even if its name is not valid.
  */
 export function categoryOptions(
-  style: MovableStyle,
+  style: Pick<Style, 'category' | 'source_file'>,
   styles: readonly Pick<Style, 'name' | 'category' | 'source_file'>[],
+  /** Category to mark as current; null for a new style (nothing is current). */
+  current: string | null = style.category || 'OTHER',
 ): CategoryOption[] {
   const counts = new Map<string, number>()
   for (const s of styles) {
@@ -92,8 +94,7 @@ export function categoryOptions(
     if (!counts.has(cat)) counts.set(cat, 0)
     if (s.source_file === style.source_file) counts.set(cat, counts.get(cat)! + 1)
   }
-  const current = style.category || 'OTHER'
-  if (!counts.has(current)) counts.set(current, 0)
+  if (current !== null && !counts.has(current)) counts.set(current, 0)
   return [...counts.entries()]
     .filter(([cat]) => cat === current || CATEGORY_NAME_RE.test(cat))
     .map(([category, count]) => ({ category, count, current: category === current }))

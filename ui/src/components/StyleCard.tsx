@@ -33,6 +33,7 @@ import {
 } from './grid/constants'
 import { DeleteStyleDialog } from './DeleteStyleDialog'
 import { MoveToCategoryDialog } from './MoveToCategoryDialog'
+import { StyleEditorDialog } from './StyleEditorDialog'
 import { ThumbnailPreview } from './ThumbnailPreview'
 import { MenuItem, ViewportFixedMenu } from './ViewportFixedMenu'
 
@@ -60,6 +61,8 @@ const READ_ONLY_DUPLICATE_TOAST =
   'This style is from the protected samples pack (read-only); a copy cannot be saved into it.'
 const READ_ONLY_MOVE_TOAST =
   'This style is from the protected samples pack (read-only) and cannot be moved.'
+const READ_ONLY_EDIT_TOAST =
+  'This style is from the protected samples pack (read-only) and cannot be edited. Duplicate it into a data source to change it.'
 
 /** Skip re-render when row identity + chrome mode + roving tab stop unchanged. */
 function styleCardPropsEqual(prev: Props, next: Props): boolean {
@@ -94,6 +97,7 @@ export const StyleCard = memo(function StyleCard({
   const [restoreFocusEl, setRestoreFocusEl] = useState<HTMLElement | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const isLora = style.source_file === LORA_SOURCE
   const hasMultipleSources = duplicates.length > 1
   const sourceLabels = useMemo(
@@ -278,14 +282,14 @@ export const StyleCard = memo(function StyleCard({
           {!isLora && (
             <>
               <MenuItem
-                className="flex items-center gap-2"
+                className={`flex items-center gap-2 ${style.read_only ? previewReadOnlyClass : ''}`}
                 onSelect={() => {
-                  sendToHost({
-                    type: 'SG_EDIT_STYLE',
-                    styleId: style.name,
-                    source_file: style.source_file,
-                  })
                   setMenuPos(null)
+                  if (style.read_only) {
+                    showToast(READ_ONLY_EDIT_TOAST, 'info')
+                    return
+                  }
+                  setEditOpen(true)
                 }}
               >
                 <Pencil size={14} aria-hidden="true" />
@@ -437,6 +441,15 @@ export const StyleCard = memo(function StyleCard({
             </>
           )}
         </ViewportFixedMenu>
+      )}
+
+      {editOpen && (
+        <StyleEditorDialog
+          mode="edit"
+          open
+          style={style}
+          onClose={() => setEditOpen(false)}
+        />
       )}
 
       {moveOpen && (

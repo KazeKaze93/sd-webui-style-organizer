@@ -261,6 +261,15 @@ export type PresetRecord = {
 
 type StyleIdentity = Pick<Style, 'name' | 'source_file'>
 
+/** New identity and fields of a style after Move / Edit (see renameStyleIdentity). */
+export type RenamedStyleFields = {
+  name: string
+  /** Derived category after the change. */
+  category: string
+  /** CSV category column, only when the change wrote it. */
+  categoryColumn?: string
+} & Partial<Pick<Style, 'prompt' | 'negative_prompt' | 'description'>>
+
 function sameContent(a: Style, b: Style): boolean {
   return (a.prompt ?? '') === (b.prompt ?? '')
     && (a.negative_prompt ?? '') === (b.negative_prompt ?? '')
@@ -489,7 +498,7 @@ interface StylesStore {
    * contributors, thumbnail version — to the new identity. Nothing is posted:
    * the server already migrated favorites.json and recent.json.
    */
-  renameStyleIdentity: (from: StyleIdentity, to: { name: string; category: string }) => void
+  renameStyleIdentity: (from: StyleIdentity, to: RenamedStyleFields) => void
   clearAll: () => void
   /**
    * Host SG_CLEAR_SELECTION chrome reset: clears selection + key set, conflicts,
@@ -1037,9 +1046,14 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const s = get()
     const swap = (key: string) => (key === oldKey ? newKey : key)
 
+    const { categoryColumn, ...fields } = to
     const nextSelected = s.selectedStyles.map((row) =>
       styleRowKey(row) === oldKey
-        ? { ...row, name: to.name, category: to.category, category_explicit: to.category }
+        ? {
+            ...row,
+            ...fields,
+            ...(categoryColumn !== undefined ? { category_explicit: categoryColumn } : {}),
+          }
         : row,
     )
     const favorites = s.favorites.has(oldKey)

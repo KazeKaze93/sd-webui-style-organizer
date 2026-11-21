@@ -42,6 +42,24 @@ export function nextCopyName(
   }
 }
 
+/**
+ * POST a style write and read the server's verdict: null on success, else the
+ * server's error text (or `fallback` for network failures and empty errors).
+ */
+export async function postStyleRequest(
+  url: string,
+  body: unknown,
+  fallback: string,
+): Promise<string | null> {
+  let res: Response
+  try {
+    res = await styleGridPost(url, body)
+  } catch {
+    return fallback
+  }
+  return failureOf(res, fallback)
+}
+
 async function failureOf(res: Response, fallback: string): Promise<string | null> {
   const data: unknown = await res.json().catch(() => ({}))
   const body = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>

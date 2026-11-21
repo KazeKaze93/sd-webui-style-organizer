@@ -30,7 +30,7 @@ type Props =
 
 /**
  * Create or edit a style. Edit saves into the style's own file; create into a
- * writable source of the user's choice. Requests mirror the host editor:
+ * writable source of the user's choice. Requests:
  * /style/save when the name stays, /style/rename (with the fields) when it
  * changes. The description is edited in three parts around its Combos block
  * (text before, Works with chips, text after); untouched parts are kept byte

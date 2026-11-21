@@ -1,11 +1,11 @@
 import { readApiResponse, styleGridPost } from './styleGridFetch'
 
-/** How many colliding names the summary lists before "+N more" (host: IMPORT_SUMMARY_MAX_NAMES). */
+/** How many colliding names the summary lists before "+N more". */
 export const IMPORT_SUMMARY_MAX_NAMES = 10
 
 /**
- * Download name for an export, as the host built it (render.js showExportImport):
- * `style_grid_export_<YYYY-MM-DD>.json`, the date in UTC from toISOString().
+ * Download name for an export: `style_grid_export_<YYYY-MM-DD>.json`, the
+ * date in UTC from toISOString().
  */
 export function exportFileName(now: Date = new Date()): string {
   return `style_grid_export_${now.toISOString().slice(0, 10)}.json`
@@ -18,7 +18,7 @@ export function isJsonFile(file: Pick<File, 'name' | 'type'>): boolean {
 
 export type ExportResult = { ok: true; data: unknown } | { ok: false; error: string }
 
-/** GET /style_grid/export, the host's request. */
+/** GET /style_grid/export: styles, presets, favorites, recent. */
 export async function fetchExport(): Promise<ExportResult> {
   let res: Response
   try {
@@ -55,7 +55,7 @@ export type ImportResult =
   | { ok: true; summary: ImportSummary | null }
   | { ok: false; error: string }
 
-/** Style counters of an import response; null when it carries none (host formatImportSummary). */
+/** Style counters of an import response; null when it carries none (no `styles` were sent). */
 export function importSummaryOf(body: unknown): ImportSummary | null {
   if (!body || typeof body !== 'object') return null
   const b = body as Record<string, unknown>
@@ -67,7 +67,7 @@ export function importSummaryOf(body: unknown): ImportSummary | null {
   }
 }
 
-/** One line per part of the summary, in the host's words. */
+/** One line per part of the summary: imported, skipped collisions, invalid entries. */
 export function importSummaryLines(summary: ImportSummary): {
   imported: string
   collisions: string | null
@@ -85,7 +85,7 @@ export function importSummaryLines(summary: ImportSummary): {
   }
 }
 
-/** The host's single-line toast text for a summary (formatImportSummary). */
+/** The summary as one toast line; `info` when something was skipped. */
 export function importSummaryMessage(summary: ImportSummary): {
   message: string
   variant: 'success' | 'info'
@@ -105,7 +105,7 @@ export function importSummaryMessage(summary: ImportSummary): {
 }
 
 /**
- * Import a file's text the way the host did: parse it here ("Invalid JSON
+ * Import a file's text: parse it here ("Invalid JSON
  * file" when it does not parse), then POST the parsed value to
  * /style_grid/import with the write headers.
  */
@@ -118,14 +118,14 @@ export async function importJsonText(text: string): Promise<ImportResult> {
   }
   let res: Response
   try {
-    // The host sent `JSON.stringify(data || {})`.
+    // A falsy JSON value (null, 0, "", false) is sent as `{}`; the server ignores non-objects.
     res = await styleGridPost('/style_grid/import', data || {})
   } catch {
     return { ok: false, error: 'Import failed' }
   }
   const result = await readApiResponse(res)
   if (!result.ok) {
-    // The host appends the colliding names to an error body that carries them.
+    // An error body that lists collisions gets the colliding names appended.
     const collisions = Array.isArray(result.body.collisions) ? result.body.collisions.map(String) : []
     const error = collisions.length && typeof result.body.error === 'string'
       ? `${result.error}\n\nColliding names: ${collisions.join(', ')}`

@@ -141,7 +141,7 @@ describe('style card: delete and duplicate from the iframe', () => {
       expect(hostMessages()).not.toContain('SG_DELETE_STYLE')
     })
 
-    it('confirm: POST /style/delete, then DELETE /thumbnail, then SG_REFRESH; same payloads and token as the host', async () => {
+    it('confirm: POST /style/delete, then DELETE /thumbnail, then a quiet SG_REFRESH; write token on both', async () => {
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
       await choose('Delete')
@@ -165,6 +165,8 @@ describe('style card: delete and duplicate from the iframe', () => {
         },
       ])
       expect(hostMessages()).toEqual(['SG_REFRESH'])
+      // The user deleted it on purpose: the host must not report it as vanished.
+      expect(sendToHostMock.mock.calls.map(([m]) => m)).toEqual([{ type: 'SG_REFRESH', quiet_vanished: true }])
       expect(dialog()).toBeNull()
       expect(toasts()).toEqual([])
     })

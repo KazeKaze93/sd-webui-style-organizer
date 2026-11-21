@@ -106,9 +106,8 @@ export type EditorFields = {
 export type SaveRequest = { url: string; body: Record<string, unknown> }
 
 /**
- * The request the host editor made for the same change
- * (render.js openStyleEditor): /style/save when the name is unchanged or for a
- * new style, /style/rename with the fields when the name changed. The
+ * The request for an editor save: /style/save when the name is unchanged or
+ * for a new style, /style/rename with the fields when the name changed. The
  * category column is sent only when it changes.
  */
 export function buildSaveRequest(args: {

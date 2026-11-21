@@ -52,7 +52,7 @@ describe('backup helpers', () => {
     },
   )
 
-  it('sizes follow the host formatBytes', () => {
+  it('sizes in B / KB / MB with one decimal', () => {
     expect(formatBytes(0)).toBe('0 B')
     expect(formatBytes(1023)).toBe('1023 B')
     expect(formatBytes(1536)).toBe('1.5 KB')
@@ -269,6 +269,8 @@ describe('BackupRestoreDialog', () => {
     ])
     expect(toasts()).toEqual(['success:Restored the snapshot from 11 Oct 2026, 01:21'])
     expect(hostMessages()).toEqual([{ type: 'SG_REFRESH' }])
+    // A style gone after a restore is news to the user: the host toast stays.
+    expect(hostMessages()[0]).not.toHaveProperty('quiet_vanished')
     expect(confirm()).toBeNull()
     expect(main()).toBeDefined()
     expect(rows()[0].getAttribute('data-sg-snapshot')).toBe('20261122_130000_safety')

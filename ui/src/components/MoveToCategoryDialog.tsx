@@ -26,7 +26,7 @@ type Props = {
 /**
  * Move a style to another category. Canonical names (`CAT_rest`) get the new
  * prefix and category column; non-standard names keep their name and only the
- * column changes. The request is the one the host Move made.
+ * column changes (POST /style/rename with `category`).
  */
 export function MoveToCategoryDialog({ open, style, displayName, onClose }: Props) {
   const styles = useStylesStore((s) => s.styles)

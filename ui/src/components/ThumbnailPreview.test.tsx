@@ -22,7 +22,6 @@ const STYLE: Style = {
   negative_prompt: '',
   description: '',
   category: 'BODY',
-  has_thumbnail: false,
 }
 
 function previewOpen(): boolean {

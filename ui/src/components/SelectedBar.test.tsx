@@ -33,7 +33,6 @@ function style(name: string): Style {
     negative_prompt: '',
     description: '',
     category: 'BODY',
-    has_thumbnail: false,
   }
 }
 

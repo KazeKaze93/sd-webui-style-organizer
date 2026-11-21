@@ -22,6 +22,7 @@ import {
   useCategoryColor,
   useIsSelected,
   useStyleDuplicates,
+  useHasThumbnail,
   useStylesStore,
   useThumbVersion,
   type ViewMode,
@@ -138,7 +139,9 @@ export const StyleCard = memo(function StyleCard({
   const thumbSrc = thumbnailUrl(style, activeSource, thumbVersion)
   /** URL whose image failed to load; a new thumb version gives a new URL, so it retries. */
   const [failedThumbSrc, setFailedThumbSrc] = useState<string | null>(null)
-  const showThumb = gallery && style.has_thumbnail && failedThumbSrc !== thumbSrc
+  // LoRA previews may or may not exist next to the model: try, and fall back on error.
+  const hasThumb = useHasThumbnail(style)
+  const showThumb = gallery && hasThumb !== false && failedThumbSrc !== thumbSrc
   const previewReadOnlyClass = style.read_only
     ? 'opacity-45 cursor-not-allowed text-sg-muted hover:bg-transparent'
     : 'text-sg-text hover:bg-sg-accent/20'
@@ -439,7 +442,7 @@ export const StyleCard = memo(function StyleCard({
                 <ImagePlus size={14} aria-hidden="true" />
                 Upload preview image
               </MenuItem>
-              {style.has_thumbnail && (
+              {hasThumb === true && (
                 <MenuItem
                   className={`flex items-center gap-2 ${previewReadOnlyClass}`}
                   onSelect={async () => {
@@ -469,13 +472,7 @@ export const StyleCard = memo(function StyleCard({
                       // Local bump only — do not window.postMessage (would fail
                       // host-origin/source guards; App listens for host SG_THUMB_DONE).
                       useStylesStore.getState().bumpThumbVersion(key, version)
-                      useStylesStore.setState((s) => ({
-                        styles: s.styles.map((row) =>
-                          styleRowKey(row) === key
-                            ? { ...row, has_thumbnail: false }
-                            : row
-                        ),
-                      }))
+                      useStylesStore.getState().markThumb(key, false)
                       showToast('Preview removed', 'success')
                     } catch {
                       showToast('Remove preview failed', 'error')

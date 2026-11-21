@@ -13,7 +13,7 @@ import {
   parseCorruptData,
   type CorruptDataInfo,
 } from '../lib/parseCorruptData'
-import { styleGridPost } from '../lib/styleGridFetch'
+import { readApiResponse, styleGridPost } from '../lib/styleGridFetch'
 import { isSourceId, sourceLeaf } from '../lib/styleIdentity'
 import type { ThemeMode } from '../lib/themeMode'
 
@@ -472,6 +472,17 @@ interface StylesStore {
   duplicatesByName: ReadonlyMap<string, readonly Style[]>
   /** Cache-bust versions keyed by styleRowKey; hydrated once from sg_thumb_v_* LS keys. */
   thumbVersions: Readonly<Record<string, string>>
+  /**
+   * Styles that have a generated thumbnail (styleRowKey), from
+   * GET /style_grid/thumbnails/list. LoRA previews are not in it.
+   */
+  thumbKeys: ReadonlySet<string>
+  /** True once the thumbnails list has loaded at least once. */
+  thumbKeysLoaded: boolean
+  /** Reload thumbKeys from the server; on failure keep the previous set. Never throws. */
+  fetchThumbKeys: () => Promise<void>
+  /** Record locally that a style's thumbnail now exists (or is gone). */
+  markThumb: (key: string, present: boolean) => void
   bumpThumbVersion: (key: string, version: string) => void
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
@@ -644,6 +655,33 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   searchTextByKey: new Map(),
   duplicatesByName: new Map(),
   thumbVersions: loadThumbVersionsFromLs(),
+  thumbKeys: new Set<string>(),
+  thumbKeysLoaded: false,
+  fetchThumbKeys: async () => {
+    try {
+      const res = await fetch('/style_grid/thumbnails/list')
+      const result = await readApiResponse(res)
+      if (!result.ok || !Array.isArray(result.body.has_thumbnail)) return
+      const keys = new Set<string>()
+      for (const entry of result.body.has_thumbnail as unknown[]) {
+        if (!entry || typeof entry !== 'object') continue
+        const { name, source_file } = entry as { name?: unknown; source_file?: unknown }
+        if (typeof name !== 'string' || !name) continue
+        keys.add(styleRowKey({ name, source_file: typeof source_file === 'string' ? source_file : '' }))
+      }
+      set({ thumbKeys: keys, thumbKeysLoaded: true })
+    } catch {
+      // Network or parse failure: keep what we had.
+    }
+  },
+  markThumb: (key, present) => {
+    const has = get().thumbKeys.has(key)
+    if (has === present) return
+    const next = new Set(get().thumbKeys)
+    if (present) next.add(key)
+    else next.delete(key)
+    set({ thumbKeys: next })
+  },
   conflicts: [],
   categoryOrder: JSON.parse(
     localStorage.getItem('sg_v2_category_order') || '[]'
@@ -1091,6 +1129,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       oldKey !== newKey && s.thumbVersions[oldKey] !== undefined
         ? { ...s.thumbVersions, [newKey]: s.thumbVersions[oldKey] }
         : s.thumbVersions
+    // The server moves the thumbnail file with the rename.
+    const thumbKeys =
+      oldKey !== newKey && s.thumbKeys.has(oldKey)
+        ? new Set([...s.thumbKeys].filter((k) => k !== oldKey).concat(newKey))
+        : s.thumbKeys
 
     set({
       selectedStyles: nextSelected,
@@ -1099,6 +1142,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       recentNames,
       styleContributors,
       thumbVersions,
+      thumbKeys,
     })
     get().detectConflicts()
   },
@@ -1637,6 +1681,21 @@ export function useCategorySelectedCount(category: string): number {
 
 export function useStyleDuplicates(name: string): readonly Style[] {
   return useStylesStore((s) => s.duplicatesByName.get(name) ?? EMPTY_STYLES)
+}
+
+/** LoRA previews are files next to the model, served by the same rule as the server. */
+export function isLoraThumbnail(style: Pick<Style, 'name' | 'source_file'>): boolean {
+  return style.source_file === LORA_SOURCE || style.name.startsWith('LORA_')
+}
+
+/**
+ * Whether a style has a generated thumbnail: true / false from the thumbnails
+ * list, or 'unknown' for LoRA rows (their preview may or may not exist).
+ */
+export function useHasThumbnail(style: Pick<Style, 'name' | 'source_file'>): boolean | 'unknown' {
+  const key = styleRowKey(style)
+  const has = useStylesStore((s) => s.thumbKeys.has(key))
+  return isLoraThumbnail(style) ? 'unknown' : has
 }
 
 export function useThumbVersion(key: string): string {

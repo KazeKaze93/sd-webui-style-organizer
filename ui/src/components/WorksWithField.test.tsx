@@ -27,7 +27,6 @@ function row(name: string, category: string, extra: Partial<Style> = {}): Style 
     negative_prompt: '',
     description: '',
     category,
-    has_thumbnail: false,
     ...extra,
   }
 }

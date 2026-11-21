@@ -8,6 +8,7 @@ import http from 'node:http'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildBenchFixture } from '../generateStyles.mjs'
+import { parseViteLocalUrl } from '../lib/viteUrl.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const PROFILE_ROOT = __dirname
@@ -139,11 +140,10 @@ export async function startVite(port = 5173, opts = {}) {
     }, 90_000)
 
     const onChunk = () => {
-      const text = stdout + stderr
-      const m = text.match(/Local:\s+(http:\/\/[^\s]+)/i)
-      if (m) {
+      const url = parseViteLocalUrl(stdout + stderr)
+      if (url) {
         clearTimeout(timer)
-        resolve(m[1].replace(/\/$/, ''))
+        resolve(url)
         return
       }
       if (child.exitCode != null && child.exitCode !== 0) {

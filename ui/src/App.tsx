@@ -283,11 +283,6 @@ export default function App() {
         // rename, a CSV change on disk) also reloads which styles have thumbnails.
         void useStylesStore.getState().fetchThumbKeys()
       }
-      if (msg.type === 'SG_TOAST') {
-        // Batch preview generation reports only its end (or cancel), and only
-        // with a toast: reload the thumbnails list on any host toast.
-        void useStylesStore.getState().fetchThumbKeys()
-      }
       if (msg.type === 'SG_HOST_TAB') {
         // Intentionally ignored for tab identity: host broadcasts which Forge
         // main tab is visible to BOTH iframes. This iframe's tab is fixed at

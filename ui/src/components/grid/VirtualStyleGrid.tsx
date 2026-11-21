@@ -47,6 +47,7 @@ import {
   gridGapPx,
   minCardWidthPx,
 } from './constants'
+import { MISSING_GRID_SCROLLER_MESSAGE, useGridScroller } from './GridScrollerContext'
 import {
   getCachedRangeIndexes,
   type StickyRangeCache,
@@ -132,14 +133,24 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   children,
 }: VirtualStyleGridProps) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const scrollElRef = useRef<HTMLElement | null>(null)
-  const [scrollEl, setScrollEl] = useState<HTMLElement | null>(null)
+  // The real scrolling element, provided by <GridScroller>. Never derived from the DOM.
+  const { scroller, missing: scrollerMissing } = useGridScroller()
   const [widthPx, setWidthPx] = useState<number>(VIRTUALIZER_TEST_INITIAL_RECT.width)
+  /** Distance from the scroller's content top to this grid's top (wrappers, padding). */
+  const [scrollMargin, setScrollMargin] = useState(0)
+
+  useEffect(() => {
+    if (scrollerMissing) console.error(MISSING_GRID_SCROLLER_MESSAGE)
+  }, [scrollerMissing])
   const activeStickyIndexRef = useRef(0)
   const rowsRef = useRef<GridRow[]>([])
   // Profile (scroll N=5000): rangeExtractor new arrays every scroll sample —
   // reuse prior result when start/end/sticky index unchanged.
   const rangeCacheRef = useRef<StickyRangeCache | null>(null)
+  // Set by a navigation key: DOM focus must follow the roving cell even if the
+  // previously focused row was unmounted first (virtualized out before the
+  // scroll caught up), which drops document.activeElement to <body>.
+  const pendingKeyboardFocusRef = useRef(false)
 
   const focusedCell = useFocusedCell()
   const focusedRow = focusedCell?.row ?? null
@@ -166,11 +177,8 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     [groups],
   )
 
-  const pageRows = useMemo(() => {
-    const viewportH = scrollEl?.clientHeight ?? VIRTUALIZER_TEST_INITIAL_RECT.height
-    const rowH = cardRowHeightPx(compactMode, windowed)
-    return Math.max(1, Math.floor(viewportH / rowH))
-  }, [scrollEl, compactMode, windowed])
+  // The sticky header covers the top of the viewport; keep scroll targets below it.
+  const scrollPaddingStart = stickyIndexes.length > 0 ? headerRowHeightPx(compactMode) : 0
 
   // Default / clamp roving cell when the row model changes (tab stop only — no focus steal).
   useEffect(() => {
@@ -196,23 +204,32 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   useLayoutEffect(() => {
     const root = rootRef.current
     if (!root) return
-    const parent = root.parentElement
-    scrollElRef.current = parent
-    setScrollEl(parent)
 
     const applyWidth = (w: number) => {
       if (w > 0) setWidthPx(w)
     }
+    // Offset of the grid inside the scroller's scrollable content. Position
+    // independent: the rect difference shrinks by scrollTop as we scroll.
+    const applyScrollMargin = () => {
+      if (!scroller) return
+      const margin =
+        root.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop
+      setScrollMargin((prev) => (Math.abs(prev - margin) < 0.5 ? prev : margin))
+    }
     applyWidth(root.clientWidth)
+    applyScrollMargin()
 
     const ro = new ResizeObserver((entries) => {
       const entry = entries[0]
       if (!entry) return
       applyWidth(entry.contentRect.width)
+      applyScrollMargin()
     })
     ro.observe(root)
     return () => ro.disconnect()
-  }, [])
+  }, [scroller])
 
   const rangeExtractor = useCallback(
     (range: Range) => {
@@ -270,11 +287,18 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   // eslint-disable-next-line react-hooks/incompatible-library -- required virtualizer API
   const virtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => scrollElRef.current ?? scrollEl,
+    getScrollElement: () => scroller,
     estimateSize,
     overscan: GRID_VIRTUAL_OVERSCAN,
     rangeExtractor,
     initialRect: VIRTUALIZER_TEST_INITIAL_RECT,
+    // @tanstack/virtual-core 3.14.14, src/index.ts: every item starts at
+    // `paddingStart + scrollMargin` (measurement loop, ~l.1430/1499/1526), so
+    // item.start is a scroller scrollTop; getTotalSize() subtracts scrollMargin
+    // again (~l.2127). Rows are therefore placed at `start - scrollMargin`.
+    scrollMargin,
+    // 'auto'/'start' alignment stops this far below the top (~l.1933/1954).
+    scrollPaddingStart,
     // Fixed row heights (card + ROW_GAP). No measureElement — measuring remounts
     // on scroll caused multi-second TBT and glued later rows (measured without gap).
   })
@@ -282,16 +306,18 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   useEffect(() => {
     rangeCacheRef.current = null
     virtualizer.measure()
-  }, [columns, compactMode, windowed, focusedRow, rows.length, virtualizer])
+  }, [columns, compactMode, windowed, focusedRow, rows.length, scrollMargin, virtualizer])
 
   const scrollToHeader = useCallback(
     (category: string) => {
       const headerIndex = findHeaderRowIndex(rows, category)
-      if (headerIndex >= 0) {
-        virtualizer.scrollToIndex(headerIndex, { align: 'start' })
-      }
+      if (headerIndex < 0) return
+      // A header goes to the very top (it becomes the sticky row itself), so
+      // undo scrollPaddingStart, which exists for rows that sit below a header.
+      const target = virtualizer.getOffsetForIndex(headerIndex, 'start')
+      if (target) virtualizer.scrollToOffset(target[0] + scrollPaddingStart)
     },
-    [rows, virtualizer],
+    [rows, virtualizer, scrollPaddingStart],
   )
 
   const handleToggleCollapse = useCallback(
@@ -309,11 +335,13 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     if (!focusedCell) return
     const root = rootRef.current
     if (!root) return
-    if (!root.contains(document.activeElement)) return
+    if (!root.contains(document.activeElement) && !pendingKeyboardFocusRef.current) return
     const el = root.querySelector<HTMLElement>(
       `[data-cell-row="${focusedCell.row}"][data-cell-col="${focusedCell.col}"]`,
     )
-    if (el && document.activeElement !== el) {
+    if (!el) return
+    pendingKeyboardFocusRef.current = false
+    if (document.activeElement !== el) {
       el.focus({ preventScroll: true })
     }
   }, [focusedCell, virtualItems])
@@ -344,6 +372,12 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
       if (NAV_KEYS.has(e.key)) {
         const from = getFocusedCell() ?? firstFocusableCell(rowsRef.current)
         if (!from) return
+        // Page = card rows that fit in the scroller viewport below the sticky header.
+        const viewportH = scroller?.clientHeight ?? VIRTUALIZER_TEST_INITIAL_RECT.height
+        const pageRows = Math.max(
+          1,
+          Math.floor((viewportH - scrollPaddingStart) / cardRowHeightPx(compactMode, windowed)),
+        )
         const next = nextCell(
           rowsRef.current,
           columns,
@@ -357,6 +391,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
           return
         }
         e.preventDefault()
+        pendingKeyboardFocusRef.current = true
         setFocusedCell(next)
         virtualizer.scrollToIndex(next.row, { align: 'auto' })
         return
@@ -385,7 +420,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         openCardMenuAtCell(cell)
       }
     },
-    [columns, pageRows, virtualizer, openCardMenuAtCell],
+    [columns, scroller, scrollPaddingStart, compactMode, windowed, virtualizer, openCardMenuAtCell],
   )
 
   // Stable sticky style across scroll frames (compactMode rarely flips).
@@ -411,6 +446,10 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     }
     return map
   }, [rows])
+
+  // No scroller provider (production only; dev and tests threw in useGridScroller):
+  // render nothing rather than virtualize against a wrong element.
+  if (scrollerMissing) return null
 
   return (
     <div
@@ -461,7 +500,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                       // ROW_GAP as padding-bottom — matches column gap on both axes.
                       paddingBottom: `${rowGap}px`,
                       boxSizing: 'border-box',
-                      transform: `translateY(${virtualRow.start}px)`,
+                      transform: `translateY(${virtualRow.start - scrollMargin}px)`,
                     }
               }
             >

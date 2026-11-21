@@ -25,11 +25,15 @@ import {
 } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { styleGridDelete } from '../lib/styleGridFetch'
+import { duplicateStyleRequest } from '../lib/styleActions'
 import {
   CARD_ROW_HEIGHT_NORMAL_PX,
   CARD_ROW_HEIGHT_WINDOWED_PX,
   ROW_GAP_NORMAL_PX,
 } from './grid/constants'
+import { DeleteStyleDialog } from './DeleteStyleDialog'
+import { MoveToCategoryDialog } from './MoveToCategoryDialog'
+import { StyleEditorDialog } from './StyleEditorDialog'
 import { ThumbnailPreview } from './ThumbnailPreview'
 import { MenuItem, ViewportFixedMenu } from './ViewportFixedMenu'
 
@@ -50,6 +54,15 @@ interface Props {
 
 const READ_ONLY_PREVIEW_TOAST =
   'This style is from the protected samples pack (read-only). Duplicate it into a data source to manage your own preview.'
+/** The server refuses writes to samples/ (403); say so instead of sending the request. */
+const READ_ONLY_DELETE_TOAST =
+  'This style is from the protected samples pack (read-only) and cannot be deleted.'
+const READ_ONLY_DUPLICATE_TOAST =
+  'This style is from the protected samples pack (read-only); a copy cannot be saved into it.'
+const READ_ONLY_MOVE_TOAST =
+  'This style is from the protected samples pack (read-only) and cannot be moved.'
+const READ_ONLY_EDIT_TOAST =
+  'This style is from the protected samples pack (read-only) and cannot be edited. Duplicate it into a data source to change it.'
 
 /** Skip re-render when row identity + chrome mode + roving tab stop unchanged. */
 function styleCardPropsEqual(prev: Props, next: Props): boolean {
@@ -82,6 +95,9 @@ export const StyleCard = memo(function StyleCard({
   const [menuPos, setMenuPos] = useState<{ x: number, y: number } | null>(null)
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
   const [restoreFocusEl, setRestoreFocusEl] = useState<HTMLElement | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
   const isLora = style.source_file === LORA_SOURCE
   const hasMultipleSources = duplicates.length > 1
   const sourceLabels = useMemo(
@@ -266,42 +282,52 @@ export const StyleCard = memo(function StyleCard({
           {!isLora && (
             <>
               <MenuItem
-                className="flex items-center gap-2"
+                className={`flex items-center gap-2 ${style.read_only ? previewReadOnlyClass : ''}`}
                 onSelect={() => {
-                  sendToHost({
-                    type: 'SG_EDIT_STYLE',
-                    styleId: style.name,
-                    source_file: style.source_file,
-                  })
                   setMenuPos(null)
+                  if (style.read_only) {
+                    showToast(READ_ONLY_EDIT_TOAST, 'info')
+                    return
+                  }
+                  setEditOpen(true)
                 }}
               >
                 <Pencil size={14} aria-hidden="true" />
                 Edit
               </MenuItem>
               <MenuItem
-                className="flex items-center gap-2"
-                onSelect={() => {
-                  sendToHost({
-                    type: 'SG_DUPLICATE_STYLE',
-                    styleId: style.name,
-                    source_file: style.source_file,
-                  })
+                className={`flex items-center gap-2 ${style.read_only ? previewReadOnlyClass : ''}`}
+                onSelect={async () => {
                   setMenuPos(null)
+                  if (style.read_only) {
+                    showToast(READ_ONLY_DUPLICATE_TOAST, 'info')
+                    return
+                  }
+                  const result = await duplicateStyleRequest(
+                    style,
+                    useStylesStore.getState().styles,
+                  )
+                  if (!result.ok) {
+                    showToast(`Duplicate failed: ${result.error}`, 'error')
+                    return
+                  }
+                  // The host reloads the catalog and pushes it back to the iframe.
+                  sendToHost({ type: 'SG_REFRESH' })
+                  showToast(`Duplicated as "${result.name}"`, 'success')
                 }}
               >
                 <CopyPlus size={14} aria-hidden="true" />
                 Duplicate
               </MenuItem>
               <MenuItem
-                className="flex items-center gap-2"
+                className={`flex items-center gap-2 ${style.read_only ? previewReadOnlyClass : ''}`}
                 onSelect={() => {
-                  sendToHost({
-                    type: 'SG_MOVE_TO_CATEGORY',
-                    styleId: style.name,
-                    source_file: style.source_file,
-                  })
                   setMenuPos(null)
+                  if (style.read_only) {
+                    showToast(READ_ONLY_MOVE_TOAST, 'info')
+                    return
+                  }
+                  setMoveOpen(true)
                 }}
               >
                 <FolderInput size={14} aria-hidden="true" />
@@ -395,14 +421,18 @@ export const StyleCard = memo(function StyleCard({
             <>
               <div className="h-px my-1 bg-sg-border" role="separator" />
               <MenuItem
-                className="flex items-center gap-2 text-sg-danger-text hover:bg-sg-danger/20"
+                className={`flex items-center gap-2 ${
+                  style.read_only
+                    ? previewReadOnlyClass
+                    : 'text-sg-danger-text hover:bg-sg-danger/20'
+                }`}
                 onSelect={() => {
-                  sendToHost({
-                    type: 'SG_DELETE_STYLE',
-                    styleId: style.name,
-                    source_file: style.source_file,
-                  })
                   setMenuPos(null)
+                  if (style.read_only) {
+                    showToast(READ_ONLY_DELETE_TOAST, 'info')
+                    return
+                  }
+                  setDeleteOpen(true)
                 }}
               >
                 <Trash2 size={14} aria-hidden="true" />
@@ -411,6 +441,33 @@ export const StyleCard = memo(function StyleCard({
             </>
           )}
         </ViewportFixedMenu>
+      )}
+
+      {editOpen && (
+        <StyleEditorDialog
+          mode="edit"
+          open
+          style={style}
+          onClose={() => setEditOpen(false)}
+        />
+      )}
+
+      {moveOpen && (
+        <MoveToCategoryDialog
+          open
+          style={style}
+          displayName={displayName}
+          onClose={() => setMoveOpen(false)}
+        />
+      )}
+
+      {deleteOpen && (
+        <DeleteStyleDialog
+          open
+          style={style}
+          displayName={displayName}
+          onClose={() => setDeleteOpen(false)}
+        />
       )}
 
       {pickerPos && (

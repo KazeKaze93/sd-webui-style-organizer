@@ -153,6 +153,109 @@ def test_restore_creates_safety_and_restores_metadata(backup_env):
     assert restored["safety_snapshot"] in listed
 
 
+def _snap(i):
+    """Snapshot name for index *i*: names sort the same way as *i*."""
+    return f"20260101_{i:06d}"
+
+
+def _make_snapshots(count, start=0):
+    return [
+        sg_data.backup_csv_files(include_thumbnails=False, snapshot_name=_snap(start + i))["snapshot"]
+        for i in range(count)
+    ]
+
+
+def _entries(backup_dir):
+    return sorted(os.listdir(backup_dir))
+
+
+def test_prune_keeps_newest_snapshots_with_folder_and_zip_together(backup_env):
+    backup_dir = backup_env["backup_dir"]
+    names = _make_snapshots(25)
+    assert sg_data.BACKUP_KEEP_SNAPSHOTS == 20
+
+    kept = [b["name"] for b in sg_data.list_backups()]
+    assert kept == sorted(names[5:], reverse=True)
+    # Every kept snapshot still has both its folder and its .zip.
+    expected = sorted([n for n in names[5:]] + [f"{n}.zip" for n in names[5:]])
+    assert _entries(backup_dir) == expected
+    assert all(b["has_dir"] and b["has_zip"] for b in sg_data.list_backups())
+
+
+def test_prune_counts_an_orphan_once_and_deletes_whole_snapshots(backup_env):
+    backup_dir = Path(backup_env["backup_dir"])
+    _make_snapshots(20)
+    # Orphans: the oldest loses its .zip, the second oldest its folder.
+    os.remove(backup_dir / f"{_snap(0)}.zip")
+    import shutil
+
+    shutil.rmtree(backup_dir / _snap(1))
+    listed = [b["name"] for b in sg_data.list_backups()]
+    assert len(listed) == 20
+
+    _make_snapshots(2, start=20)
+    listed = [b["name"] for b in sg_data.list_backups()]
+    assert len(listed) == 20
+    assert _snap(0) not in listed and _snap(1) not in listed
+    assert not (backup_dir / _snap(0)).exists()
+    assert not (backup_dir / f"{_snap(1)}.zip").exists()
+    assert (backup_dir / _snap(2)).is_dir() and (backup_dir / f"{_snap(2)}.zip").is_file()
+
+
+def test_prune_never_touches_unrelated_entries(backup_env):
+    backup_dir = Path(backup_env["backup_dir"])
+    unrelated = [
+        backup_dir / "README.txt",
+        backup_dir / "notes",
+        backup_dir / "old-export.zip",
+        backup_dir / "00000000_000000.txt",
+    ]
+    unrelated[0].write_text("keep", encoding="utf-8")
+    unrelated[1].mkdir()
+    unrelated[2].write_bytes(b"PK")
+    unrelated[3].write_text("keep", encoding="utf-8")
+
+    _make_snapshots(23)
+    assert len(sg_data.list_backups()) == 20
+    for path in unrelated:
+        assert path.exists()
+
+
+def test_restore_of_the_oldest_on_a_full_list(backup_env):
+    backup_dir = Path(backup_env["backup_dir"])
+    names = _make_snapshots(20)
+    oldest = names[0]
+
+    restored = sg_data.restore_from_backup(oldest, create_safety=True)
+
+    assert restored["ok"] is True
+    assert "favorites.json" in restored["restored"]
+    # The target survived the call, the safety snapshot exists, the limit holds.
+    assert (backup_dir / oldest).is_dir()
+    assert (backup_dir / f"{oldest}.zip").is_file()
+    listed = [b["name"] for b in sg_data.list_backups()]
+    assert oldest in listed
+    assert restored["safety_snapshot"] in listed
+    assert len(listed) == sg_data.BACKUP_KEEP_SNAPSHOTS
+    # The next oldest made room instead.
+    assert names[1] not in listed
+
+
+def test_list_backups_route_reports_the_limit(backup_env, monkeypatch):
+    from fastapi import FastAPI
+    from starlette.testclient import TestClient
+
+    from stylegrid import routes
+
+    monkeypatch.setattr(routes, "list_backups", lambda: [])
+    monkeypatch.setattr(routes, "thumbnails_dir_size", lambda: 0)
+    app = FastAPI()
+    routes.register_api(None, app)
+    with TestClient(app, base_url="http://127.0.0.1:7860") as client:
+        body = client.get("/style_grid/backups").json()
+    assert body["keep_snapshots"] == sg_data.BACKUP_KEEP_SNAPSHOTS == 20
+
+
 @pytest.mark.parametrize(
     "arcname",
     [

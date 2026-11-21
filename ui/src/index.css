@@ -116,6 +116,17 @@ body {
   }
 }
 
+/* Initial focus of a dialog (ModalShell): the standard accent ring, shown even
+   when the dialog was opened with the mouse, where :focus-visible does not
+   match a programmatic focus. Same geometry as the focus-visible ring
+   utilities: ring-2 ring-sg-accent ring-offset-1 ring-offset-sg-bg. */
+[data-sg-initial-focus="true"]:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 1px rgb(var(--sg-bg)),
+    0 0 0 3px rgb(var(--sg-accent));
+}
+
 /* Unified scrollbar for ALL scrollable elements */
 * {
   scrollbar-width: thin;

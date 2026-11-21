@@ -412,13 +412,6 @@ describe('characterization: main Style Grid flows', () => {
     })
   })
 
-  describe('import', () => {
-    it('iframe requests host import/export UI via SG_IMPORT_EXPORT', () => {
-      sendToHost({ type: 'SG_IMPORT_EXPORT' })
-      expect(sendToHost).toHaveBeenCalledWith({ type: 'SG_IMPORT_EXPORT' })
-    })
-  })
-
   describe('thumbnails', () => {
     it('load preserves has_thumbnail flags on styles', () => {
       const withThumb = row('BODY_Ears', FILE_A, { has_thumbnail: true })

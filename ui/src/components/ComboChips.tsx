@@ -1,6 +1,6 @@
 import { startTransition } from 'react'
 import { useStylesStore, styleRowKey } from '../store/stylesStore'
-import { resolveCombosInSourceFile } from '../lib/styleIdentity'
+import { comboPartLabel, resolveCombosInSourceFile } from '../lib/styleIdentity'
 import type { Style } from '../bridge'
 
 interface Props {
@@ -10,10 +10,6 @@ interface Props {
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
-
-function chipLabel(token: string): string {
-  return token.includes('_') ? token.split('_').slice(1).join(' ') : token
-}
 
 export function ComboChips({ style, onBeforeToggle }: Props) {
   const { styles, setCategory, toggleStyle, selectedStyles } = useStylesStore()
@@ -54,7 +50,7 @@ export function ComboChips({ style, onBeforeToggle }: Props) {
                   : 'bg-sg-accent/10 border-sg-accent/30 text-sg-accent-text hover:bg-sg-accent/20'}`}
               title={title}
             >
-              {isSelected ? '✓ ' : ''}{chipLabel(token)}
+              {isSelected ? '✓ ' : ''}{comboPartLabel(resolved)}
             </button>
           )
         }

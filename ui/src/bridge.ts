@@ -58,6 +58,11 @@ export type FrameMessage =
   | { type: 'SG_REFRESH' }
   /** Ask the host to enter or leave fullscreen. The host answers SG_FULLSCREEN_STATE. */
   | { type: 'SG_SET_FULLSCREEN'; fullscreen: boolean }
+  /**
+   * The iframe renamed a style on the server. The host remaps its references
+   * (selection, applied text) to the new name, then refreshes like SG_REFRESH.
+   */
+  | { type: 'SG_STYLE_RENAMED'; old_name: string; new_name: string; source_file: string }
 
 export interface Style {
   name:              string

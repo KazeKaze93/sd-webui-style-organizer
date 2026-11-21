@@ -1,6 +1,6 @@
 import { memo, useMemo, type ReactNode } from 'react'
 import type { Style } from '../../bridge'
-import { styleRowKey } from '../../store/stylesStore'
+import { styleRowKey, type ViewMode } from '../../store/stylesStore'
 import { StyleCard } from '../StyleCard'
 import { gridGapPx } from './constants'
 
@@ -8,6 +8,9 @@ export type CardsRowProps = {
   styles: readonly Style[]
   columns: number
   windowed: boolean
+  viewMode?: ViewMode
+  /** Gallery card height (thumbnail + label); undefined in grid. */
+  galleryCardHeightPx?: number
   rowIndex: number
   focusedCol: number | null
   /** First cards row of a category — target for header aria-controls. */
@@ -28,6 +31,8 @@ function cardsRowPropsEqual(prev: CardsRowProps, next: CardsRowProps): boolean {
   return (
     prev.columns === next.columns &&
     prev.windowed === next.windowed &&
+    prev.viewMode === next.viewMode &&
+    prev.galleryCardHeightPx === next.galleryCardHeightPx &&
     prev.rowIndex === next.rowIndex &&
     prev.focusedCol === next.focusedCol &&
     prev.categoryPanelId === next.categoryPanelId &&
@@ -41,6 +46,8 @@ export const CardsRow = memo(function CardsRow({
   styles,
   columns,
   windowed,
+  viewMode = 'grid',
+  galleryCardHeightPx,
   rowIndex,
   focusedCol,
   categoryPanelId,
@@ -73,6 +80,8 @@ export const CardsRow = memo(function CardsRow({
             key={styleRowKey(style)}
             style={style}
             windowed={windowed}
+            viewMode={viewMode}
+            galleryCardHeightPx={galleryCardHeightPx}
             cellRow={rowIndex}
             cellCol={col}
             tabIndex={focusedCol === col ? 0 : -1}

@@ -13,6 +13,7 @@ import { StyleGrid } from './components/StyleGrid'
 import { GridScroller } from './components/grid/GridScroller'
 import { StyleEditorDialog } from './components/StyleEditorDialog'
 import { ImportExportDialog } from './components/ImportExportDialog'
+import { ViewModeToggle } from './components/ViewModeToggle'
 import { BackupRestoreDialog } from './components/BackupRestoreDialog'
 import { gridMinVisibleHeightPx } from './components/grid/constants'
 import { BottomPanel } from './components/BottomPanel'
@@ -29,7 +30,8 @@ import { closeTopLayer, hasOpenLayer } from './lib/layerStack'
 import { cn } from './lib/utils'
 import { styleGridPost } from './lib/styleGridFetch'
 import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
-import { installFocusSourceTracking, isTabFocus } from './lib/focusSource'
+import { installFocusSourceTracking } from './lib/focusSource'
+import { useGatedTooltip } from './lib/useGatedTooltip'
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -68,16 +70,18 @@ function clearSearchField(searchRoot: HTMLElement | null): boolean {
 const LEGACY_WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
 /** Search is the primary tool: it grows (flex-1) but never collapses below this. */
-const SEARCH_MIN_WIDTH_PX = 160
+const SEARCH_MIN_WIDTH_PX = 140
 
 /**
  * Header breakpoint (iframe width == panel width: the iframe fills the host
  * panel). At or below it the "Style Grid" text becomes sr-only and the tab
  * badge is hidden, so the header stays one row down to the host's
- * PANEL_MIN_WIDTH (600px). Tailwind only emits literal utilities, so the
- * classes spell it out as `max-[719px]:`; keep them in step with this value.
+ * PANEL_MIN_WIDTH (600px). Raised from 719: the Grid / Gallery toggle pushes
+ * the widest case (LoRA view + globe + a 24ch source label) to ≈ 745px in
+ * wide mode. Tailwind only emits literal utilities, so the classes spell it
+ * out as `max-[759px]:`; keep them in step with this value.
  */
-export const HEADER_NARROW_MAX_PX = 719
+export const HEADER_NARROW_MAX_PX = 759
 
 /** Gap between the More button and the top of its menu. */
 const MORE_MENU_OFFSET_PX = 4
@@ -108,44 +112,8 @@ const ToolBtn = ({
   /** Whether that popup is open: sets aria-expanded. */
   expanded?: boolean
 }) => {
-  // Controlled tooltip: it opens on hover, or on focus only when the focus was
-  // a Tab move (lib/focusSource). Focus that a closing menu or dialog puts back
-  // on the button must not open it: nothing hovers the button then, so no
-  // pointerleave would ever close it.
-  const [tipOpen, setTipOpen] = useState(false)
-  const triggerRef = useRef<HTMLElement | null>(null)
-  const hoveredRef = useRef(false)
-  const focusedViaTabRef = useRef(false)
-
-  const onTipOpenChange = (next: boolean) => {
-    if (!next) {
-      setTipOpen(false)
-      return
-    }
-    if (expanded) return
-    const tabFocused = document.activeElement === triggerRef.current && isTabFocus()
-    if (hoveredRef.current || tabFocused) setTipOpen(true)
-  }
-
-  const triggerHandlers = {
-    ref: (el: HTMLElement | null) => {
-      triggerRef.current = el
-    },
-    onPointerEnter: () => {
-      hoveredRef.current = true
-    },
-    onPointerLeave: () => {
-      hoveredRef.current = false
-      const tabFocused = document.activeElement === triggerRef.current && focusedViaTabRef.current
-      if (!tabFocused) setTipOpen(false)
-    },
-    onFocus: () => {
-      focusedViaTabRef.current = isTabFocus()
-    },
-    onBlur: () => {
-      focusedViaTabRef.current = false
-    },
-  }
+  // Hover / Tab-focus only; closed while the button's own menu is open.
+  const tip = useGatedTooltip(expanded === true)
 
   const button = (
     <button
@@ -175,8 +143,8 @@ const ToolBtn = ({
   )
   return (
     // While the button's own menu is open the tooltip stays closed.
-    <Tooltip open={expanded ? false : tipOpen} onOpenChange={onTipOpenChange}>
-      <TooltipTrigger asChild {...triggerHandlers}>
+    <Tooltip open={tip.open} onOpenChange={tip.onOpenChange}>
+      <TooltipTrigger asChild {...tip.triggerProps}>
         {disabled ? (
           <span className="inline-flex rounded">{button}</span>
         ) : (
@@ -405,7 +373,7 @@ export default function App() {
     <div className="flex flex-col bg-sg-bg text-sg-text"
       style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
-      {/* One row, never wraps: below HEADER_NARROW_MAX_PX the title text and the tab badge give way. */}
+      {/* One row, never wraps: at or below HEADER_NARROW_MAX_PX the title text and the tab badge give way. */}
       <div
         className="shrink-0 flex flex-nowrap items-center gap-3 px-4 py-2.5 min-w-0
                    border-b border-sg-border"
@@ -419,11 +387,11 @@ export default function App() {
           data-sg-header-title="true"
         >
           <Palette size={16} aria-hidden />
-          <span className="max-[719px]:sr-only">Style Grid</span>
+          <span className="max-[759px]:sr-only">Style Grid</span>
         </div>
         <span
           className="shrink-0 text-xs text-sg-muted border border-sg-border/50
-                     px-1.5 py-0.5 rounded font-mono max-[719px]:hidden"
+                     px-1.5 py-0.5 rounded font-mono max-[759px]:hidden"
           data-sg-tab-badge="true"
         >
           {tab}
@@ -437,6 +405,7 @@ export default function App() {
           <SearchBar />
         </div>
         <TooltipProvider>
+          <ViewModeToggle />
           <div className="flex items-center gap-1.5 shrink-0 ml-auto">
             {activeCategory === LORA_VIEW && (
               <ToolBtn

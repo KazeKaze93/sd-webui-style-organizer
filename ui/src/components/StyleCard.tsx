@@ -5,6 +5,7 @@ import {
   CopyPlus,
   FolderInput,
   ImageMinus,
+  ImageOff,
   ImagePlus,
   Pencil,
   Sparkles,
@@ -22,13 +23,17 @@ import {
   useIsSelected,
   useStyleDuplicates,
   useStylesStore,
+  useThumbVersion,
+  type ViewMode,
 } from '../store/stylesStore'
 import { sendToHost } from '../bridge'
 import { styleGridDelete } from '../lib/styleGridFetch'
 import { duplicateStyleRequest } from '../lib/styleActions'
+import { thumbnailUrl } from '../lib/thumbnailUrl'
 import {
   CARD_ROW_HEIGHT_NORMAL_PX,
   CARD_ROW_HEIGHT_WINDOWED_PX,
+  GALLERY_LABEL_HEIGHT_PX,
   ROW_GAP_NORMAL_PX,
 } from './grid/constants'
 import { DeleteStyleDialog } from './DeleteStyleDialog'
@@ -47,6 +52,10 @@ const CARD_HEIGHT_WINDOWED = CARD_ROW_HEIGHT_WINDOWED_PX - ROW_GAP_NORMAL_PX
 interface Props {
   style: Style
   windowed?: boolean
+  /** Text tile (grid, default) or square preview tile (gallery). */
+  viewMode?: ViewMode
+  /** Gallery card height = thumbnail box + label (set by the virtualized grid). */
+  galleryCardHeightPx?: number
   cellRow?: number
   cellCol?: number
   tabIndex?: number
@@ -68,6 +77,8 @@ const READ_ONLY_EDIT_TOAST =
 function styleCardPropsEqual(prev: Props, next: Props): boolean {
   return (
     prev.windowed === next.windowed &&
+    prev.viewMode === next.viewMode &&
+    prev.galleryCardHeightPx === next.galleryCardHeightPx &&
     prev.style === next.style &&
     prev.cellRow === next.cellRow &&
     prev.cellCol === next.cellCol &&
@@ -78,6 +89,8 @@ function styleCardPropsEqual(prev: Props, next: Props): boolean {
 export const StyleCard = memo(function StyleCard({
   style,
   windowed = false,
+  viewMode = 'grid',
+  galleryCardHeightPx,
   cellRow,
   cellCol,
   tabIndex = -1,
@@ -120,6 +133,12 @@ export const StyleCard = memo(function StyleCard({
   const accessibleName = fav ? `${displayName} favorite` : displayName
 
   const borderColor = useCategoryColor(style.category || 'OTHER')
+  const gallery = viewMode === 'gallery'
+  const thumbVersion = useThumbVersion(key)
+  const thumbSrc = thumbnailUrl(style, activeSource, thumbVersion)
+  /** URL whose image failed to load; a new thumb version gives a new URL, so it retries. */
+  const [failedThumbSrc, setFailedThumbSrc] = useState<string | null>(null)
+  const showThumb = gallery && style.has_thumbnail && failedThumbSrc !== thumbSrc
   const previewReadOnlyClass = style.read_only
     ? 'opacity-45 cursor-not-allowed text-sg-muted hover:bg-transparent'
     : 'text-sg-text hover:bg-sg-accent/20'
@@ -190,9 +209,14 @@ export const StyleCard = memo(function StyleCard({
               }
               toggleStyle(style)
             }}
-            style={{ height: windowed ? CARD_HEIGHT_WINDOWED : CARD_HEIGHT_NORMAL }}
+            style={{
+              height: gallery
+                ? galleryCardHeightPx
+                : windowed ? CARD_HEIGHT_WINDOWED : CARD_HEIGHT_NORMAL,
+            }}
             className={`
-              relative overflow-hidden cursor-pointer rounded-lg border ${windowed ? 'p-2' : 'p-3'}
+              relative overflow-hidden cursor-pointer rounded-lg border
+              ${gallery ? 'p-0 flex flex-col' : windowed ? 'p-2' : 'p-3'}
               select-none transition-colors w-full text-left
               transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]
               motion-reduce:transition-none motion-reduce:transform-none
@@ -206,17 +230,64 @@ export const StyleCard = memo(function StyleCard({
             {!isSelected && (
               <span
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 w-[3px]"
+                className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px]"
                 style={{ backgroundColor: borderColor }}
               />
             )}
-            <div
-              className={`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`}
-            >
-              {displayName}
-            </div>
+            {gallery ? (
+              <>
+                <div className="relative min-h-0 flex-1 overflow-hidden" data-sg-gallery-thumb="true">
+                  {showThumb ? (
+                    <img
+                      src={thumbSrc}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="block h-full w-full object-cover"
+                      onError={() => setFailedThumbSrc(thumbSrc)}
+                    />
+                  ) : (
+                    <div
+                      className="flex h-full w-full flex-col items-center justify-center gap-1
+                                 border-b border-dashed border-sg-border text-sg-muted"
+                      data-sg-gallery-placeholder="true"
+                    >
+                      <ImageOff size={20} aria-hidden="true" />
+                      <span className="text-xs text-sg-muted">No preview</span>
+                    </div>
+                  )}
+                  {fav && (
+                    <Star
+                      size={12}
+                      fill="currentColor"
+                      className="absolute top-1.5 right-1.5 text-sg-warning-text"
+                      aria-hidden="true"
+                    />
+                  )}
+                  {isSelected && (
+                    <div
+                      aria-hidden="true"
+                      className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-sg-accent"
+                    />
+                  )}
+                </div>
+                <div
+                  className="shrink-0 px-2 py-1.5 text-xs font-medium text-sg-text text-left line-clamp-2 break-words"
+                  style={{ height: GALLERY_LABEL_HEIGHT_PX }}
+                  data-sg-gallery-label="true"
+                >
+                  {displayName}
+                </div>
+              </>
+            ) : (
+              <div
+                className={`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`}
+              >
+                {displayName}
+              </div>
+            )}
 
-            {fav && (
+            {!gallery && fav && (
               <Star
                 size={12}
                 fill="currentColor"
@@ -226,7 +297,7 @@ export const StyleCard = memo(function StyleCard({
             )}
 
             {/* Selected indicator */}
-            {isSelected && (
+            {!gallery && isSelected && (
               <div
                 aria-hidden="true"
                 className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-sg-accent"

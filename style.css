@@ -243,3 +243,60 @@
     border-radius: 3px;
     transition: width 0.3s ease;
 }
+
+/* ---- Panel resize handles (host frame around the Style Grid iframe) ----
+   Created by handlers/panel-resize.js inside #sg-panel-wrapper-<tab>.
+   --sg-resize-edge / --sg-resize-corner are set on the wrapper from the
+   geometry constants (EDGE_HIT_PX, CORNER_HIT_PX). Edge handles sit just
+   outside the frame so they never cover the iframe's scrollbars. */
+.sg-resize-handle {
+    position: absolute;
+    z-index: 2;
+    background: transparent;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.sg-resize-handle--n,
+.sg-resize-handle--s {
+    left: 0;
+    right: 0;
+    height: var(--sg-resize-edge, 6px);
+    cursor: ns-resize;
+}
+.sg-resize-handle--n { top: calc(-1 * var(--sg-resize-edge, 6px)); }
+.sg-resize-handle--s { bottom: calc(-1 * var(--sg-resize-edge, 6px)); }
+.sg-resize-handle--e,
+.sg-resize-handle--w {
+    top: 0;
+    bottom: 0;
+    width: var(--sg-resize-edge, 6px);
+    cursor: ew-resize;
+}
+.sg-resize-handle--e { right: calc(-1 * var(--sg-resize-edge, 6px)); }
+.sg-resize-handle--w { left: calc(-1 * var(--sg-resize-edge, 6px)); }
+/* Corners straddle the frame corner and win over the edges. */
+.sg-resize-handle--ne,
+.sg-resize-handle--nw,
+.sg-resize-handle--se,
+.sg-resize-handle--sw {
+    z-index: 3;
+    width: var(--sg-resize-corner, 12px);
+    height: var(--sg-resize-corner, 12px);
+}
+.sg-resize-handle--ne,
+.sg-resize-handle--nw { top: calc(-0.5 * var(--sg-resize-corner, 12px)); }
+.sg-resize-handle--se,
+.sg-resize-handle--sw { bottom: calc(-0.5 * var(--sg-resize-corner, 12px)); }
+.sg-resize-handle--ne,
+.sg-resize-handle--se { right: calc(-0.5 * var(--sg-resize-corner, 12px)); }
+.sg-resize-handle--nw,
+.sg-resize-handle--sw { left: calc(-0.5 * var(--sg-resize-corner, 12px)); }
+.sg-resize-handle--nw,
+.sg-resize-handle--se { cursor: nwse-resize; }
+.sg-resize-handle--ne,
+.sg-resize-handle--sw { cursor: nesw-resize; }
+/* Fullscreen: nothing to resize. */
+[data-sg-fullscreen="true"] > .sg-resize-handle {
+    display: none;
+}

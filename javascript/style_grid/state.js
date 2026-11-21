@@ -22,6 +22,7 @@ function createTabState() {
             hasThumbnail: new Set(),
             sgFrame: null,
             sgFrameWrapper: null,
+            sgPanelResize: null,
             sgV2HostInitSent: false,
         };
     }

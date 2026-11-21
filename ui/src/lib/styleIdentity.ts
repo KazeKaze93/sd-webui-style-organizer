@@ -158,6 +158,40 @@ export type ResolvedCombo =
   | { type: 'category'; token: string; category: string; comment: string }
   | { type: 'raw'; token: string }
 
+/** A combo part whose name matches neither a style nor a category of the file. */
+export type MissingCombo = { type: 'missing'; token: string; comment: string }
+
+/**
+ * Resolve one combo part among `inFile` (styles of a single source file):
+ * exact name -> that style; otherwise a category prefix present in the file ->
+ * category; a piece without a name -> raw; anything else -> missing.
+ * Shared by the tray (ComboChips) and the style editor's Works with chips.
+ */
+export function resolveComboPart(
+  part: ComboPart,
+  inFile: readonly Style[],
+): ResolvedCombo | MissingCombo {
+  if (!part.name) return { type: 'raw', token: part.raw }
+  const exact = inFile.find((s) => s.name === part.name)
+  if (exact) {
+    return { type: 'style', token: part.name, style: exact, comment: part.comment }
+  }
+  const cat = part.name.split('_')[0]
+  if (cat && inFile.some((s) => s.category === cat)) {
+    return { type: 'category', token: part.name, category: cat, comment: part.comment }
+  }
+  return { type: 'missing', token: part.name, comment: part.comment }
+}
+
+/** Label of a resolved combo part, the same in the tray and in the editor. */
+export function comboPartLabel(resolved: ResolvedCombo | MissingCombo): string {
+  if (resolved.type === 'style') {
+    const token = resolved.token
+    return token.includes('_') ? token.split('_').slice(1).join(' ') : token
+  }
+  return resolved.token
+}
+
 /**
  * Resolve Combos tokens only among styles from the same source_file.
  * Named parts absent from that file are omitted. Parenthetical comments
@@ -171,31 +205,9 @@ export function resolveCombosInSourceFile(
   const inFile = styles.filter((s) => s.source_file === sourceFile)
   const out: ResolvedCombo[] = []
   for (const part of parseComboParts(description)) {
-    if (!part.name) {
-      out.push({ type: 'raw', token: part.raw })
-      continue
-    }
-    const exact = inFile.find((s) => s.name === part.name)
-    if (exact) {
-      out.push({
-        type: 'style',
-        token: part.name,
-        style: exact,
-        comment: part.comment,
-      })
-      continue
-    }
-    const cat = part.name.split('_')[0]
-    if (cat && inFile.some((s) => s.category === cat)) {
-      out.push({
-        type: 'category',
-        token: part.name,
-        category: cat,
-        comment: part.comment,
-      })
-      continue
-    }
-    // Named but not in this file — no chip.
+    const resolved = resolveComboPart(part, inFile)
+    // Named but not in this file — no chip in the tray.
+    if (resolved.type !== 'missing') out.push(resolved)
   }
   return out
 }

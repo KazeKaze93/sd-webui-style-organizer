@@ -3,9 +3,9 @@ import { sendToHost, type Style } from '../bridge'
 import { categoryOptions, libraryCategories } from '../lib/categoryMove'
 import { postStyleRequest, sourceFileLeaf } from '../lib/styleActions'
 import {
+  buildDescription,
   buildSaveRequest,
   initialNameFields,
-  joinDescription,
   resolveName,
   splitDescription,
   writableSources,
@@ -15,6 +15,7 @@ import { cn } from '../lib/utils'
 import { useStylesStore } from '../store/stylesStore'
 import { CategoryCombobox } from './CategoryCombobox'
 import { ModalShell } from './ModalShell'
+import { WorksWithField } from './WorksWithField'
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -70,6 +71,7 @@ export function StyleEditorDialog(props: Props) {
   const [prompt, setPrompt] = useState(initial.prompt)
   const [negative, setNegative] = useState(initial.negative)
   const [descriptionText, setDescriptionText] = useState(initial.descriptionText)
+  const [tail, setTail] = useState(initial.tail)
   const [busy, setBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -84,7 +86,7 @@ export function StyleEditorDialog(props: Props) {
     promptHint: useId(),
     negative: useId(),
     description: useId(),
-    tail: useId(),
+    worksWith: useId(),
   }
 
   const optionsStyle = useMemo(
@@ -96,6 +98,7 @@ export function StyleEditorDialog(props: Props) {
     [optionsStyle, styles, style],
   )
   const known = useMemo(() => libraryCategories(styles), [styles])
+  const inFile = useMemo(() => styles.filter((s) => s.source_file === source), [styles, source])
 
   const outcome = resolveName({
     mode,
@@ -112,7 +115,8 @@ export function StyleEditorDialog(props: Props) {
     nameInput.trim() !== initial.name ||
     prompt !== initial.prompt ||
     negative !== initial.negative ||
-    descriptionText !== initial.descriptionText
+    descriptionText !== initial.descriptionText ||
+    tail !== initial.tail
 
   // Edit with no change: Save stays disabled (nothing to send).
   const canSave = dirty && outcome.name !== null && !!source && !busy
@@ -125,7 +129,7 @@ export function StyleEditorDialog(props: Props) {
 
   const save = async () => {
     if (!canSave || outcome.name === null) return
-    const description = joinDescription(style?.description ?? '', descriptionText)
+    const description = buildDescription(style?.description ?? '', descriptionText, tail)
     const request = buildSaveRequest({
       mode,
       originalName: style?.name ?? null,
@@ -304,15 +308,19 @@ export function StyleEditorDialog(props: Props) {
           type="text"
           value={descriptionText}
           disabled={busy}
-          aria-describedby={initial.tail ? ids.tail : undefined}
           onChange={(e) => setDescriptionText(e.target.value)}
-          className={cn(FIELD, 'h-9', FOCUS_RING)}
+          className={cn(FIELD, 'h-9 mb-3', FOCUS_RING)}
         />
-        {initial.tail && (
-          <p id={ids.tail} className="mt-1.5 text-xs text-sg-muted break-words" data-sg-works-with="true">
-            Works with: {initial.tail.replace(/^Combos?:\s*/i, '')} (editable in a later update)
-          </p>
-        )}
+
+        <div id={ids.worksWith} className={LABEL}>Works with (optional)</div>
+        <WorksWithField
+          labelId={ids.worksWith}
+          tail={tail}
+          onChange={setTail}
+          inFile={inFile}
+          selfName={style?.name ?? null}
+          disabled={busy}
+        />
       </ModalShell>
 
       <ModalShell

@@ -661,6 +661,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     try {
       const res = await fetch('/style_grid/thumbnails/list')
       const result = await readApiResponse(res)
+      // `has_thumbnail` is the server response field (stylegrid/routes.py api_list_thumbnails), not a Style field.
       if (!result.ok || !Array.isArray(result.body.has_thumbnail)) return
       const keys = new Set<string>()
       for (const entry of result.body.has_thumbnail as unknown[]) {

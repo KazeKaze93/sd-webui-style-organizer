@@ -101,11 +101,30 @@ describe('App keeps thumbnail presence in step with the host', () => {
     expect(tilePlaceholder()).not.toBeNull()
   })
 
-  it('a host toast (batch generation finished) reloads the list too', async () => {
+  it('a host toast does not reload the list', async () => {
     await fromHost({ type: 'SG_INIT', tab: 'txt2img', styles: [STYLE] })
     const before = listCalls
     await fromHost({ type: 'SG_TOAST', message: 'Done: 1/1 generated', variant: 'success' })
-    expect(listCalls).toBe(before + 1)
+    expect(listCalls).toBe(before)
+  })
+
+  it('batch generation: one SG_THUMB_DONE per style switches each tile to <img>, no list request', async () => {
+    const styles: Style[] = ['BODY_A', 'BODY_B', 'BODY_C'].map((name) => ({ ...STYLE, name }))
+    await fromHost({ type: 'SG_INIT', tab: 'txt2img', styles })
+    const tile = (label: string) =>
+      [...host!.querySelectorAll<HTMLElement>('[data-sg-card]')].find((c) => c.getAttribute('aria-label') === label)!
+    const hasImg = (label: string) => !!tile(label).querySelector('[data-sg-gallery-thumb] img')
+    expect(['A', 'B', 'C'].map(hasImg)).toEqual([false, false, false])
+    const callsBefore = listCalls
+
+    for (const [i, name] of ['BODY_A', 'BODY_B', 'BODY_C'].entries()) {
+      await fromHost({ type: 'SG_THUMB_DONE', styleId: name, version: 1700000000000 + i, source_file: 'webui/a.csv' })
+      expect(['A', 'B', 'C'].map(hasImg)).toEqual(['A', 'B', 'C'].map((_, j) => j <= i))
+    }
+    expect(listCalls).toBe(callsBefore)
+    expect(tile('C').querySelector('img')!.getAttribute('src')).toBe(
+      '/style_grid/thumbnail?name=BODY_C&source=webui%2Fa.csv&v=1700000000002',
+    )
   })
 
   it('SG_THUMB_DONE adds the key: the tile switches from the placeholder to <img>', async () => {

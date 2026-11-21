@@ -1,4 +1,7 @@
 /** @vitest-environment jsdom */
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { act, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,7 +9,7 @@ import type { Style } from '../bridge'
 import { createHoverIntent } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer, hasOpenLayer } from '../lib/layerStack'
 import { useStylesStore, type PresetRecord } from '../store/stylesStore'
-import { ModalShell } from './ModalShell'
+import { INITIAL_FOCUS_ATTR, ModalShell } from './ModalShell'
 import { PresetRow } from './PresetRow'
 import { SaveSetDialog } from './SaveSetDialog'
 
@@ -14,6 +17,8 @@ vi.mock('../bridge', async () => {
   const actual = await vi.importActual<typeof import('../bridge')>('../bridge')
   return { ...actual, sendToHost: vi.fn() }
 })
+
+const HERE = path.dirname(fileURLToPath(import.meta.url))
 
 let root: Root | null = null
 let host: HTMLDivElement | null = null
@@ -241,6 +246,39 @@ describe('ModalShell', () => {
     await escape()
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(dialogs()).toHaveLength(0)
+  })
+
+  it('initial focus is visibly marked even when opened with a click; the mark follows normal rules after', async () => {
+    // jsdom, like Chrome after a mouse click, does not match :focus-visible here.
+    await render(<Harness onClose={() => {}} />)
+    await click(opener())
+    const d = dialog()
+    const field = d.querySelector<HTMLInputElement>('input')!
+    const close = d.querySelector<HTMLButtonElement>('button[aria-label="Close"]')!
+    expect(document.activeElement).toBe(field)
+    expect(field.getAttribute(INITIAL_FOCUS_ATTR)).toBe('true')
+    expect(d.querySelectorAll(`[${INITIAL_FOCUS_ATTR}]`)).toHaveLength(1)
+
+    // Focus moves on: the mark is gone and is not handed to the next element.
+    const cancel = buttonIn(d, 'Cancel')
+    act(() => cancel.focus())
+    expect(field.hasAttribute(INITIAL_FOCUS_ATTR)).toBe(false)
+    expect(cancel.hasAttribute(INITIAL_FOCUS_ATTR)).toBe(false)
+    expect(document.querySelectorAll(`[${INITIAL_FOCUS_ATTR}]`)).toHaveLength(0)
+
+    // Coming back to the first element does not restore the mark either.
+    act(() => field.focus())
+    expect(field.hasAttribute(INITIAL_FOCUS_ATTR)).toBe(false)
+
+    await click(close)
+    expect(document.querySelectorAll(`[${INITIAL_FOCUS_ATTR}]`)).toHaveLength(0)
+  })
+
+  it('the initial-focus ring is defined in index.css with the accent ring geometry', () => {
+    const css = fs.readFileSync(path.resolve(HERE, '../index.css'), 'utf8')
+    expect(css).toMatch(
+      /\[data-sg-initial-focus="true"\]:focus \{[^}]*box-shadow:\s*0 0 0 1px rgb\(var\(--sg-bg\)\),\s*0 0 0 3px rgb\(var\(--sg-accent\)\);/,
+    )
   })
 
   it('opening a dialog dismisses a visible hover preview', async () => {

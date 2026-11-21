@@ -9,6 +9,9 @@ import { cn } from '../lib/utils'
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
 
+/** Set on the element that receives a dialog's initial focus; styled in index.css. */
+export const INITIAL_FOCUS_ATTR = 'data-sg-initial-focus'
+
 export type ModalShellProps = {
   open: boolean
   /** Called on Escape, overlay click and the close button — never while `busy`. */
@@ -63,6 +66,27 @@ export function ModalShell({
 
   useEffect(() => {
     if (open) dismissAllHoverIntents()
+  }, [open])
+
+  // Declared after useFocusTrap, so the initial focus is already placed.
+  // Focus rings use :focus-visible, which browsers do not match for a
+  // programmatic focus that follows a mouse click: a dialog opened with the
+  // mouse showed no sign of where focus was. Mark the initially focused
+  // element so index.css draws the same ring whatever the input modality.
+  // The mark goes away when that element loses focus; from then on the normal
+  // :focus-visible rules apply.
+  useEffect(() => {
+    if (!open) return
+    const root = dialogRef.current
+    const el = document.activeElement
+    if (!root || !(el instanceof HTMLElement) || !root.contains(el)) return
+    el.setAttribute(INITIAL_FOCUS_ATTR, 'true')
+    const clear = () => el.removeAttribute(INITIAL_FOCUS_ATTR)
+    el.addEventListener('blur', clear, { once: true })
+    return () => {
+      el.removeEventListener('blur', clear)
+      clear()
+    }
   }, [open])
 
   if (!open) return null

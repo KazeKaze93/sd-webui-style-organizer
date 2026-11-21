@@ -4,6 +4,7 @@
 import {
     state,
     styleIdentityKey,
+    remapStyleNameReferences,
     setStoredSource,
     migrateFavoritesInMemory,
     pushStyleIntoCategories,
@@ -59,6 +60,9 @@ import {
     answerFullscreenRequest,
     announceFullscreenState,
 } from "./panel-resize.js";
+import {
+    applyStyleRenamed,
+} from "./style-renamed.js";
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
             // Same-origin + this iframe's contentWindow only (two tabs each register a listener).
@@ -201,18 +205,19 @@ function installIframeMessageBridge(tab, frame) {
             if (msg.type === "SG_BACKUP") {
                 showBackupRestore(tab);
             }
-            if (msg.type === "SG_REFRESH") {
-                refreshPanel(tab);
+            // Shared by SG_REFRESH and SG_STYLE_RENAMED: host state first, then the iframe catalog.
+            function refreshHostAndFrame(refreshTab) {
+                refreshPanel(refreshTab);
                 fetch("/style_grid/check_update")
                     .then(function () { return fetch("/style_grid/styles"); })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        state[tab].categories = {};
+                        state[refreshTab].categories = {};
                         allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
-                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
-                            state[tab].categories[cat].push(s);
+                            if (!state[refreshTab].categories[cat]) state[refreshTab].categories[cat] = [];
+                            state[refreshTab].categories[cat].push(s);
                         });
                         if (frame.contentWindow) {
                             postToFrame(frame, {
@@ -221,6 +226,18 @@ function installIframeMessageBridge(tab, frame) {
                             });
                         }
                     });
+            }
+
+            if (msg.type === "SG_REFRESH") {
+                refreshHostAndFrame(tab);
+            }
+            // The iframe renamed a style on the server. Remap before refresh:
+            // see handlers/style-renamed.js.
+            if (msg.type === "SG_STYLE_RENAMED") {
+                applyStyleRenamed(tab, msg, {
+                    remap: remapStyleNameReferences,
+                    refresh: refreshHostAndFrame,
+                });
             }
             if (msg.type === "SG_CLEAR_ALL") {
                 clearAll(tab);

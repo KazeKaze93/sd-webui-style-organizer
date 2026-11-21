@@ -14,6 +14,7 @@ import {
 import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
 import { setFocusedCell } from '../lib/gridFocus'
+import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import {
   LORA_SOURCE,
   styleRowKey,
@@ -135,6 +136,9 @@ export const StyleCard = memo(function StyleCard({
 
   const openMenuAt = (x: number, y: number) => {
     setRestoreFocusEl(cardRef.current)
+    // The menu backdrop appears under a still pointer, so no mouseleave reaches
+    // the card: close the preview (and any pending show) explicitly.
+    dismissAllHoverIntents()
     setMenuPos({ x, y })
   }
 

@@ -51,6 +51,9 @@ export const GRID_CARD_ROW_ESTIMATE_WINDOWED_PX = CARD_ROW_HEIGHT_WINDOWED_PX
 /** @deprecated Prefer CARD_ROW_HEIGHT_COMPACT_PX. */
 export const GRID_CARD_ROW_ESTIMATE_COMPACT_PX = CARD_ROW_HEIGHT_COMPACT_PX
 
+/** Card rows the grid area always keeps visible, whatever the selection tray holds. */
+export const GRID_MIN_VISIBLE_CARD_ROWS = 2
+
 /** Keep ≤5 — profile: each overscan row remounts StyleCards on scroll. */
 export const GRID_VIRTUAL_OVERSCAN = 4
 
@@ -80,6 +83,14 @@ export function cardRowHeightPx(compactMode: boolean, windowed: boolean): number
 /** Exact virtualizer size for a header row (content + ROW_GAP). */
 export function headerRowHeightPx(compactMode: boolean): number {
   return compactMode ? HEADER_ROW_HEIGHT_COMPACT_PX : HEADER_ROW_HEIGHT_NORMAL_PX
+}
+
+/** Height of one category header plus GRID_MIN_VISIBLE_CARD_ROWS card rows. */
+export function gridMinVisibleHeightPx(compactMode: boolean, windowed: boolean): number {
+  return (
+    headerRowHeightPx(compactMode) +
+    GRID_MIN_VISIBLE_CARD_ROWS * cardRowHeightPx(compactMode, windowed)
+  )
 }
 
 /** CSS gap utility matching {@link gridGapPx}. */

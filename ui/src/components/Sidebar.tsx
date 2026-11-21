@@ -15,14 +15,36 @@ const RECENT_ID = '🕑 Recent'
 const NAV_FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
 
-function CategoryName({ category }: { category: string }) {
-  const color = useCategoryColor(category)
+/** Category color as a non-text marker on the active (accent-filled) row. */
+function ActiveColorDot({ color }: { color: string }) {
   return (
-    <span className="flex-1 truncate" style={{ color }}>
-      {category}
-    </span>
+    <span
+      aria-hidden="true"
+      className="h-2 w-2 shrink-0 rounded-full ring-1 ring-white/70"
+      style={{ backgroundColor: color }}
+    />
   )
 }
+
+/**
+ * Active row: on-accent text, category color only as a dot (colored text on
+ * the accent fill fails WCAG AA). Inactive row: colored name as before.
+ */
+function CategoryName({ category, active }: { category: string; active: boolean }) {
+  const color = useCategoryColor(category)
+  return (
+    <>
+      {active && <ActiveColorDot color={color} />}
+      <span className="flex-1 truncate" style={active ? undefined : { color }}>
+        {category}
+      </span>
+    </>
+  )
+}
+
+/** Row count: dimmed on inactive rows only; 60% white on the accent fill fails AA. */
+const countClass = (active: boolean) =>
+  cn('text-xs shrink-0', active ? '' : 'opacity-60')
 
 /**
  * Profile (P toggle N=5000): Sidebar 44 stack hits; `count` 2.0% self;
@@ -130,9 +152,10 @@ export const Sidebar = memo(function Sidebar() {
         )}
       >
         <span className="flex items-center gap-2 min-w-0">
-          <span className="truncate" style={{ color: allColor }}>All</span>
+          {!activeCategory && <ActiveColorDot color={allColor} />}
+          <span className="truncate" style={activeCategory ? { color: allColor } : undefined}>All</span>
         </span>
-        <span className="text-xs opacity-60 shrink-0">
+        <span className={countClass(!activeCategory)}>
           {countFor(null)}
         </span>
       </button>
@@ -164,7 +187,7 @@ export const Sidebar = memo(function Sidebar() {
             <Icon className="h-4 w-4 shrink-0" aria-hidden />
             <span className="truncate">{label}</span>
           </span>
-          <span className="text-xs opacity-60 shrink-0">{count}</span>
+          <span className={countClass(isActive)}>{count}</span>
         </button>
       )
     })}
@@ -184,7 +207,7 @@ export const Sidebar = memo(function Sidebar() {
           <BookMarked className="h-4 w-4 shrink-0" aria-hidden />
           <span className="truncate">Presets</span>
         </span>
-        <span className="shrink-0 text-xs opacity-60 tabular-nums">
+        <span className={cn(countClass(activeCategory === 'presets'), 'tabular-nums')}>
           {presetsCount}
         </span>
       </button>
@@ -232,8 +255,8 @@ export const Sidebar = memo(function Sidebar() {
                 )}
               >
                 <span className="flex items-center gap-2">
-                  <CategoryName category={cat} />
-                  <span className="text-xs opacity-60 shrink-0">{countFor(cat)}</span>
+                  <CategoryName category={cat} active={isActive} />
+                  <span className={countClass(isActive)}>{countFor(cat)}</span>
                 </span>
               </button>
             </Reorder.Item>

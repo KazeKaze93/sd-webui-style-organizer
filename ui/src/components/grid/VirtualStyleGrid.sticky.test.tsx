@@ -4,12 +4,17 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../../bridge'
 import { __resetGridFocusForTests } from '../../lib/gridFocus'
-import { VIRTUALIZER_TEST_INITIAL_RECT } from './constants'
+import {
+  HEADER_CONTENT_HEIGHT_PX,
+  headerRowHeightPx,
+  VIRTUALIZER_TEST_INITIAL_RECT,
+} from './constants'
 
 vi.mock('@tanstack/react-virtual', () => ({
   defaultRangeExtractor: () => [0, 1],
   useVirtualizer: () => ({
     getVirtualItems: () => [
+      // Header row size must equal headerRowHeightPx(false); asserted below.
       { key: 0, index: 0, start: 0, size: 40, end: 40 },
       { key: 1, index: 1, start: 40, size: 54, end: 94 },
     ],
@@ -27,6 +32,7 @@ vi.mock('./CardsRow', () => ({
   CardsRow: () => <div data-testid="cards-row" />,
 }))
 
+import { GridScroller } from './GridScroller'
 import { VirtualStyleGrid } from './VirtualStyleGrid'
 
 function style(name: string, category: string): Style {
@@ -91,7 +97,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
 
     act(() => {
       root!.render(
-        <div
+        <GridScroller
           style={{
             height: `${VIRTUALIZER_TEST_INITIAL_RECT.height}px`,
             width: `${VIRTUALIZER_TEST_INITIAL_RECT.width}px`,
@@ -106,7 +112,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
             onToggleCollapse={() => {}}
             onSelectAll={() => {}}
           />
-        </div>,
+        </GridScroller>,
       )
     })
 
@@ -119,5 +125,79 @@ describe('VirtualStyleGrid sticky row chrome', () => {
     expect(stickyRow!.style.position).toBe('sticky')
     expect(stickyRow!.style.top).toBe('0px')
     expect(nonStickyRow!.classList.contains('bg-sg-bg')).toBe(false)
+  })
+
+  function renderGrid(compactMode: boolean) {
+    const groups: Array<[string, Style[]]> = [
+      ['BODY', [style('BODY_A', 'BODY'), style('BODY_B', 'BODY')]],
+    ]
+    act(() => {
+      root!.render(
+        <GridScroller
+          style={{
+            height: `${VIRTUALIZER_TEST_INITIAL_RECT.height}px`,
+            width: `${VIRTUALIZER_TEST_INITIAL_RECT.width}px`,
+            overflow: 'auto',
+          }}
+        >
+          <VirtualStyleGrid
+            groups={groups}
+            collapsedCategories={new Set()}
+            compactMode={compactMode}
+            windowed={false}
+            onToggleCollapse={() => {}}
+            onSelectAll={() => {}}
+          />
+        </GridScroller>,
+      )
+    })
+  }
+
+  it('sticky header row is exactly one virtual header row tall, so the first cards row starts below it', () => {
+    expect(headerRowHeightPx(false)).toBe(40)
+    renderGrid(false)
+
+    const stickyRow = host!.querySelector<HTMLElement>('[role="row"][data-index="0"]')
+    const firstCardsRow = host!.querySelector<HTMLElement>('[role="row"][data-index="1"]')
+
+    // The sticky row sits in normal flow at the top; its bottom edge is its height.
+    expect(stickyRow!.style.height).toBe(`${headerRowHeightPx(false)}px`)
+    expect(stickyRow!.style.boxSizing).toBe('border-box')
+    // The first cards row is translated to the header row's virtual end.
+    expect(firstCardsRow!.style.transform).toBe(`translateY(${headerRowHeightPx(false)}px)`)
+  })
+
+  it('compact mode keeps the sticky row height in step with the compact header row', () => {
+    renderGrid(true)
+    const stickyRow = host!.querySelector<HTMLElement>('[role="row"][data-index="0"]')
+    expect(stickyRow!.style.height).toBe(`${headerRowHeightPx(true)}px`)
+  })
+
+  it('category header content has a fixed height that fits inside the header row', async () => {
+    const { CategoryHeaderRow: RealHeader } =
+      await vi.importActual<typeof import('./CategoryHeaderRow')>('./CategoryHeaderRow')
+    act(() => {
+      root!.render(
+        <RealHeader
+          category="BODY"
+          count={2}
+          collapsed={false}
+          isStickyActive
+          enableLoraContextMenu={false}
+          rowIndex={0}
+          focusedCol={null}
+          onToggleCollapse={() => {}}
+          onSelectAll={() => {}}
+        />,
+      )
+    })
+    const header = host!.querySelector<HTMLElement>('[data-sg-category-header="BODY"]')
+    expect(header).not.toBeNull()
+    expect(header!.style.height).toBe(`${HEADER_CONTENT_HEIGHT_PX}px`)
+    // No vertical padding class left to push the content past the fixed height.
+    expect(header!.className).not.toMatch(/(^|\s)py-\d/)
+    for (const compact of [false, true]) {
+      expect(HEADER_CONTENT_HEIGHT_PX).toBeLessThan(headerRowHeightPx(compact))
+    }
   })
 })

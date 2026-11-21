@@ -11,6 +11,7 @@ import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
 import { GridScroller } from './components/grid/GridScroller'
+import { StyleEditorDialog } from './components/StyleEditorDialog'
 import { gridMinVisibleHeightPx } from './components/grid/constants'
 import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
@@ -127,6 +128,7 @@ const ToolBtn = ({
 
 export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [newStyleOpen, setNewStyleOpen] = useState(false)
   const searchRootRef = useRef<HTMLDivElement>(null)
   const [loraFetchStatus, setLoraFetchStatus] = useState<{
     status: string; done: number; total: number; errors: number
@@ -403,9 +405,7 @@ export default function App() {
               }
               colorClassName="text-sg-accent-text"
               disabled={!activeSource || activeSourceIsReadOnly}
-              onClick={() => {
-                sendToHost({ type: 'SG_NEW_STYLE', sourceFile: activeSource! })
-              }}
+              onClick={() => setNewStyleOpen(true)}
             />
             {activeCategory === LORA_VIEW && (
               <ToolBtn
@@ -489,6 +489,14 @@ export default function App() {
         <BottomPanel />
       </div>
       <ThumbProgressModal />
+      {newStyleOpen && (
+        <StyleEditorDialog
+          mode="create"
+          open
+          defaultSource={activeSource}
+          onClose={() => setNewStyleOpen(false)}
+        />
+      )}
     </div>
   )
 }

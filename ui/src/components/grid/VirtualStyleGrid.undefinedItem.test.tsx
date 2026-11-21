@@ -92,7 +92,6 @@ describe('VirtualStyleGrid undefined virtual item', () => {
             <VirtualStyleGrid
               groups={groups}
               collapsedCategories={new Set()}
-              compactMode={false}
               windowed={false}
               onToggleCollapse={() => {}}
               onSelectAll={() => {}}

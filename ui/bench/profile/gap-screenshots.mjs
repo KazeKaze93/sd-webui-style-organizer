@@ -1,9 +1,8 @@
 /**
- * GRID-W: gap screenshots at N=500 and N=5000 × 3 densities × top/scrolled.
+ * GRID-W: gap screenshots at N=500 and N=5000 × 2 densities × top/scrolled.
  *
  * Densities:
- *   normal  — panel default (windowed=true in App, compact off)
- *   compact — compact toggle on
+ *   normal  — panel default (windowed=true in App)
  *   fullscreen — isFullscreen (windowed=false, larger cards)
  *
  * Usage (from ui/):
@@ -122,17 +121,7 @@ async function setDensity(frame, _page, mode) {
         re.test(b.getAttribute('aria-label') || b.getAttribute('title') || ''),
       )
 
-    const compactBtn = byLabel(/compact mode/i)
     const fsBtn = byLabel(/^(exit )?fullscreen$/i)
-
-    const compactOn =
-      compactBtn &&
-      (compactBtn.getAttribute('aria-pressed') === 'true' ||
-        /\bbg-sg-accent\b/.test(compactBtn.className) ||
-        compactBtn.dataset.state === 'on')
-
-    const wantCompact = m === 'compact'
-    if (compactBtn && Boolean(compactOn) !== wantCompact) compactBtn.click()
 
     // Fullscreen enlarges cards (windowed=false). Detect via Maximize/Minimize icons'
     // aria-label: "Fullscreen" vs "Exit fullscreen".
@@ -214,7 +203,7 @@ async function main() {
     console.log(`[gap-shots] vite ${baseUrl}`)
 
     for (const n of args.sizes) {
-      for (const density of ['normal', 'compact', 'fullscreen']) {
+      for (const density of ['normal', 'fullscreen']) {
         const bench = await openBench(browser, baseUrl, n)
         try {
           await waitForGridStable(bench.frame, n)

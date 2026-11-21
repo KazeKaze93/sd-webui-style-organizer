@@ -67,7 +67,6 @@ const NAV_KEYS = new Set<string>([
 export type VirtualStyleGridProps = {
   groups: readonly CategoryGroup[]
   collapsedCategories: ReadonlySet<string>
-  compactMode: boolean
   windowed: boolean
   includeHeaders?: boolean
   enableLoraContextMenu?: boolean
@@ -81,13 +80,12 @@ export type VirtualStyleGridProps = {
 
 function estimateRowSize(
   row: GridRow | undefined,
-  compactMode: boolean,
   windowed: boolean,
 ): number {
   if (!row || row.kind === 'cards') {
-    return cardRowHeightPx(compactMode, windowed)
+    return cardRowHeightPx(windowed)
   }
-  return headerRowHeightPx(compactMode)
+  return headerRowHeightPx()
 }
 
 function firstFocusableCell(rows: readonly GridRow[]): GridCell | null {
@@ -108,7 +106,7 @@ function clampFocusedCell(
   return { row: cell.row, col: Math.max(0, Math.min(cell.col, count - 1)) }
 }
 
-/** Sticky overlay chrome — shared object; height and paddingBottom vary with compactMode. */
+/** Sticky overlay chrome — shared object; height and paddingBottom are added per render. */
 const STICKY_ROW_STYLE_BASE = {
   position: 'sticky',
   top: 0,
@@ -122,7 +120,6 @@ const STICKY_ROW_STYLE_BASE = {
 export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   groups,
   collapsedCategories,
-  compactMode,
   windowed,
   includeHeaders = true,
   enableLoraContextMenu = false,
@@ -155,9 +152,9 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   const focusedCell = useFocusedCell()
   const focusedRow = focusedCell?.row ?? null
 
-  const minW = minCardWidthPx(compactMode, windowed)
-  const gapPx = gridGapPx(compactMode)
-  const rowGap = rowGapPx(compactMode)
+  const minW = minCardWidthPx(windowed)
+  const gapPx = gridGapPx()
+  const rowGap = rowGapPx()
   const columns = useMemo(
     () => columnsForWidth(widthPx, minW, gapPx),
     [widthPx, minW, gapPx],
@@ -178,7 +175,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   )
 
   // The sticky header covers the top of the viewport; keep scroll targets below it.
-  const scrollPaddingStart = stickyIndexes.length > 0 ? headerRowHeightPx(compactMode) : 0
+  const scrollPaddingStart = stickyIndexes.length > 0 ? headerRowHeightPx() : 0
 
   // Default / clamp roving cell when the row model changes (tab stop only — no focus steal).
   useEffect(() => {
@@ -279,8 +276,8 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
 
   // Stable identity — profile: recreated estimateSize closed over `rows` forced remounts.
   const estimateSize = useCallback(
-    (index: number) => estimateRowSize(rowsRef.current[index], compactMode, windowed),
-    [compactMode, windowed],
+    (index: number) => estimateRowSize(rowsRef.current[index], windowed),
+    [windowed],
   )
 
   // TanStack Virtual returns unstable function identities; React Compiler skips this file.
@@ -306,7 +303,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   useEffect(() => {
     rangeCacheRef.current = null
     virtualizer.measure()
-  }, [columns, compactMode, windowed, focusedRow, rows.length, scrollMargin, virtualizer])
+  }, [columns, windowed, focusedRow, rows.length, scrollMargin, virtualizer])
 
   const scrollToHeader = useCallback(
     (category: string) => {
@@ -376,7 +373,7 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         const viewportH = scroller?.clientHeight ?? VIRTUALIZER_TEST_INITIAL_RECT.height
         const pageRows = Math.max(
           1,
-          Math.floor((viewportH - scrollPaddingStart) / cardRowHeightPx(compactMode, windowed)),
+          Math.floor((viewportH - scrollPaddingStart) / cardRowHeightPx(windowed)),
         )
         const next = nextCell(
           rowsRef.current,
@@ -420,19 +417,19 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
         openCardMenuAtCell(cell)
       }
     },
-    [columns, scroller, scrollPaddingStart, compactMode, windowed, virtualizer, openCardMenuAtCell],
+    [columns, scroller, scrollPaddingStart, windowed, virtualizer, openCardMenuAtCell],
   )
 
-  // Stable sticky style across scroll frames (compactMode rarely flips).
+  // Stable sticky style across scroll frames.
   // Explicit height = the virtual header row size: the sticky row is in normal
   // flow, so anything taller would overlap the first cards row below it.
   const stickyRowStyle = useMemo(
     () => ({
       ...STICKY_ROW_STYLE_BASE,
-      height: `${headerRowHeightPx(compactMode)}px`,
+      height: `${headerRowHeightPx()}px`,
       paddingBottom: `${rowGap}px`,
     }),
-    [rowGap, compactMode],
+    [rowGap],
   )
 
   /** Index of the first cards row per category (for aria-controls targets). */
@@ -521,7 +518,6 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
                 <CardsRow
                   styles={row.styles}
                   columns={columns}
-                  compactMode={compactMode}
                   windowed={windowed}
                   rowIndex={virtualRow.index}
                   focusedCol={rowFocusedCol}

@@ -14,7 +14,7 @@ vi.mock('@tanstack/react-virtual', () => ({
   defaultRangeExtractor: () => [0, 1],
   useVirtualizer: () => ({
     getVirtualItems: () => [
-      // Header row size must equal headerRowHeightPx(false); asserted below.
+      // Header row size must equal headerRowHeightPx(); asserted below.
       { key: 0, index: 0, start: 0, size: 40, end: 40 },
       { key: 1, index: 1, start: 40, size: 54, end: 94 },
     ],
@@ -107,7 +107,6 @@ describe('VirtualStyleGrid sticky row chrome', () => {
           <VirtualStyleGrid
             groups={groups}
             collapsedCategories={new Set()}
-            compactMode={false}
             windowed={false}
             onToggleCollapse={() => {}}
             onSelectAll={() => {}}
@@ -127,7 +126,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
     expect(nonStickyRow!.classList.contains('bg-sg-bg')).toBe(false)
   })
 
-  function renderGrid(compactMode: boolean) {
+  function renderGrid() {
     const groups: Array<[string, Style[]]> = [
       ['BODY', [style('BODY_A', 'BODY'), style('BODY_B', 'BODY')]],
     ]
@@ -143,7 +142,6 @@ describe('VirtualStyleGrid sticky row chrome', () => {
           <VirtualStyleGrid
             groups={groups}
             collapsedCategories={new Set()}
-            compactMode={compactMode}
             windowed={false}
             onToggleCollapse={() => {}}
             onSelectAll={() => {}}
@@ -154,23 +152,17 @@ describe('VirtualStyleGrid sticky row chrome', () => {
   }
 
   it('sticky header row is exactly one virtual header row tall, so the first cards row starts below it', () => {
-    expect(headerRowHeightPx(false)).toBe(40)
-    renderGrid(false)
+    expect(headerRowHeightPx()).toBe(40)
+    renderGrid()
 
     const stickyRow = host!.querySelector<HTMLElement>('[role="row"][data-index="0"]')
     const firstCardsRow = host!.querySelector<HTMLElement>('[role="row"][data-index="1"]')
 
     // The sticky row sits in normal flow at the top; its bottom edge is its height.
-    expect(stickyRow!.style.height).toBe(`${headerRowHeightPx(false)}px`)
+    expect(stickyRow!.style.height).toBe(`${headerRowHeightPx()}px`)
     expect(stickyRow!.style.boxSizing).toBe('border-box')
     // The first cards row is translated to the header row's virtual end.
-    expect(firstCardsRow!.style.transform).toBe(`translateY(${headerRowHeightPx(false)}px)`)
-  })
-
-  it('compact mode keeps the sticky row height in step with the compact header row', () => {
-    renderGrid(true)
-    const stickyRow = host!.querySelector<HTMLElement>('[role="row"][data-index="0"]')
-    expect(stickyRow!.style.height).toBe(`${headerRowHeightPx(true)}px`)
+    expect(firstCardsRow!.style.transform).toBe(`translateY(${headerRowHeightPx()}px)`)
   })
 
   it('category header content has a fixed height that fits inside the header row', async () => {
@@ -196,8 +188,6 @@ describe('VirtualStyleGrid sticky row chrome', () => {
     expect(header!.style.height).toBe(`${HEADER_CONTENT_HEIGHT_PX}px`)
     // No vertical padding class left to push the content past the fixed height.
     expect(header!.className).not.toMatch(/(^|\s)py-\d/)
-    for (const compact of [false, true]) {
-      expect(HEADER_CONTENT_HEIGHT_PX).toBeLessThan(headerRowHeightPx(compact))
-    }
+    expect(HEADER_CONTENT_HEIGHT_PX).toBeLessThan(headerRowHeightPx())
   })
 })

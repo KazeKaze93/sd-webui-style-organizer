@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Save, Import, Eraser, Rows3, ChevronsUpDown, ChevronsDownUp, Plus, Globe,
+  Import, History, MoreHorizontal, Plus, Globe,
   Palette, Maximize2, Minimize2, X,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -18,6 +18,7 @@ import { gridMinVisibleHeightPx } from './components/grid/constants'
 import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
 import { Toast } from './components/Toast'
+import { MenuItem, ViewportFixedMenu } from './components/ViewportFixedMenu'
 import {
   Tooltip,
   TooltipContent,
@@ -28,6 +29,7 @@ import { closeTopLayer, hasOpenLayer } from './lib/layerStack'
 import { cn } from './lib/utils'
 import { styleGridPost } from './lib/styleGridFetch'
 import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
+import { installFocusSourceTracking, isTabFocus } from './lib/focusSource'
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -66,7 +68,19 @@ function clearSearchField(searchRoot: HTMLElement | null): boolean {
 const LEGACY_WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
 /** Search is the primary tool: it grows (flex-1) but never collapses below this. */
-const SEARCH_MIN_WIDTH_PX = 200
+const SEARCH_MIN_WIDTH_PX = 160
+
+/**
+ * Header breakpoint (iframe width == panel width: the iframe fills the host
+ * panel). At or below it the "Style Grid" text becomes sr-only and the tab
+ * badge is hidden, so the header stays one row down to the host's
+ * PANEL_MIN_WIDTH (600px). Tailwind only emits literal utilities, so the
+ * classes spell it out as `max-[719px]:`; keep them in step with this value.
+ */
+export const HEADER_NARROW_MAX_PX = 719
+
+/** Gap between the More button and the top of its menu. */
+const MORE_MENU_OFFSET_PX = 4
 
 /** Top padding of the grid scroller content (the `pt-3` wrapper around the grid). */
 const GRID_PAD_TOP_PX = 12
@@ -79,15 +93,60 @@ const ToolBtn = ({
   disabled,
   colorClassName,
   active,
+  ariaHasPopup,
+  expanded,
 }: {
   icon: React.ComponentType<{ size?: number; 'aria-hidden'?: boolean }>
   label: string
   title?: string
-  onClick?: () => void
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
   disabled?: boolean
   colorClassName?: string
   active?: boolean
+  /** Opens a popup menu: sets aria-haspopup. */
+  ariaHasPopup?: 'menu'
+  /** Whether that popup is open: sets aria-expanded. */
+  expanded?: boolean
 }) => {
+  // Controlled tooltip: it opens on hover, or on focus only when the focus was
+  // a Tab move (lib/focusSource). Focus that a closing menu or dialog puts back
+  // on the button must not open it: nothing hovers the button then, so no
+  // pointerleave would ever close it.
+  const [tipOpen, setTipOpen] = useState(false)
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const hoveredRef = useRef(false)
+  const focusedViaTabRef = useRef(false)
+
+  const onTipOpenChange = (next: boolean) => {
+    if (!next) {
+      setTipOpen(false)
+      return
+    }
+    if (expanded) return
+    const tabFocused = document.activeElement === triggerRef.current && isTabFocus()
+    if (hoveredRef.current || tabFocused) setTipOpen(true)
+  }
+
+  const triggerHandlers = {
+    ref: (el: HTMLElement | null) => {
+      triggerRef.current = el
+    },
+    onPointerEnter: () => {
+      hoveredRef.current = true
+    },
+    onPointerLeave: () => {
+      hoveredRef.current = false
+      const tabFocused = document.activeElement === triggerRef.current && focusedViaTabRef.current
+      if (!tabFocused) setTipOpen(false)
+    },
+    onFocus: () => {
+      focusedViaTabRef.current = isTabFocus()
+    },
+    onBlur: () => {
+      focusedViaTabRef.current = false
+    },
+  }
+
   const button = (
     <button
       type="button"
@@ -96,6 +155,8 @@ const ToolBtn = ({
       title={title}
       aria-label={label}
       aria-pressed={active !== undefined ? active : undefined}
+      aria-haspopup={ariaHasPopup}
+      aria-expanded={expanded}
       className={cn(
         'w-8 h-8 flex items-center justify-center rounded transition-colors border',
         FOCUS_RING,
@@ -113,8 +174,9 @@ const ToolBtn = ({
     </button>
   )
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    // While the button's own menu is open the tooltip stays closed.
+    <Tooltip open={expanded ? false : tipOpen} onOpenChange={onTipOpenChange}>
+      <TooltipTrigger asChild {...triggerHandlers}>
         {disabled ? (
           <span className="inline-flex rounded">{button}</span>
         ) : (
@@ -133,6 +195,11 @@ export default function App() {
   const [newStyleOpen, setNewStyleOpen] = useState(false)
   const [importExportOpen, setImportExportOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
+  const [moreMenu, setMoreMenu] = useState<{
+    x: number
+    y: number
+    restoreFocusTo: HTMLElement
+  } | null>(null)
   const searchRootRef = useRef<HTMLDivElement>(null)
   const [loraFetchStatus, setLoraFetchStatus] = useState<{
     status: string; done: number; total: number; errors: number
@@ -143,11 +210,6 @@ export default function App() {
     tab,
     styles,
     activeSource,
-    toggleCompact,
-    compactMode,
-    collapsedCategories,
-    collapseAll,
-    expandAll,
     activeCategory,
     showToast,
     presetsCorrupt,
@@ -158,17 +220,14 @@ export default function App() {
       tab: s.tab,
       styles: s.styles,
       activeSource: s.activeSource,
-      toggleCompact: s.toggleCompact,
-      compactMode: s.compactMode,
-      collapsedCategories: s.collapsedCategories,
-      collapseAll: s.collapseAll,
-      expandAll: s.expandAll,
       activeCategory: s.activeCategory,
       showToast: s.showToast,
       presetsCorrupt: s.presetsCorrupt,
       setThemeMode: s.setThemeMode,
     })),
   )
+
+  const headerTitle = `Style Grid — ${tab}`
 
   const activeSourceIsReadOnly = !!activeSource &&
     styles.some(s => s.source_file === activeSource && s.read_only)
@@ -213,6 +272,9 @@ export default function App() {
   useEffect(() => {
     setThemeMode(appliedThemeMode())
   }, [setThemeMode])
+
+  // Toolbar tooltips need to know whether focus came from Tab (see ToolBtn).
+  useEffect(() => installFocusSourceTracking(), [])
 
   useEffect(() => {
     try {
@@ -343,20 +405,32 @@ export default function App() {
     <div className="flex flex-col bg-sg-bg text-sg-text"
       style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
-      {/* flex-wrap: below the search minimum the toolbar wraps to a second row instead of clipping. */}
-      <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5
-                    border-b border-sg-border">
-        <span className="text-sg-accent font-semibold inline-flex items-center gap-1.5">
+      {/* One row, never wraps: below HEADER_NARROW_MAX_PX the title text and the tab badge give way. */}
+      <div
+        className="shrink-0 flex flex-nowrap items-center gap-3 px-4 py-2.5 min-w-0
+                   border-b border-sg-border"
+        data-sg-header="true"
+      >
+        <div
+          role="group"
+          aria-label={headerTitle}
+          title={headerTitle}
+          className="shrink-0 text-sg-accent font-semibold inline-flex items-center gap-1.5"
+          data-sg-header-title="true"
+        >
           <Palette size={16} aria-hidden />
-          Style Grid
-        </span>
-        <span className="text-xs text-sg-muted border border-sg-border/50 
-                   px-1.5 py-0.5 rounded font-mono">
+          <span className="max-[719px]:sr-only">Style Grid</span>
+        </div>
+        <span
+          className="shrink-0 text-xs text-sg-muted border border-sg-border/50
+                     px-1.5 py-0.5 rounded font-mono max-[719px]:hidden"
+          data-sg-tab-badge="true"
+        >
           {tab}
         </span>
         <SourceFilter />
         <div
-          className="flex-1"
+          className="flex-1 min-w-0"
           style={{ minWidth: SEARCH_MIN_WIDTH_PX }}
           ref={searchRootRef}
         >
@@ -364,40 +438,18 @@ export default function App() {
         </div>
         <TooltipProvider>
           <div className="flex items-center gap-1.5 shrink-0 ml-auto">
-            <ToolBtn
-              icon={Save}
-              label="Backup / Restore"
-              onClick={() => setBackupOpen(true)}
-            />
-            <ToolBtn
-              icon={Import}
-              label="Import/Export"
-              onClick={() => setImportExportOpen(true)}
-            />
-            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
-            <ToolBtn
-              icon={Eraser}
-              label="Clear all selected styles"
-              colorClassName="text-sg-danger-text"
-              onClick={() => {
-                sendToHost({ type: 'SG_CLEAR_ALL' })
-              }}
-            />
-            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
-            <ToolBtn
-              icon={Rows3}
-              label="Compact mode"
-              active={compactMode}
-              onClick={() => toggleCompact()}
-            />
-            <ToolBtn
-              icon={collapsedCategories.size > 0 ? ChevronsUpDown : ChevronsDownUp}
-              label={collapsedCategories.size > 0 ? 'Expand all' : 'Collapse all'}
-              onClick={() =>
-                collapsedCategories.size > 0 ? expandAll() : collapseAll()
-              }
-            />
-            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
+            {activeCategory === LORA_VIEW && (
+              <ToolBtn
+                icon={Globe}
+                label={
+                  loraFetchStatus?.status === 'running'
+                    ? `Fetching titles from CivitAI… ${loraFetchStatus.done}/${loraFetchStatus.total}`
+                    : 'Fetch LoRA titles from CivitAI\n(reads modelId already in each LoRA\'s local .json; nothing sent to CivitAI beyond the request itself)'
+                }
+                disabled={loraFetchStatus?.status === 'running'}
+                onClick={fetchLoraTitles}
+              />
+            )}
             <ToolBtn
               icon={Plus}
               label={
@@ -411,18 +463,21 @@ export default function App() {
               disabled={!activeSource || activeSourceIsReadOnly}
               onClick={() => setNewStyleOpen(true)}
             />
-            {activeCategory === LORA_VIEW && (
-              <ToolBtn
-                icon={Globe}
-                label={
-                  loraFetchStatus?.status === 'running'
-                    ? `Fetching titles from CivitAI… ${loraFetchStatus.done}/${loraFetchStatus.total}`
-                    : 'Fetch LoRA titles from CivitAI\n(reads modelId already in each LoRA\'s local .json; nothing sent to CivitAI beyond the request itself)'
-                }
-                disabled={loraFetchStatus?.status === 'running'}
-                onClick={fetchLoraTitles}
-              />
-            )}
+            <ToolBtn
+              icon={MoreHorizontal}
+              label="More"
+              ariaHasPopup="menu"
+              expanded={moreMenu !== null}
+              onClick={(e) => {
+                const opener = e.currentTarget
+                const rect = opener.getBoundingClientRect()
+                setMoreMenu({
+                  x: rect.left,
+                  y: rect.bottom + MORE_MENU_OFFSET_PX,
+                  restoreFocusTo: opener,
+                })
+              }}
+            />
             <ToolBtn
               icon={isFullscreen ? Minimize2 : Maximize2}
               label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -437,6 +492,35 @@ export default function App() {
             </span>
           </div>
         </TooltipProvider>
+        {moreMenu && (
+          <ViewportFixedMenu
+            x={moreMenu.x}
+            y={moreMenu.y}
+            onClose={() => setMoreMenu(null)}
+            restoreFocusTo={moreMenu.restoreFocusTo}
+          >
+            <MenuItem
+              className="flex items-center gap-2"
+              onSelect={() => {
+                setMoreMenu(null)
+                setImportExportOpen(true)
+              }}
+            >
+              <Import className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Import / Export…
+            </MenuItem>
+            <MenuItem
+              className="flex items-center gap-2"
+              onSelect={() => {
+                setMoreMenu(null)
+                setBackupOpen(true)
+              }}
+            >
+              <History className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Backup &amp; restore…
+            </MenuItem>
+          </ViewportFixedMenu>
+        )}
       </div>
 
       {presetsCorrupt && (
@@ -467,7 +551,7 @@ export default function App() {
         style={{
           flex: '1 1 0',
           overflow: 'hidden',
-          minHeight: GRID_PAD_TOP_PX + gridMinVisibleHeightPx(compactMode, !isFullscreen),
+          minHeight: GRID_PAD_TOP_PX + gridMinVisibleHeightPx(!isFullscreen),
         }}
       >
         {/* Sidebar */}

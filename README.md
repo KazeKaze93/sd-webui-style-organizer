@@ -71,7 +71,7 @@ git clone <this-repository-url> sd-webui-style-organizer
 3. Pick a source (`All Sources` or a specific CSV).
 4. Search or browse categories.
 5. Click a style card to apply/unapply.
-6. Use the **top bar** icon buttons (right of the search box) for backup, import/export, compact/collapse, etc. Presets live in the **left sidebar**.
+6. Use the **top bar** icon buttons (right of the search box): **⋯ More** holds Import / Export and Backup & restore; **Clear** is in the selection tray. Presets live in the **left sidebar**.
 
 ## Theme
 
@@ -281,9 +281,6 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 |---|---|
 | Backup / Restore | Opens the **Backup / Restore** modal. **Create backup** writes a timestamped snapshot under the user-data `backups/` folder (folder + `.zip`) of loaded style CSVs plus `presets.json`, `category_order.json`, `favorites.json`, and `recent.json` when present. Keeps directory distinction (`styles/` vs `samples/` vs external paths) so same basenames do not overwrite each other. Thumbnails are **opt-in** via the modal checkbox **Include thumbnails (large)** (API body flag `include_thumbnails`). **Restore** picks a listed snapshot and creates an automatic safety backup of the current state first. Failures, HTTP errors, or “nothing to copy” are reported via toasts (see `docs/API.md` § `/backup` / `/restore`). |
 | Import/Export | Export/import styles, presets, **favorites**, and **recent**. Colliding names are skipped and listed in a toast; non-colliding styles are imported into a new CSV; presets still merge. |
-| Clear all selected styles | Clears all selected styles in the panel and on the host, and wipes both the prompt and negative prompt textareas. |
-| Compact mode | Toggles a denser card layout (`aria-pressed` when active). |
-| Collapse all / Expand all | One control: **Collapse all** when every category is expanded; **Expand all** when any category is collapsed. |
 | New style | Creates a style in the **currently selected CSV**. Disabled until a specific (non–read-only) source is selected — tooltip explains why. |
 | Fetch LoRA titles | Visible **only** in the **🧬 LoRA** sidebar view. Opt-in: calls CivitAI’s public API using `modelId` already present in each LoRA’s local `.json` metadata; caches titles under user-data `lora_titles.json`. Rate-limited; reopen the panel after the run to see updated labels. |
 
@@ -341,7 +338,7 @@ Optional local config (not committed; still under the extension folder):
 |---|---|
 | `config/lora_roots.json` | Extra LoRA scan roots / optional `max_depth` (see `.example`) |
 
-Local UI chrome still uses browser localStorage (active source, compact/collapse preferences, thumbnail cache-bust versions). Favorites and Recent are **server-side** under the user data root. On first open after upgrade, legacy `sg_v2_favorites` / `sg_v2_recent` localStorage keys are migrated once when the server files are absent.
+Local UI chrome still uses browser localStorage (active source, thumbnail cache-bust versions). Favorites and Recent are **server-side** under the user data root. On first open after upgrade, legacy `sg_v2_favorites` / `sg_v2_recent` localStorage keys are migrated once when the server files are absent.
 
 **Export / Import** JSON includes styles, presets, **favorites**, and **recent**.
 

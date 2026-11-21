@@ -16,9 +16,9 @@ export function sleep(ms) {
 }
 
 /**
- * Toggle compact / fullscreen to match density label.
+ * Toggle fullscreen to match density label.
  * @param {import('playwright').Frame} frame
- * @param {'normal' | 'compact' | 'fullscreen'} mode
+ * @param {'normal' | 'fullscreen'} mode
  */
 export async function setDensity(frame, mode) {
   await frame.evaluate((m) => {
@@ -27,17 +27,7 @@ export async function setDensity(frame, mode) {
         re.test(b.getAttribute('aria-label') || b.getAttribute('title') || ''),
       )
 
-    const compactBtn = byLabel(/compact mode/i)
     const fsBtn = byLabel(/^(exit )?fullscreen$/i)
-
-    const compactOn =
-      compactBtn &&
-      (compactBtn.getAttribute('aria-pressed') === 'true' ||
-        /\bbg-sg-accent\b/.test(compactBtn.className) ||
-        compactBtn.dataset.state === 'on')
-
-    const wantCompact = m === 'compact'
-    if (compactBtn && Boolean(compactOn) !== wantCompact) compactBtn.click()
 
     const isFs = Boolean(fsBtn && /exit fullscreen/i.test(fsBtn.getAttribute('aria-label') || ''))
     const wantFs = m === 'fullscreen'

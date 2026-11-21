@@ -170,6 +170,17 @@ export function parseFrameMessage(data) {
             if (typeof data.fullscreen !== "boolean") return null;
             return { type: type, fullscreen: data.fullscreen };
 
+        case "SG_STYLE_RENAMED":
+            if (!isNonEmptyString(data.old_name)) return null;
+            if (!isNonEmptyString(data.new_name)) return null;
+            if (typeof data.source_file !== "string") return null;
+            return {
+                type: type,
+                old_name: data.old_name,
+                new_name: data.new_name,
+                source_file: data.source_file,
+            };
+
         default:
             return null;
     }

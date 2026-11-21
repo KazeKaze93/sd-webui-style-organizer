@@ -1,5 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  Check,
   Copy,
   CopyPlus,
   FolderInput,
@@ -150,7 +151,6 @@ export const StyleCard = memo(function StyleCard({
             tabIndex={tabIndex}
             aria-pressed={isSelected}
             aria-label={accessibleName}
-            title={`${style.name}\nRight-click for options`}
             onFocus={() => {
               if (cellRow != null && cellCol != null) {
                 setFocusedCell({ row: cellRow, col: cellCol })
@@ -225,9 +225,16 @@ export const StyleCard = memo(function StyleCard({
           className="fixed z-[9999] bg-sg-surface border border-sg-border rounded-lg shadow-xl py-1 min-w-48"
         >
           <MenuItem
+            className="flex items-center gap-2"
             onSelect={() => { toggleStyle(style); setMenuPos(null) }}
           >
-            {isSelected ? '✕ Deselect' : '✓ Select'}
+            {/* Check mark is state, not action: shown only while selected. */}
+            <Check
+              size={14}
+              aria-hidden="true"
+              className={isSelected ? undefined : 'invisible'}
+            />
+            {isSelected ? 'Deselect' : 'Select'}
           </MenuItem>
           <MenuItem
             onSelect={() => { toggleFavorite(style); setMenuPos(null) }}

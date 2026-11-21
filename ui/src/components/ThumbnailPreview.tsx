@@ -116,6 +116,9 @@ export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children
                 </div>
               )}
             </div>
+            <div className="px-2.5 py-1.5 border-t border-sg-border text-[11px] text-sg-muted">
+              Right-click for options
+            </div>
           </div>
         </div>,
         document.body

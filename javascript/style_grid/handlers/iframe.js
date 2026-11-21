@@ -71,7 +71,8 @@ function initSGFrame(tab) {
             var target = e.target;
             if (!target) return;
             if (target.closest && target.closest(".sg-trigger-btn")) return;
-            if (target.closest && target.closest(".sg-editor-overlay, .sg-source-picker")) return;
+            // The batch-preview window is a host overlay over the panel.
+            if (target.closest && target.closest(".sg-editor-overlay")) return;
             if (!wrapper.contains(target)) {
                 closeSGPanel(tab);
             }

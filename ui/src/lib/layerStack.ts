@@ -1,14 +1,17 @@
 import { useEffect, useId, useRef } from 'react'
 
+/** Return false to refuse (e.g. a busy dialog): the layer stays on the stack. */
+type LayerClose = () => void | boolean
+
 type LayerEntry = {
   id: string
-  close: () => void
+  close: LayerClose
 }
 
 const stack: LayerEntry[] = []
 
 /** Push a dismissible overlay layer. Returns unregister (safe if already closed). */
-export function registerLayer(id: string, close: () => void): () => void {
+export function registerLayer(id: string, close: LayerClose): () => void {
   const entry: LayerEntry = { id, close }
   stack.push(entry)
   return () => {
@@ -17,11 +20,14 @@ export function registerLayer(id: string, close: () => void): () => void {
   }
 }
 
-/** Close the topmost registered layer (LIFO). True if a layer was closed. */
+/**
+ * Ask the topmost registered layer to close (LIFO). True if a layer handled
+ * the request, including one that refused: the key press is still its own.
+ */
 export function closeTopLayer(): boolean {
   const top = stack.pop()
   if (!top) return false
-  top.close()
+  if (top.close() === false) stack.push(top)
   return true
 }
 
@@ -38,7 +44,7 @@ export function __resetLayerStackForTests(): void {
  * While `open` is true, registers this surface on the layer stack.
  * Cleanup on close / unmount unregisters without calling `close`.
  */
-export function useLayer(open: boolean, close: () => void): void {
+export function useLayer(open: boolean, close: LayerClose): void {
   const id = useId()
   const closeRef = useRef(close)
 
@@ -48,8 +54,6 @@ export function useLayer(open: boolean, close: () => void): void {
 
   useEffect(() => {
     if (!open) return
-    return registerLayer(id, () => {
-      closeRef.current()
-    })
+    return registerLayer(id, () => closeRef.current())
   }, [open, id])
 }

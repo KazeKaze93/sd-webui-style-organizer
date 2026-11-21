@@ -86,7 +86,7 @@ Bridge types are declared in `ui/src/bridge.ts`.
 
 **Theme (`SG_THEME`):** Host module `javascript/style_grid/theme.js` picks `light` / `dark` from computed backgrounds (`gradio-app`, `.gradio-container`, `body`, `html`), skipping transparent / low-alpha candidates (`a < 0.5`) before falling back to `prefers-color-scheme`. Contract shape is `{ type: 'SG_THEME', mode }` (not `theme`). `iframe.js` appends `&theme=` on `frame.src`, posts on `SG_READY`, and watches for live changes via `watchHostThemeMode`. The iframe applies mode with `ui/src/lib/themeMode.ts` (`data-sg-theme` + Tailwind `darkMode: 'class'` channel tokens in `index.css`). Contract tests: `ui/src/lib/hostTheme.contract.test.ts`.
 
-**Name+source identity:** Favorites / Recent / host `selected` / `applied` / nest order use `styleRowKey` / `styleIdentityKey` = `source_file + "\\0" + name`. Legacy bare-name favorites migrate in memory on style load when the name is unique; ambiguous duplicates are dropped (not guessed). Presets store `{name, source_file}` (normalized on load). V2 **`SG_APPLY`** / **`SG_UNAPPLY`** carry `source_file`; host resolve uses `findStyleByNameAndSource`. Thumbnail messages **`SG_GENERATE_PREVIEW` / `SG_UPLOAD_PREVIEW`** require `source`; host completion **`SG_THUMB_DONE`** includes `source_file` so duplicate-name cards cache-bust independently.
+**Name+source identity:** Favorites / Recent / host `selected` / `applied` / nest order use `styleRowKey` / `styleIdentityKey` = `source_file + "\\0" + name`. Favorites and Recent are server data (`data/favorites.json`, `data/recent.json`; see `docs/API.md` § favorites/recent); a rename migrates them on the server. The host no longer keeps them in localStorage (old `sg_favorites` / `sg_recent_*` values are left untouched and unused). Presets store `{name, source_file}` (normalized on load). V2 **`SG_APPLY`** / **`SG_UNAPPLY`** carry `source_file`; host resolve uses `findStyleByNameAndSource`. Thumbnail messages **`SG_GENERATE_PREVIEW` / `SG_UPLOAD_PREVIEW`** require `source`; host completion **`SG_THUMB_DONE`** includes `source_file` so duplicate-name cards cache-bust independently.
 
 ```mermaid
 sequenceDiagram
@@ -99,8 +99,10 @@ sequenceDiagram
   API-->>H: categories + presets
   H->>F: SG_INIT (styles array)
   Note over F: Tab identity from SG_INIT only; SG_HOST_TAB ignored for per-frame tab
-  F->>H: SG_APPLY (styleId + source_file) / SG_UNAPPLY / actions
-  H->>API: CRUD/thumbnail/preset/etc requests
+  F->>H: SG_APPLY (styleId + source_file) / SG_UNAPPLY / wildcards / previews
+  F->>API: style CRUD, presets, import/export, backup (iframe dialogs)
+  F->>H: SG_REFRESH / SG_STYLE_RENAMED after a change
+  H->>API: thumbnail generation, styles reload
   H->>F: SG_STYLES_UPDATE / SG_TOAST / SG_THUMB_DONE (name+source) / progress
 ```
 
@@ -124,13 +126,15 @@ sequenceDiagram
 
 **Prompt tokenization (`splitTopLevelCommas`):** brace-aware as well as paren-aware — a comma only splits when **both** depths are zero, so `{sg:cat:A,B}` stays one segment. Anything that tokenizes prompt text must use this helper rather than `.split(",")`, or slice tokens get shredded. Consumers: `removeWildcardCategory`, `reorderWildcardCategories`, `parseStylePromptTags`, `scalePromptWeights`. **Single source:** `javascript/style_grid/prompt-utils.js`. Runtime load path: `style_grid.mjs` → `main.js` → `prompt-utils-bridge.js` (installs helpers on `globalThis`).
 
-**Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` or `.sg-source-picker` are excluded so **host overlays** (editors, duplicate-source picker) do not dismiss the Style Grid frame.
+**Floating panel outside-click:** `initSGFrame` registers a capture-phase `document` `mousedown` listener to hide the wrapper when clicking outside. Clicks on `.sg-editor-overlay` are excluded so the one remaining **host overlay** (batch preview generation) does not dismiss the Style Grid frame.
 
-**Backup / Restore (`SG_BACKUP`):** The iframe posts `SG_BACKUP`; the host opens the **Backup / Restore** modal (`showBackupRestore`). Create uses **`apiPost("/style_grid/backup", { include_thumbnails })`**; list uses **`GET /style_grid/backups`**; restore uses **`POST /style_grid/restore`** (automatic safety snapshot first). Members include CSVs plus `presets.json`, `category_order.json`, `favorites.json`, `recent.json` (thumbnails opt-in). See `docs/API.md` § POST `/backup` / `/restore`.
+**Dialogs live in the iframe:** Edit / New style, Duplicate, Move to category, Delete, Import / Export and Backup & restore are React dialogs in `ui/src/components/` built on `ModalShell` (layer stack for Escape, focus trap). They call the API themselves and then post `SG_REFRESH` (or `SG_STYLE_RENAMED` after a rename) so the host reloads its style cache and applied state. The host no longer accepts `SG_NEW_STYLE`, `SG_EDIT_STYLE`, `SG_MOVE_TO_CATEGORY`, `SG_DELETE_STYLE`, `SG_DUPLICATE_STYLE`, `SG_IMPORT_EXPORT` or `SG_BACKUP` (`parseFrameMessage` drops them). Only the batch-preview window is still a host overlay (`handlers/thumbnails-batch.js`, `.sg-editor-*` / `.sg-batch-*` in `style.css`).
 
-**Mutating host requests:** Host `POST` / `DELETE` go through `apiPost` / `apiDelete` in `javascript/style_grid/api.js` (shared headers + JSON parse). Panel thumbnail delete uses `styleGridDelete` in `ui/src/lib/styleGridFetch.ts`. Do not call raw `fetch(..., { method: "POST"|"DELETE" })` from `javascript/style_grid/` for mutating routes.
+**Backup & restore:** the iframe dialog (`BackupRestoreDialog.tsx`, helpers in `ui/src/lib/backups.ts`) lists **`GET /style_grid/backups`**, creates with **`POST /style_grid/backup { include_thumbnails }`** and restores with **`POST /style_grid/restore { snapshot }`** (automatic safety snapshot first, without thumbnails). Members include CSVs plus `presets.json`, `category_order.json`, `favorites.json`, `recent.json` (thumbnails opt-in); restore writes back only those metadata files, `styles/*.csv` of the extension and thumbnails. The server keeps the newest `keep_snapshots` (20) snapshots and never prunes the one being restored. See `docs/API.md` § `/backups`, `/backup`, `/restore`.
 
-**Import:** failed `POST /import` (including name **collisions**) is shown to the user (alert with error + colliding names); success path unchanged.
+**Mutating requests:** iframe writes go through `styleGridPost` / `styleGridDelete` in `ui/src/lib/styleGridFetch.ts` (write token + JSON); responses are read with `readApiResponse`. Host writes (thumbnail generation) go through `apiPost` in `javascript/style_grid/api.js`. Do not call raw `fetch(..., { method: "POST"|"DELETE" })` for mutating routes.
+
+**Import:** the iframe Import / Export dialog parses the file, posts it to `POST /import` and shows the result inline (imported count, skipped collisions, invalid entries); errors stay inline with the file still selected.
 
 **Presets:** Sidebar **Presets** renders **`PresetList`** / **`PresetRow`** (Replace / Add / rename / delete). Save is **`SaveSetDialog`** from **`SelectedBar`** (`savePreset` / overwrite guard on the API). Load applies name+source members via the host apply path (`SG_APPLY` / selection sync); there is no host Package modal and no **`StyleCard presetName`** tile mode.
 

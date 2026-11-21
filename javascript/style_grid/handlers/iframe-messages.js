@@ -4,10 +4,9 @@
 import {
     state,
     styleIdentityKey,
+    remapStyleNameReferences,
     setStoredSource,
-    migrateFavoritesInMemory,
     pushStyleIntoCategories,
-    findStyleByNameAndSource,
     sourceLeaf,
 } from "../state.js";
 import {
@@ -15,12 +14,6 @@ import {
 } from "../prompt-utils.js";
 import {
     qs,
-    openStyleEditor,
-    duplicateStyle,
-    deleteStyle,
-    moveToCategory,
-    showExportImport,
-    showBackupRestore,
     syncSelectionChrome,
     anySGFrameVisible,
     setHostPageScrollLock,
@@ -59,6 +52,12 @@ import {
     answerFullscreenRequest,
     announceFullscreenState,
 } from "./panel-resize.js";
+import {
+    applyStyleRenamed,
+} from "./style-renamed.js";
+import {
+    applyRefresh,
+} from "./refresh.js";
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
             // Same-origin + this iframe's contentWindow only (two tabs each register a listener).
@@ -66,58 +65,6 @@ function installIframeMessageBridge(tab, frame) {
             const msg = parseFrameMessage(e.data);
             if (!msg) return;
 
-            function refreshAndNotifyFrame() {
-                fetch("/style_grid/styles")
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        state[tab].categories = {};
-                        allStyles.forEach(function (s) {
-                            var cat = s.category || "OTHER";
-                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
-                            state[tab].categories[cat].push(s);
-                        });
-                        if (frame && frame.contentWindow) {
-                            postToFrame(frame, {
-                                type: "SG_STYLES_UPDATE",
-                                styles: allStyles
-                            });
-                        }
-                    });
-            }
-            state[tab].refreshAndNotifyFrame = refreshAndNotifyFrame;
-            function findStyleByName(styleName) {
-                // Unique match only (dedupe by styleIdentityKey); ambiguous -> null.
-                var cats = (state[tab] && state[tab].categories) || {};
-                var matches = [];
-                var seen = {};
-                for (var cat in cats) {
-                    if (!Object.prototype.hasOwnProperty.call(cats, cat)) continue;
-                    (cats[cat] || []).forEach(function (s) {
-                        if (s.name !== styleName) return;
-                        var key = styleIdentityKey(s.name, s.source_file || s.source || "");
-                        if (seen[key]) return;
-                        seen[key] = true;
-                        matches.push(s);
-                    });
-                }
-                return matches.length === 1 ? matches[0] : null;
-            }
-            function findStyleForMessage(styleName, sourceFile) {
-                if (sourceFile) {
-                    return findStyleByNameAndSource(tab, styleName, sourceFile);
-                }
-                return findStyleByName(styleName);
-            }
-            function toastAmbiguousPack(styleName) {
-                if (frame && frame.contentWindow) {
-                    postToFrame(frame, {
-                        type: "SG_TOAST",
-                        message: '"' + styleName + '" exists in several packs; pick it from the panel with its pack.',
-                        variant: "info",
-                    });
-                }
-            }
             if (msg.type === "SG_READY") {
                 // Fresh detect at READY time - do not reuse a mode cached at iframe creation.
                 postToFrame(frame, buildThemeMessage(detectHostThemeMode()));
@@ -136,7 +83,6 @@ function installIframeMessageBridge(tab, frame) {
                         allStyles.forEach(function (s) {
                             pushStyleIntoCategories(state[tab].categories, s);
                         });
-                        migrateFavoritesInMemory(tab);
                         postToFrame(frame, {
                             type: "SG_INIT",
                             tab: tab,
@@ -198,21 +144,20 @@ function installIframeMessageBridge(tab, frame) {
                 setHostPageScrollLock(anySGFrameVisible());
             }
 
-            if (msg.type === "SG_BACKUP") {
-                showBackupRestore(tab);
-            }
-            if (msg.type === "SG_REFRESH") {
-                refreshPanel(tab);
+            // Shared by SG_REFRESH and SG_STYLE_RENAMED: host state first, then the iframe catalog.
+            // opts go to refreshPanel (quietVanishedToast).
+            function refreshHostAndFrame(refreshTab, opts) {
+                refreshPanel(refreshTab, opts);
                 fetch("/style_grid/check_update")
                     .then(function () { return fetch("/style_grid/styles"); })
                     .then(function (r) { return r.json(); })
                     .then(function (data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        state[tab].categories = {};
+                        state[refreshTab].categories = {};
                         allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
-                            if (!state[tab].categories[cat]) state[tab].categories[cat] = [];
-                            state[tab].categories[cat].push(s);
+                            if (!state[refreshTab].categories[cat]) state[refreshTab].categories[cat] = [];
+                            state[refreshTab].categories[cat].push(s);
                         });
                         if (frame.contentWindow) {
                             postToFrame(frame, {
@@ -222,38 +167,20 @@ function installIframeMessageBridge(tab, frame) {
                         }
                     });
             }
+
+            if (msg.type === "SG_REFRESH") {
+                applyRefresh(tab, msg, { refresh: refreshHostAndFrame });
+            }
+            // The iframe renamed a style on the server. Remap before refresh:
+            // see handlers/style-renamed.js.
+            if (msg.type === "SG_STYLE_RENAMED") {
+                applyStyleRenamed(tab, msg, {
+                    remap: remapStyleNameReferences,
+                    refresh: refreshHostAndFrame,
+                });
+            }
             if (msg.type === "SG_CLEAR_ALL") {
                 clearAll(tab);
-            }
-            if (msg.type === "SG_IMPORT_EXPORT") {
-                showExportImport(tab);
-            }
-            if (msg.type === "SG_NEW_STYLE") {
-                openStyleEditor(tab, null, msg.sourceFile);
-            }
-            if (msg.type === "SG_EDIT_STYLE") {
-                var styleToEdit = findStyleForMessage(msg.styleId, msg.source_file);
-                if (styleToEdit) {
-                    openStyleEditor(tab, styleToEdit);
-                } else if (!msg.source_file) {
-                    toastAmbiguousPack(msg.styleId);
-                }
-            }
-            if (msg.type === "SG_DUPLICATE_STYLE") {
-                var styleToDup = findStyleForMessage(msg.styleId, msg.source_file);
-                if (styleToDup) {
-                    duplicateStyle(tab, styleToDup, refreshAndNotifyFrame);
-                } else if (!msg.source_file) {
-                    toastAmbiguousPack(msg.styleId);
-                }
-            }
-            if (msg.type === "SG_MOVE_TO_CATEGORY") {
-                var styleToMove = findStyleForMessage(msg.styleId, msg.source_file);
-                if (styleToMove) {
-                    moveToCategory(tab, styleToMove, refreshAndNotifyFrame);
-                } else if (!msg.source_file) {
-                    toastAmbiguousPack(msg.styleId);
-                }
             }
             if (msg.type === "SG_WILDCARD_CATEGORY") {
                 var catId = msg.category || "";
@@ -432,19 +359,6 @@ function installIframeMessageBridge(tab, frame) {
             if (msg.type === "SG_UPLOAD_PREVIEW") {
                 var uploadSource = msg.source || state[tab].selectedSourceFile || "";
                 uploadThumbnail(tab, msg.styleId, uploadSource);
-            }
-            if (msg.type === "SG_DELETE_STYLE") {
-                var styleToDelete = findStyleForMessage(msg.styleId, msg.source_file);
-                if (styleToDelete) {
-                    deleteStyle(
-                        tab,
-                        styleToDelete.name,
-                        styleToDelete.source_file || styleToDelete.source,
-                        refreshAndNotifyFrame
-                    );
-                } else if (!msg.source_file) {
-                    toastAmbiguousPack(msg.styleId);
-                }
             }
         });
 }

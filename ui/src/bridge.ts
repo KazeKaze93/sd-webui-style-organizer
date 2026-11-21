@@ -37,9 +37,6 @@ export type FrameMessage =
   | { type: 'SG_READY' }
   | { type: 'SG_APPLY';         styleId: string; prompt: string; neg: string; source_file: string }
   | { type: 'SG_UNAPPLY';       styleId: string; source_file?: string }
-  | { type: 'SG_EDIT_STYLE';      styleId: string; source_file?: string }
-  | { type: 'SG_DUPLICATE_STYLE'; styleId: string; source_file?: string }
-  | { type: 'SG_MOVE_TO_CATEGORY'; styleId: string; source_file?: string }
   | { type: 'SG_GENERATE_PREVIEW'; styleId: string; source: string }
   | { type: 'SG_UPLOAD_PREVIEW';   styleId: string; source: string }
   | { type: 'SG_WILDCARD_CATEGORY'; category: string; kind?: WildcardKind }
@@ -48,16 +45,22 @@ export type FrameMessage =
   | { type: 'SG_GENERATE_CATEGORY_PREVIEWS'; category: string; missingCount: number; source?: string }
   | { type: 'SG_REORDER_STYLES'; styleIds: string[] }
   | { type: 'SG_REORDER_WILDCARDS'; categories: WildcardRef[] }
-  | { type: 'SG_DELETE_STYLE';  styleId: string; source_file?: string }
   | { type: 'SG_CLOSE_REQUEST' }
-  | { type: 'SG_BACKUP' }
-  | { type: 'SG_IMPORT_EXPORT' }
-  | { type: 'SG_NEW_STYLE'; sourceFile?: string }
   | { type: 'SG_CLEAR_ALL' }
   | { type: 'SG_SOURCE_CHANGE'; source: string | null }
-  | { type: 'SG_REFRESH' }
+  /**
+   * Reload host state and the catalog after a library change. quiet_vanished:
+   * a selected style is gone on purpose (deleted here), so the host strips its
+   * text without the "no longer in the library" toast.
+   */
+  | { type: 'SG_REFRESH'; quiet_vanished?: boolean }
   /** Ask the host to enter or leave fullscreen. The host answers SG_FULLSCREEN_STATE. */
   | { type: 'SG_SET_FULLSCREEN'; fullscreen: boolean }
+  /**
+   * The iframe renamed a style on the server. The host remaps its references
+   * (selection, applied text) to the new name, then refreshes like SG_REFRESH.
+   */
+  | { type: 'SG_STYLE_RENAMED'; old_name: string; new_name: string; source_file: string }
 
 export interface Style {
   name:              string

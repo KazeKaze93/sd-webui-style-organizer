@@ -81,11 +81,16 @@ export function parseFrameMessage(data) {
     switch (type) {
         case "SG_READY":
         case "SG_CLOSE_REQUEST":
-        case "SG_BACKUP":
-        case "SG_IMPORT_EXPORT":
         case "SG_CLEAR_ALL":
-        case "SG_REFRESH":
             return { type: type };
+
+        case "SG_REFRESH":
+            // quiet_vanished: the iframe removed a style on purpose (delete), so
+            // the "no longer in the library" toast must not appear.
+            if (data.quiet_vanished !== undefined && typeof data.quiet_vanished !== "boolean") {
+                return null;
+            }
+            return { type: type, quiet_vanished: data.quiet_vanished === true };
 
         case "SG_APPLY":
             if (!isNonEmptyString(data.styleId)) return null;
@@ -101,10 +106,6 @@ export function parseFrameMessage(data) {
             };
 
         case "SG_UNAPPLY":
-        case "SG_EDIT_STYLE":
-        case "SG_DUPLICATE_STYLE":
-        case "SG_MOVE_TO_CATEGORY":
-        case "SG_DELETE_STYLE":
             if (!isNonEmptyString(data.styleId)) return null;
             if (!isOptionalString(data.source_file)) return null;
             return {
@@ -158,10 +159,6 @@ export function parseFrameMessage(data) {
             if (!Array.isArray(data.categories)) return null;
             return { type: type, categories: data.categories };
 
-        case "SG_NEW_STYLE":
-            if (!isOptionalString(data.sourceFile)) return null;
-            return { type: type, sourceFile: data.sourceFile };
-
         case "SG_SOURCE_CHANGE":
             if (!(data.source === null || typeof data.source === "string")) return null;
             return { type: type, source: data.source };
@@ -169,6 +166,17 @@ export function parseFrameMessage(data) {
         case "SG_SET_FULLSCREEN":
             if (typeof data.fullscreen !== "boolean") return null;
             return { type: type, fullscreen: data.fullscreen };
+
+        case "SG_STYLE_RENAMED":
+            if (!isNonEmptyString(data.old_name)) return null;
+            if (!isNonEmptyString(data.new_name)) return null;
+            if (typeof data.source_file !== "string") return null;
+            return {
+                type: type,
+                old_name: data.old_name,
+                new_name: data.new_name,
+                source_file: data.source_file,
+            };
 
         default:
             return null;

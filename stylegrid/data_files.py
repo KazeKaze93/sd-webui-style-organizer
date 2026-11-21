@@ -29,13 +29,15 @@ from stylegrid.safe_persistence import (
     write_atomic,
     write_json_atomic,
 )
-from stylegrid.source_ids import is_source_id, to_source_id
+from stylegrid.source_ids import is_source_id, source_id_for_compare, to_source_id
 from stylegrid.wildcards import TOKEN_SGD
 
 log = logging.getLogger(__name__)
 
 __all__ = [
     "CorruptDataError",
+    "remap_identity_key",
+    "rename_identity_items",
     "load_presets",
     "save_presets",
     "normalize_presets",
@@ -53,6 +55,7 @@ __all__ = [
     "classify_identity_items",
     "migrate_identity_files_once",
     "style_row_key",
+    "BACKUP_KEEP_SNAPSHOTS",
     "backup_csv_files",
     "list_backups",
     "restore_from_backup",
@@ -338,6 +341,86 @@ def migrate_recent_once(items):
                 items, styles, link_identical_to_all=False
             )["stored"]
     return _migrate_items_once(RECENT_FILE, items, max_len=RECENT_MAX)
+
+
+IDENTITY_KEY_SEP = "\0"
+
+
+def remap_identity_key(entry, old_name, new_name, source_id, *, legacy_unique=False):
+    """Return *entry* rewritten for a style rename, or *entry* itself when it is not that style.
+
+    Favorites/recent store ``"<source id>\\0<name>"`` (the client's styleRowKey).
+    Only the key of ``(source_id, old_name)`` is rewritten; the stored source part
+    is kept byte for byte. A same-named style in another file is never touched.
+
+    A legacy entry is a bare name with no file. It is rewritten only when
+    *legacy_unique* is true (``old_name`` existed in exactly one source file before
+    the rename, so the bare name could only mean this style), and becomes a full
+    ``source_id + name`` key. Otherwise it is left as it is.
+    """
+    if not isinstance(entry, str):
+        return entry
+    sep = entry.find(IDENTITY_KEY_SEP)
+    if sep == -1:
+        if legacy_unique and entry == old_name:
+            return source_id + IDENTITY_KEY_SEP + new_name
+        return entry
+    stored_source = entry[:sep]
+    if entry[sep + 1:] != old_name:
+        return entry
+    if stored_source != source_id and source_id_for_compare(stored_source) != source_id:
+        return entry
+    return stored_source + IDENTITY_KEY_SEP + new_name
+
+
+def _rename_in_items_file(path, old_name, new_name, source_id, *, legacy_unique, max_len=None):
+    """Rewrite one ``{"items": [...]}`` file for a rename. Returns True when it changed.
+
+    Order is kept. If the new key was already present, the two entries collapse
+    into the earlier one (recent.json is most-recent-first, so the more recent
+    position wins). Missing or corrupt files are left alone.
+    """
+    with locked_path(path):
+        cleanup_stale_tmp(path)
+        if not os.path.isfile(path):
+            return False
+        try:
+            raw = load_json_object(path)
+        except CorruptDataError as exc:
+            log.warning("[Style Grid] rename: identity file skipped (corrupt): %s", exc)
+            return False
+        current = _normalize_string_list(raw.get("items", []), max_len=max_len)
+        remapped = [
+            remap_identity_key(
+                entry, old_name, new_name, source_id, legacy_unique=legacy_unique
+            )
+            for entry in current
+        ]
+        stored = _normalize_string_list(remapped, max_len=max_len)
+        if stored == current:
+            return False
+        write_json_atomic(path, {"items": stored})
+        return True
+
+
+def rename_identity_items(old_name, new_name, source_id, *, legacy_unique=False):
+    """Carry favorites.json and recent.json entries over a style rename.
+
+    *source_id* is the public source id of the file the style lives in.
+    Returns ``{"favorites": bool, "recent": bool}`` (which files changed).
+    """
+    if not old_name or not new_name or old_name == new_name or not source_id:
+        return {"favorites": False, "recent": False}
+    return {
+        "favorites": _rename_in_items_file(
+            FAVORITES_FILE, old_name, new_name, source_id,
+            legacy_unique=legacy_unique, max_len=None,
+        ),
+        "recent": _rename_in_items_file(
+            RECENT_FILE, old_name, new_name, source_id,
+            legacy_unique=legacy_unique, max_len=RECENT_MAX,
+        ),
+    }
 
 
 def _coerce_weight(raw):
@@ -642,24 +725,68 @@ def _copy_into_backup(backup_subdir, src, arcname, members):
     members.append(arcname)
 
 
-def _prune_old_backups():
+BACKUP_KEEP_SNAPSHOTS = 20
+"""How many snapshots ``_prune_old_backups`` keeps (ui/src/lib/backups.ts mirrors it)."""
+
+
+def _snapshot_entries():
+    """Snapshot name -> its paths in BACKUP_DIR (the folder, the .zip, or both).
+
+    Only entries whose stem matches the snapshot naming pattern are listed:
+    a folder ``<name>`` and a file ``<name>.zip``. Anything else in the
+    backups folder is not a snapshot and is left alone.
+    """
+    out = {}
     if not os.path.isdir(BACKUP_DIR):
+        return out
+    for entry in os.listdir(BACKUP_DIR):
+        path = os.path.join(BACKUP_DIR, entry)
+        if entry.endswith(".zip"):
+            stem = entry[:-4]
+            if not os.path.isfile(path):
+                continue
+        else:
+            stem = entry
+            if not os.path.isdir(path):
+                continue
+        if _SNAPSHOT_NAME_RE.match(stem):
+            out.setdefault(stem, []).append(path)
+    return out
+
+
+def _prune_old_backups(protect=()):
+    """Delete the oldest snapshots beyond BACKUP_KEEP_SNAPSHOTS.
+
+    A snapshot's folder and .zip go together and count once; an orphan
+    (only one of them) counts once too. Names in *protect* are never
+    deleted: the next oldest goes instead.
+    """
+    snapshots = _snapshot_entries()
+    excess = len(snapshots) - BACKUP_KEEP_SNAPSHOTS
+    if excess <= 0:
         return
-    backups = sorted(os.listdir(BACKUP_DIR))
-    while len(backups) > 20:
-        old_name = backups.pop(0)
-        old_path = os.path.join(BACKUP_DIR, old_name)
-        if os.path.isdir(old_path):
-            shutil.rmtree(old_path, ignore_errors=True)
-        elif os.path.isfile(old_path) and old_name.endswith(".zip"):
-            try:
-                os.remove(old_path)
-            except OSError:
-                pass
+    keep = set(protect)
+    for name in sorted(snapshots):
+        if excess <= 0:
+            break
+        if name in keep:
+            continue
+        for path in snapshots[name]:
+            if os.path.isdir(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+        excess -= 1
 
 
-def backup_csv_files(include_thumbnails=False, *, snapshot_name=None):
+def backup_csv_files(include_thumbnails=False, *, snapshot_name=None, protect=()):
     """Create a timestamped backup of CSVs + metadata JSON (+ optional thumbnails).
+
+    The retention prune that follows never deletes a snapshot named in
+    *protect*.
 
     Returns ``{"ok": bool, "snapshot": str|None, "members": list[str],
     "thumbnails_bytes": int}``.
@@ -710,7 +837,7 @@ def backup_csv_files(include_thumbnails=False, *, snapshot_name=None):
                 src = os.path.join(backup_subdir, *arcname.split("/"))
                 zf.write(src, arcname=arcname)
 
-    _prune_old_backups()
+    _prune_old_backups(protect=protect)
     return {
         "ok": bool(members),
         "snapshot": ts if members else None,
@@ -869,7 +996,13 @@ def restore_from_backup(snapshot_name, *, create_safety=True):
         # Avoid colliding with the snapshot being restored if names match.
         if safety_name == snapshot_name or safety_name.removesuffix("_safety") == snapshot_name:
             safety_name = time.strftime("%Y%m%d_%H%M%S") + "_safety2"
-        safety = backup_csv_files(include_thumbnails=False, snapshot_name=safety_name)
+        # The safety snapshot's prune must not delete the snapshot about to be
+        # read: on a full list that is the oldest one.
+        safety = backup_csv_files(
+            include_thumbnails=False,
+            snapshot_name=safety_name,
+            protect=(snapshot_name,),
+        )
 
     restored = []
     skipped = []

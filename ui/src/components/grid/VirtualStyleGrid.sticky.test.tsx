@@ -32,6 +32,7 @@ vi.mock('./CardsRow', () => ({
   CardsRow: () => <div data-testid="cards-row" />,
 }))
 
+import { GridScroller } from './GridScroller'
 import { VirtualStyleGrid } from './VirtualStyleGrid'
 
 function style(name: string, category: string): Style {
@@ -96,7 +97,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
 
     act(() => {
       root!.render(
-        <div
+        <GridScroller
           style={{
             height: `${VIRTUALIZER_TEST_INITIAL_RECT.height}px`,
             width: `${VIRTUALIZER_TEST_INITIAL_RECT.width}px`,
@@ -111,7 +112,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
             onToggleCollapse={() => {}}
             onSelectAll={() => {}}
           />
-        </div>,
+        </GridScroller>,
       )
     })
 
@@ -132,7 +133,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
     ]
     act(() => {
       root!.render(
-        <div
+        <GridScroller
           style={{
             height: `${VIRTUALIZER_TEST_INITIAL_RECT.height}px`,
             width: `${VIRTUALIZER_TEST_INITIAL_RECT.width}px`,
@@ -147,7 +148,7 @@ describe('VirtualStyleGrid sticky row chrome', () => {
             onToggleCollapse={() => {}}
             onSelectAll={() => {}}
           />
-        </div>,
+        </GridScroller>,
       )
     })
   }

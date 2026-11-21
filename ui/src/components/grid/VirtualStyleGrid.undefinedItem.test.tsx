@@ -16,6 +16,7 @@ vi.mock('@tanstack/react-virtual', () => ({
   }),
 }))
 
+import { GridScroller } from './GridScroller'
 import { VirtualStyleGrid } from './VirtualStyleGrid'
 
 function style(name: string, category: string): Style {
@@ -81,7 +82,7 @@ describe('VirtualStyleGrid undefined virtual item', () => {
     expect(() => {
       act(() => {
         root!.render(
-          <div
+          <GridScroller
             style={{
               height: `${VIRTUALIZER_TEST_INITIAL_RECT.height}px`,
               width: `${VIRTUALIZER_TEST_INITIAL_RECT.width}px`,
@@ -96,7 +97,7 @@ describe('VirtualStyleGrid undefined virtual item', () => {
               onToggleCollapse={() => {}}
               onSelectAll={() => {}}
             />
-          </div>,
+          </GridScroller>,
         )
       })
     }).not.toThrow()

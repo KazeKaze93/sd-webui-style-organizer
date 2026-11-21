@@ -10,6 +10,7 @@ import { SearchBar } from './components/SearchBar'
 import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
+import { GridScroller } from './components/grid/GridScroller'
 import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
 import { Toast } from './components/Toast'
@@ -491,13 +492,13 @@ export default function App() {
           <Sidebar />
         </div>
 
-        {/* Grid */}
-        <div className="px-3 pb-3 min-h-0"
+        {/* Grid — GridScroller is the scroll element the virtualized grid measures. */}
+        <GridScroller className="px-3 pb-3 min-h-0"
           style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
           <div className="pt-3">
             <StyleGrid windowed={!isFullscreen} />
           </div>
-        </div>
+        </GridScroller>
 
         {/* Bottom-center of the body: clipped to it, so never over the header toolbar or the tray. */}
         <Toast />

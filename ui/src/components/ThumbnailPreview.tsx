@@ -3,6 +3,7 @@ import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Style } from '../bridge'
 import { styleRowKey, useStylesStore, useThumbVersion } from '../store/stylesStore'
 import { createHoverIntent, type HoverIntent } from '../lib/hoverIntent'
+import { thumbnailUrl } from '../lib/thumbnailUrl'
 
 /** Delay before the preview opens: avoids flicker during fast cursor travel. */
 const PREVIEW_SHOW_DELAY_MS = 300
@@ -25,10 +26,7 @@ export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children
   const intentRef = useRef<HoverIntent | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const activeSource = useStylesStore((s) => s.activeSource)
-  const sourceForThumb = style.source_file || activeSource || ''
-  const thumbUrl = `/style_grid/thumbnail?name=${encodeURIComponent(style.name)}${
-    sourceForThumb ? `&source=${encodeURIComponent(sourceForThumb)}` : ''
-  }&v=${thumbVersion}`
+  const thumbUrl = thumbnailUrl(style, activeSource, thumbVersion)
   const imgOk = loadedUrl === thumbUrl
 
   const displayName = style.display_name || (style.name.includes('_')

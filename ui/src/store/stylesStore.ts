@@ -261,14 +261,39 @@ export type PresetRecord = {
 
 type StyleIdentity = Pick<Style, 'name' | 'source_file'>
 
-/** Resolve a preset styles[] entry to a library row (name+source, else name-only). */
+function sameContent(a: Style, b: Style): boolean {
+  return (a.prompt ?? '') === (b.prompt ?? '')
+    && (a.negative_prompt ?? '') === (b.negative_prompt ?? '')
+}
+
+/**
+ * Name-only fallback. A name alone does not identify a style: it resolves only
+ * when every row with that name, across all files, has the same prompt and
+ * negative prompt. Diverging rows mean the reference is ambiguous -> undefined.
+ */
+function resolveByNameIfUnambiguous(
+  name: string,
+  styles: Style[],
+  bySource: (s: Style) => boolean,
+): Style | undefined {
+  const candidates = styles.filter((s) => s.name === name && bySource(s))
+  if (candidates.length === 0) return undefined
+  const first = candidates[0]
+  return candidates.every((c) => sameContent(first, c)) ? first : undefined
+}
+
+/**
+ * Resolve a preset styles[] entry to a library row: exact (source file, name)
+ * first; otherwise by name only when that is unambiguous (see above). Legacy
+ * bare-name entries follow the same name rule. Unresolved -> undefined (Missing).
+ */
 export function resolvePresetStyleEntry(
   entry: PresetStyleEntry,
   styles: Style[],
   bySource: (s: Style) => boolean = () => true,
 ): Style | undefined {
   if (typeof entry === 'string') {
-    return styles.find((s) => s.name === entry && bySource(s))
+    return entry ? resolveByNameIfUnambiguous(entry, styles, bySource) : undefined
   }
   if (!entry || typeof entry !== 'object' || typeof entry.name !== 'string' || !entry.name) {
     return undefined
@@ -280,7 +305,7 @@ export function resolvePresetStyleEntry(
     const hit = styles.find((s) => styleRowKey(s) === want && bySource(s))
     if (hit) return hit
   }
-  return styles.find((s) => s.name === name && bySource(s))
+  return resolveByNameIfUnambiguous(name, styles, bySource)
 }
 
 export type ResolvedPresetMember =

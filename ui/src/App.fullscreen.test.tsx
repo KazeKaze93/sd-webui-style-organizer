@@ -87,7 +87,7 @@ describe('App fullscreen: the host is the single source of truth', () => {
   it('starts windowed and deletes the stale sg_windowed_size value', () => {
     expect(label()).toBe('Fullscreen')
     expect(localStorage.getItem(LEGACY_KEY)).toBeNull()
-    expect(bodyMinHeight()).toBe(`${GRID_PAD_TOP + gridMinVisibleHeightPx(false, true)}px`)
+    expect(bodyMinHeight()).toBe(`${GRID_PAD_TOP + gridMinVisibleHeightPx(true)}px`)
   })
 
   it('clicking Fullscreen sends SG_SET_FULLSCREEN and changes nothing until the host answers', async () => {
@@ -95,13 +95,13 @@ describe('App fullscreen: the host is the single source of truth', () => {
 
     expect(fullscreenRequests()).toEqual([{ type: 'SG_SET_FULLSCREEN', fullscreen: true }])
     expect(label()).toBe('Fullscreen')
-    expect(bodyMinHeight()).toBe(`${GRID_PAD_TOP + gridMinVisibleHeightPx(false, true)}px`)
+    expect(bodyMinHeight()).toBe(`${GRID_PAD_TOP + gridMinVisibleHeightPx(true)}px`)
 
     await fromHost({ type: 'SG_FULLSCREEN_STATE', fullscreen: true })
     expect(label()).toBe('Exit fullscreen')
     // Fullscreen switches the grid out of windowed sizing (taller card rows).
-    expect(cardRowHeightPx(false, false)).toBeGreaterThan(cardRowHeightPx(false, true))
-    expect(bodyMinHeight()).toBe(`${GRID_PAD_TOP + gridMinVisibleHeightPx(false, false)}px`)
+    expect(cardRowHeightPx(false)).toBeGreaterThan(cardRowHeightPx(true))
+    expect(bodyMinHeight()).toBe(`${GRID_PAD_TOP + gridMinVisibleHeightPx(false)}px`)
   })
 
   it('exit asks the host too and waits for its answer', async () => {

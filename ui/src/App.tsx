@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
-  Save, Import, Eraser, Rows3, ChevronsUpDown, ChevronsDownUp, Plus, Globe,
+  Save, Import, Eraser, Plus, Globe,
   Palette, Maximize2, Minimize2, X,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -143,11 +143,6 @@ export default function App() {
     tab,
     styles,
     activeSource,
-    toggleCompact,
-    compactMode,
-    collapsedCategories,
-    collapseAll,
-    expandAll,
     activeCategory,
     showToast,
     presetsCorrupt,
@@ -158,11 +153,6 @@ export default function App() {
       tab: s.tab,
       styles: s.styles,
       activeSource: s.activeSource,
-      toggleCompact: s.toggleCompact,
-      compactMode: s.compactMode,
-      collapsedCategories: s.collapsedCategories,
-      collapseAll: s.collapseAll,
-      expandAll: s.expandAll,
       activeCategory: s.activeCategory,
       showToast: s.showToast,
       presetsCorrupt: s.presetsCorrupt,
@@ -385,20 +375,6 @@ export default function App() {
             />
             <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
             <ToolBtn
-              icon={Rows3}
-              label="Compact mode"
-              active={compactMode}
-              onClick={() => toggleCompact()}
-            />
-            <ToolBtn
-              icon={collapsedCategories.size > 0 ? ChevronsUpDown : ChevronsDownUp}
-              label={collapsedCategories.size > 0 ? 'Expand all' : 'Collapse all'}
-              onClick={() =>
-                collapsedCategories.size > 0 ? expandAll() : collapseAll()
-              }
-            />
-            <div className="w-px h-5 bg-sg-border mx-0.5 self-center" />
-            <ToolBtn
               icon={Plus}
               label={
                 !activeSource
@@ -467,7 +443,7 @@ export default function App() {
         style={{
           flex: '1 1 0',
           overflow: 'hidden',
-          minHeight: GRID_PAD_TOP_PX + gridMinVisibleHeightPx(compactMode, !isFullscreen),
+          minHeight: GRID_PAD_TOP_PX + gridMinVisibleHeightPx(!isFullscreen),
         }}
       >
         {/* Sidebar */}

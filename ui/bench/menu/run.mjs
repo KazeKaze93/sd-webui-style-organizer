@@ -2,7 +2,6 @@
  * MENU clamp probe — card context menu + source picker at bottom-right card.
  *
  * Densities (App chrome → StyleGrid props):
- *   compact  — Compact mode ON, panel (windowed=true)
  *   normal   — Fullscreen (windowed=false, CARD_HEIGHT_NORMAL)
  *   windowed — Panel default (windowed=true, CARD_HEIGHT_WINDOWED)
  *
@@ -78,7 +77,7 @@ const REPORT_MD = path.join(MENU_ROOT, 'report.md')
 /** Target pad for the assertion outline (= MENU_VIEWPORT_PAD in fitFixedMenuPosition.ts). */
 export const MENU_MARGIN = 8
 
-const DENSITIES = Object.freeze(['compact', 'normal', 'windowed'])
+const DENSITIES = Object.freeze(['normal', 'windowed'])
 const N = 500
 
 /** Tiny 1×1 WebP for thumbnail GETs when probing withThumb. */
@@ -102,7 +101,7 @@ function parseArgs(argv) {
 
 /**
  * @param {import('playwright').Frame} frame
- * @param {'compact' | 'normal' | 'windowed'} mode
+ * @param {'normal' | 'windowed'} mode
  */
 async function setDensity(frame, mode) {
   await frame.evaluate((m) => {
@@ -111,20 +110,10 @@ async function setDensity(frame, mode) {
         re.test(b.getAttribute('aria-label') || b.getAttribute('title') || ''),
       )
 
-    const compactBtn = byLabel(/compact mode/i)
     const fsBtn = byLabel(/^(exit )?fullscreen$/i)
 
-    const compactOn =
-      compactBtn &&
-      (compactBtn.getAttribute('aria-pressed') === 'true' ||
-        /\bbg-sg-accent\b/.test(compactBtn.className) ||
-        compactBtn.dataset.state === 'on')
-
-    const wantCompact = m === 'compact'
-    if (compactBtn && Boolean(compactOn) !== wantCompact) compactBtn.click()
-
     const isFs = Boolean(fsBtn && /exit fullscreen/i.test(fsBtn.getAttribute('aria-label') || ''))
-    // normal → fullscreen (windowed=false); compact/windowed stay in panel
+    // normal → fullscreen (windowed=false); windowed stays in panel
     const wantFs = m === 'normal'
     if (fsBtn && isFs !== wantFs) fsBtn.click()
   }, mode)
@@ -653,7 +642,7 @@ function buildReport(results, meta) {
   lines.push('- Target: card **context menu** + **source picker** (`StyleCard.tsx` portals)')
   lines.push('- Anchor: last visible row, rightmost column, bottom-right of card')
   lines.push('- Scroll: 3 scroller screens before each open')
-  lines.push('- Densities: `compact` / `normal` (fullscreen) / `windowed` (panel)')
+  lines.push('- Densities: `normal` (fullscreen) / `windowed` (panel)')
   lines.push('- Thumbnail: `has_thumbnail` true/false (extra Remove preview row when true)')
   lines.push('- App code: **read-only** - this folder only')
   lines.push('')

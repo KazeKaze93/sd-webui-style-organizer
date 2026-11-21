@@ -3,11 +3,11 @@
  */
 import { beforeEach, describe, expect, it } from 'vitest'
 
+import * as hostStateModule from '../../../javascript/style_grid/state.js'
 import {
   findStyleByName,
-  migrateFavoritesInMemory,
+  remapStyleNameReferences,
   resolveStoredSourceSelection,
-  setFavorites,
   state,
   styleIdentityKey,
 } from '../../../javascript/style_grid/state.js'
@@ -90,36 +90,22 @@ describe('findStyleByName', () => {
   })
 })
 
-describe('migrateFavoritesInMemory', () => {
-  beforeEach(() => {
-    hostState.txt2img.categories = {
-      BASE: [
-        {
-          name: 'OnlyOne',
-          source_file: 'styles/x.csv',
-          source: 'x.csv',
-        },
-        {
-          name: 'Dup',
-          source_file: 'styles/a.csv',
-          source: 'a.csv',
-        },
-        {
-          name: 'Dup',
-          source_file: 'webui/a.csv',
-          source: 'a.csv',
-        },
-      ],
+describe('favorites and recent are server data, not host localStorage', () => {
+  it('state.js has no localStorage favorites/recent helpers any more', () => {
+    for (const name of ['getFavorites', 'setFavorites', 'migrateFavoritesInMemory', 'getRecentHistory']) {
+      expect(hostStateModule).not.toHaveProperty(name)
     }
-    setFavorites('txt2img', new Set(['OnlyOne', 'Dup', 'Ghost']))
   })
 
-  it('upgrades unique bare names and keeps ambiguous or missing entries', () => {
-    const next = migrateFavoritesInMemory('txt2img')
-    const arr = [...next]
-    expect(arr).toContain(styleIdentityKey('OnlyOne', 'styles/x.csv'))
-    expect(arr).toContain('Dup')
-    expect(arr).toContain('Ghost')
-    expect(arr).not.toContain('OnlyOne')
+  it('a rename leaves old sg_favorites / sg_recent_* values alone', () => {
+    const fav = JSON.stringify({ txt2img: ['OldName', styleIdentityKey('OldName', 'styles/a.csv')] })
+    const recent = JSON.stringify(['OldName'])
+    localStorage.setItem('sg_favorites', fav)
+    localStorage.setItem('sg_recent_txt2img', recent)
+    remapStyleNameReferences('txt2img', 'OldName', 'NewName', 'styles/a.csv')
+    expect(localStorage.getItem('sg_favorites')).toBe(fav)
+    expect(localStorage.getItem('sg_recent_txt2img')).toBe(recent)
+    localStorage.removeItem('sg_favorites')
+    localStorage.removeItem('sg_recent_txt2img')
   })
 })

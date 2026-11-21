@@ -53,20 +53,6 @@ function apiPost(endpoint, data) {
         }).then(parseApiResponse);
     }
 
-function apiDelete(endpoint) {
-        return fetch(endpoint, {
-            method: "DELETE",
-            headers: styleGridWriteHeaders(),
-        }).then(parseApiResponse);
-    }
-
-function assertNoApiError(result) {
-        if (result && result.error) {
-            return Promise.reject(new Error(result.error));
-        }
-        return result;
-    }
-
 function apiGet(endpoint) {
         return fetch(endpoint).then(function (r) { return r.json(); });
     }
@@ -79,8 +65,6 @@ export {
     styleGridWriteToken,
     styleGridWriteHeaders,
     apiPost,
-    apiDelete,
-    assertNoApiError,
     apiGet,
     thumbIdentityKey,
 };

@@ -104,7 +104,6 @@ function init() {
     }
 
 // Bind late hooks for render module
-hooks.refreshPanel = refreshPanel;
 hooks.ensureSGFramesOnce = ensureSGFramesOnce;
 hooks.syncWildcards = syncWildcards;
 hooks.scheduleSyncForgeHostTabToV2Frames = scheduleSyncForgeHostTabToV2Frames;

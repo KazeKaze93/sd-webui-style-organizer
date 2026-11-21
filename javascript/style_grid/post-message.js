@@ -81,8 +81,6 @@ export function parseFrameMessage(data) {
     switch (type) {
         case "SG_READY":
         case "SG_CLOSE_REQUEST":
-        case "SG_BACKUP":
-        case "SG_IMPORT_EXPORT":
         case "SG_CLEAR_ALL":
         case "SG_REFRESH":
             return { type: type };
@@ -101,10 +99,6 @@ export function parseFrameMessage(data) {
             };
 
         case "SG_UNAPPLY":
-        case "SG_EDIT_STYLE":
-        case "SG_DUPLICATE_STYLE":
-        case "SG_MOVE_TO_CATEGORY":
-        case "SG_DELETE_STYLE":
             if (!isNonEmptyString(data.styleId)) return null;
             if (!isOptionalString(data.source_file)) return null;
             return {
@@ -157,10 +151,6 @@ export function parseFrameMessage(data) {
         case "SG_REORDER_WILDCARDS":
             if (!Array.isArray(data.categories)) return null;
             return { type: type, categories: data.categories };
-
-        case "SG_NEW_STYLE":
-            if (!isOptionalString(data.sourceFile)) return null;
-            return { type: type, sourceFile: data.sourceFile };
 
         case "SG_SOURCE_CHANGE":
             if (!(data.source === null || typeof data.source === "string")) return null;

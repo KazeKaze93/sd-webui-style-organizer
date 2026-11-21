@@ -180,6 +180,18 @@ function installIframeMessageBridge(tab, frame) {
                 }
             }
 
+            // The host owns the panel frame: the iframe asks, the host applies and
+            // answers with the resulting state (the request may be a no-op).
+            if (msg.type === "SG_SET_FULLSCREEN") {
+                var panelResize = state[tab].sgPanelResize;
+                if (panelResize) {
+                    postToFrame(frame, {
+                        type: "SG_FULLSCREEN_STATE",
+                        fullscreen: panelResize.setFullscreen(msg.fullscreen),
+                    });
+                }
+            }
+
             if (msg.type === "SG_CLOSE_REQUEST") {
                 var closeTarget = state[tab].sgFrameWrapper || frame;
                 closeTarget.style.display = "none";

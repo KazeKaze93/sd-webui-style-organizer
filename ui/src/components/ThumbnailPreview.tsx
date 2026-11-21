@@ -41,8 +41,10 @@ export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children
     const intent = createHoverIntent({
       showDelayMs: PREVIEW_SHOW_DELAY_MS,
       hideDelayMs: PREVIEW_HIDE_DELAY_MS,
-      // Still on the card, and this iframe still owns focus (no host modal over it).
-      canShow: () => el.matches(':hover') && document.hasFocus(),
+      // Still on the card. No focus gate: the panel is non-modal, so focus may sit
+      // in the host prompt textarea. A host modal is covered by the window blur
+      // dismiss in hoverIntent, and :hover is false under its overlay.
+      canShow: () => el.matches(':hover'),
       onShow: () => {
         const rect = el.getBoundingClientRect()
         setAbove(rect.top > 200)

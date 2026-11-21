@@ -114,6 +114,15 @@ describe('hoverIntent', () => {
     expect(pending.onShow).not.toHaveBeenCalled()
   })
 
+  it('blur with a pending show timer produces no show, even if the target stays hovered', () => {
+    const { intent, onShow } = make(() => true)
+    intent.enter()
+    vi.advanceTimersByTime(SHOW_MS - 1)
+    window.dispatchEvent(new Event('blur'))
+    vi.advanceTimersByTime(SHOW_MS * 4)
+    expect(onShow).not.toHaveBeenCalled()
+  })
+
   it('pointer leaving the document dismisses a pending show', () => {
     const { intent, onShow, onHide } = make()
     intent.enter()

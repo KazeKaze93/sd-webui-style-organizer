@@ -7,7 +7,6 @@ import { gridGapPx } from './constants'
 export type CardsRowProps = {
   styles: readonly Style[]
   columns: number
-  compactMode: boolean
   windowed: boolean
   rowIndex: number
   focusedCol: number | null
@@ -28,7 +27,6 @@ function stylesPropsEqual(a: readonly Style[], b: readonly Style[]): boolean {
 function cardsRowPropsEqual(prev: CardsRowProps, next: CardsRowProps): boolean {
   return (
     prev.columns === next.columns &&
-    prev.compactMode === next.compactMode &&
     prev.windowed === next.windowed &&
     prev.rowIndex === next.rowIndex &&
     prev.focusedCol === next.focusedCol &&
@@ -42,7 +40,6 @@ function cardsRowPropsEqual(prev: CardsRowProps, next: CardsRowProps): boolean {
 export const CardsRow = memo(function CardsRow({
   styles,
   columns,
-  compactMode,
   windowed,
   rowIndex,
   focusedCol,
@@ -50,7 +47,7 @@ export const CardsRow = memo(function CardsRow({
   renderCard,
 }: CardsRowProps) {
   // Column gap only — vertical ROW_GAP lives on the virtual row padding-bottom.
-  const colGap = gridGapPx(compactMode)
+  const colGap = gridGapPx()
   // Stable style object across parent scroll re-renders with unchanged columns.
   const gridStyle = useMemo(
     () => ({

@@ -18,18 +18,13 @@ export const SCROLL_SCREENS = 3
 
 /**
  * Densities exercised by layout bench.
- * - normal: default panel (windowed=true, compact off) → windowed card + normal gap
- * - compact: compact toggle (windowed=true) → windowed card + compact gap
+ * - normal: default panel (windowed=true) → windowed card + normal gap
  * - fullscreen: Fullscreen → normal card chrome + normal gap
  */
 export const DENSITY_METRICS = Object.freeze({
   normal: Object.freeze({
     cardRowHeight: 42, // CARD_ROW_HEIGHT_WINDOWED_PX = 34 + 8
     rowGap: 8, // ROW_GAP_NORMAL_PX
-  }),
-  compact: Object.freeze({
-    cardRowHeight: 38, // CARD_ROW_HEIGHT_WINDOWED_COMPACT_PX = 34 + 4
-    rowGap: 4, // ROW_GAP_COMPACT_PX
   }),
   fullscreen: Object.freeze({
     cardRowHeight: 54, // CARD_ROW_HEIGHT_NORMAL_PX = 46 + 8

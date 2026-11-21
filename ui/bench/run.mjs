@@ -21,6 +21,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { chromium } from 'playwright'
 import { DUPLICATE_NAME_RATIO, buildBenchFixture } from './generateStyles.mjs'
+import { parseViteLocalUrl } from './lib/viteUrl.mjs'
 import {
   applySelected,
   runLayoutInvariantsForFrame,
@@ -173,11 +174,10 @@ function spawnVite(args) {
     }, 90_000)
 
     const onChunk = () => {
-      const text = stdout + stderr
-      const m = text.match(/Local:\s+(http:\/\/[^\s]+)/i)
-      if (m) {
+      const url = parseViteLocalUrl(stdout + stderr)
+      if (url) {
         clearTimeout(timer)
-        resolve(m[1].replace(/\/$/, ''))
+        resolve(url)
         return
       }
       if (child.exitCode != null && child.exitCode !== 0) {

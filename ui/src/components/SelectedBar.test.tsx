@@ -384,20 +384,45 @@ describe('selection tray', () => {
 
   it('grid minimum is a header plus two card rows and fits beside a capped tray in the smallest panel', () => {
     expect(GRID_MIN_VISIBLE_CARD_ROWS).toBe(2)
-    for (const compact of [false, true]) {
-      for (const windowed of [false, true]) {
-        expect(gridMinVisibleHeightPx(compact, windowed)).toBe(
-          headerRowHeightPx(compact) + 2 * cardRowHeightPx(compact, windowed),
-        )
-      }
+    for (const windowed of [false, true]) {
+      expect(gridMinVisibleHeightPx(windowed)).toBe(
+        headerRowHeightPx() + 2 * cardRowHeightPx(windowed),
+      )
     }
-    // Smallest windowed panel is 400px tall (host min-height); the toolbar may wrap to two rows.
+    // Smallest windowed panel is 400px tall (host min-height). The header is one
+    // row: py-2.5 (20) + h-9 controls (36) + border-b (1).
     const PANEL_MIN_H = 400
-    const HEADER_TWO_ROWS = 100
+    const HEADER_ONE_ROW = 57
     const GRID_PAD_TOP = 12
     const trayMax = PANEL_MIN_H * TRAY_MAX_HEIGHT_RATIO
-    expect(HEADER_TWO_ROWS + trayMax + GRID_PAD_TOP + gridMinVisibleHeightPx(false, true)).toBeLessThanOrEqual(
+    expect(HEADER_ONE_ROW + trayMax + GRID_PAD_TOP + gridMinVisibleHeightPx(true)).toBeLessThanOrEqual(
       PANEL_MIN_H,
     )
+  })
+
+  const trayHeader = () => host!.querySelector<HTMLElement>('[data-sg-tray-header]')
+  const trayButton = (text: string) =>
+    [...(trayHeader()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find((b) => b.textContent === text) ?? null
+
+  it('Clear sits before Save set and posts SG_CLEAR_ALL to the host', async () => {
+    setSelection([style('BODY_A')])
+    await render(<SelectedBar />)
+    const clear = trayButton('Clear')!
+    expect(clear).not.toBeNull()
+    expect(clear.getAttribute('aria-label')).toBe('Clear all selected styles and wildcards')
+    const buttons = [...trayHeader()!.querySelectorAll('button')].map((b) => b.textContent)
+    expect(buttons.indexOf('Clear')).toBe(buttons.indexOf('Save set (1)') - 1)
+
+    await act(async () => clear.click())
+    expect(sendToHostMock.mock.calls.map(([m]) => m)).toEqual([{ type: 'SG_CLEAR_ALL' }])
+  })
+
+  it('with wildcards only, the tray header shows Clear but no Save set and no count', async () => {
+    setSelection([], [{ category: 'lighting', spec: '' }])
+    await render(<SelectedBar />)
+    expect(trayHeader()).not.toBeNull()
+    expect(trayButton('Clear')).not.toBeNull()
+    expect([...trayHeader()!.querySelectorAll('button')].some((b) => /Save set/.test(b.textContent ?? ''))).toBe(false)
+    expect(trayHeader()!.textContent).not.toContain('selected')
   })
 })

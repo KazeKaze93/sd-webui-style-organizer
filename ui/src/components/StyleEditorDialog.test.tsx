@@ -8,9 +8,7 @@ import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer } from '../lib/layerStack'
 import {
   buildSaveRequest,
-  joinDescription,
   resolveName,
-  splitDescription,
   writableSources,
 } from '../lib/styleForm'
 import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
@@ -53,38 +51,6 @@ const EDGE_CASES: Array<[string, string]> = [
   ['Cinematic', 'Styles_core'],
   ['_draft', 'Styles_core'],
 ]
-
-// --- description tail ---
-
-describe('description: the Combos tail is kept byte for byte', () => {
-  it.each([
-    ['plain text, no tail', 'Just text.', 'Just text.', ''],
-    ['tail only', 'Combos: BODY_A; POSE_B.', '', 'Combos: BODY_A; POSE_B.'],
-    ['double spaces kept', 'Tall build.  Combos: BODY_A;  POSE_B', 'Tall build.', 'Combos: BODY_A;  POSE_B'],
-    ['+ groups and comments', 'X. Combos: A + B (works best); C (rare).', 'X.', 'Combos: A + B (works best); C (rare).'],
-    ['singular Combo:', 'Y Combo: Z', 'Y', 'Combo: Z'],
-    ['trailing whitespace', 'T. Combos: A.  ', 'T.', 'Combos: A.  '],
-  ])('%s', (_label, raw, text, tail) => {
-    const parts = splitDescription(raw)
-    expect(parts.text).toBe(text)
-    expect(parts.tail).toBe(tail)
-    expect(parts.text + parts.gap + parts.tail).toBe(raw)
-    expect(joinDescription(raw, parts.text)).toBe(raw)
-  })
-
-  it('editing the text re-attaches the tail unchanged with the original gap', () => {
-    const raw = 'Tall build.  Combos: BODY_A + POSE_B (works best);  LIGHT_C.'
-    expect(joinDescription(raw, 'New text.')).toBe('New text.  Combos: BODY_A + POSE_B (works best);  LIGHT_C.')
-    expect(joinDescription(raw, '')).toBe('Combos: BODY_A + POSE_B (works best);  LIGHT_C.')
-    expect(joinDescription('Combos: A.', 'Lead')).toBe('Lead Combos: A.')
-  })
-
-  it('a description that does not end with a Combos tail is plain text', () => {
-    const raw = 'Combos: A. Then more text.'
-    expect(splitDescription(raw)).toEqual({ text: raw, gap: '', tail: '' })
-    expect(joinDescription(raw, 'Changed')).toBe('Changed')
-  })
-})
 
 // --- naming rules ---
 
@@ -271,7 +237,7 @@ describe('StyleEditorDialog', () => {
     __resetLayerStackForTests()
   })
 
-  it('edit: title, source file, fields prefilled; the tail as chips; Save disabled until a change', async () => {
+  it('edit: title, source file, fields prefilled; the Combos block as chips; Save disabled until a change', async () => {
     await renderEdit()
     expect(titleOf(dialog())).toBe('Edit style')
     expect(dialog().querySelector('[data-sg-editor-source]')!.textContent).toBe('styles_core.csv')
@@ -293,7 +259,7 @@ describe('StyleEditorDialog', () => {
     expect(button('Save').disabled).toBe(true)
   })
 
-  it('edit, name unchanged: /style/save with all fields, tail byte-identical, then SG_REFRESH', async () => {
+  it('edit, name unchanged: /style/save with all fields, description byte-identical, then SG_REFRESH', async () => {
     await renderEdit()
     await setValue(field('Description'), 'Very tall build.')
     await setValue(field('Prompt'), 'very tall, {prompt}')

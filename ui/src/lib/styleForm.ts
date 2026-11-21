@@ -3,122 +3,6 @@ import { LORA_SOURCE } from '../store/stylesStore'
 import { INVALID_CATEGORY_MESSAGE, isCanonicalName, parseCategoryInput } from './categoryMove'
 import { sourceFileLeaf } from './styleActions'
 
-/**
- * The host's split rule (javascript/style_grid/render.js splitDescriptionAndCombos):
- * the description ends with "Combos: …" up to the end, at most one period.
- */
-const HOST_COMBOS_RE = /^([\s\S]*?)\s*Combos?:\s*([^.]+)\.?\s*$/i
-
-export type DescriptionParts = {
-  /** Free text before the tail, exactly as stored. */
-  text: string
-  /** Whitespace between the text and the tail, exactly as stored. */
-  gap: string
-  /** From "Combos:" to the end, exactly as stored; "" when there is none. */
-  tail: string
-}
-
-/** Split a description by the host rule, keeping every byte. */
-export function splitDescription(raw: string): DescriptionParts {
-  const m = HOST_COMBOS_RE.exec(raw)
-  if (!m) return { text: raw, gap: '', tail: '' }
-  const text = m[1]
-  const rest = raw.slice(text.length)
-  const gap = /^\s*/.exec(rest)![0]
-  return { text, gap, tail: rest.slice(gap.length) }
-}
-
-/**
- * Description to save from the edited free text and the (possibly edited)
- * tail. Untouched text and tail return `original` byte for byte. An existing
- * tail is re-attached with the original gap; a tail created from nothing is
- * attached the way the host's joinDescriptionAndCombos did:
- * `<text trimmed>` + (". " or " " after a period) + `Combos: <items>.`.
- */
-export function buildDescription(original: string, editedText: string, tail: string): string {
-  const parts = splitDescription(original)
-  if (editedText === parts.text && tail === parts.tail) return original
-  if (!tail) return editedText
-  if (parts.tail) return editedText ? editedText + (parts.gap || ' ') + tail : tail
-  const text = editedText.trim()
-  if (!text) return tail
-  return text + (text.endsWith('.') ? ' ' : '. ') + tail
-}
-
-/** Description after editing only the free text; the tail is kept as stored. */
-export function joinDescription(original: string, editedText: string): string {
-  return buildDescription(original, editedText, splitDescription(original).tail)
-}
-
-/** One ";" element of a tail: offsets into the tail string, content trimmed. */
-export type TailElement = { start: number; end: number; text: string }
-
-const TAIL_HEAD_RE = /^Combos?:\s*/i
-
-/**
- * Elements of a tail (`Combos: A; B + C (note).`), split at ";" outside
- * parentheses, in stored order. Offsets cover only the trimmed content, so
- * spacing around separators stays outside every element.
- */
-export function parseTail(tail: string): TailElement[] {
-  const head = TAIL_HEAD_RE.exec(tail)
-  if (!head) return []
-  const bodyStart = head[0].length
-  const rest = tail.slice(bodyStart)
-  const suffix = /\.?\s*$/.exec(rest)![0]
-  const bodyEnd = tail.length - suffix.length
-  const out: TailElement[] = []
-  let depth = 0
-  let segStart = bodyStart
-  const flush = (segEnd: number) => {
-    let a = segStart
-    let b = segEnd
-    while (a < b && /\s/.test(tail[a])) a++
-    while (b > a && /\s/.test(tail[b - 1])) b--
-    if (b > a) out.push({ start: a, end: b, text: tail.slice(a, b) })
-  }
-  for (let i = bodyStart; i < bodyEnd; i++) {
-    const ch = tail[i]
-    if (ch === '(') depth++
-    else if (ch === ')' && depth > 0) depth--
-    else if (ch === ';' && depth === 0) {
-      flush(i)
-      segStart = i + 1
-    }
-  }
-  flush(bodyEnd)
-  return out
-}
-
-/**
- * Remove element `index` and exactly one adjacent separator (the one after
- * it, or before it for the last element). Every other byte stays. Removing
- * the only element removes the whole tail.
- */
-export function removeTailElement(tail: string, index: number): string {
-  const els = parseTail(tail)
-  if (index < 0 || index >= els.length) return tail
-  if (els.length === 1) return ''
-  const [from, to] = index < els.length - 1
-    ? [els[index].start, els[index + 1].start]
-    : [els[index - 1].end, els[index].end]
-  return tail.slice(0, from) + tail.slice(to)
-}
-
-/**
- * Add `name` as a new last element: `; NAME` after the last element, or a new
- * tail `Combos: NAME.` (the host's format) when there is none.
- */
-export function addTailElement(tail: string, name: string): string {
-  const els = parseTail(tail)
-  if (els.length === 0) return `Combos: ${name}.`
-  const end = els[els.length - 1].end
-  return `${tail.slice(0, end)}; ${name}${tail.slice(end)}`
-}
-
-/** Characters that would break the tail grammar inside a style name. */
-export const TAIL_UNSAFE_NAME_RE = /[.;+()]/
-
 export type EditorMode = 'edit' | 'create'
 
 /** What the Category and Name fields start with. */
@@ -215,7 +99,7 @@ export function resolveName(args: {
 export type EditorFields = {
   prompt: string
   negative_prompt: string
-  /** Full description to store (tail already re-attached). */
+  /** Full description to store (combosBlock.buildDescription). */
   description: string
 }
 

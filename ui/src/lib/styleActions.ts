@@ -97,7 +97,7 @@ export async function deleteStyleRequest(
 /**
  * Save a copy of `style` in the same source file under the first free copy
  * name. Every field is sent as stored: prompt, negative prompt, description
- * (with its `Combos:` tail) and the category column.
+ * (with its `Combos:` block) and the category column.
  */
 export async function duplicateStyleRequest(
   style: Style,

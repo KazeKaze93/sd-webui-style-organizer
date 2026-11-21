@@ -889,6 +889,8 @@ function togglePanel(tabName, show) {
             return;
         }
         target.style.display = "block";
+        // Shared geometry may have been changed from the other tab's panel.
+        if (state[tabName].sgPanelResize) state[tabName].sgPanelResize.syncOnShow();
         setHostPageScrollLock(true);
         syncTriggerExpanded(tabName);
         hooks.syncWildcards(tabName);

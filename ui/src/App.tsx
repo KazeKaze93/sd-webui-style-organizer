@@ -55,7 +55,12 @@ function clearSearchField(searchRoot: HTMLElement | null): boolean {
   return true
 }
 
-const WINDOWED_SIZE_KEY = 'sg_windowed_size'
+/**
+ * Legacy key: the iframe used to save the windowed size here before it wrote
+ * fullscreen styles into the host wrapper. The host owns geometry now
+ * (sg_panel_geometry_v1); a stale value is deleted on startup.
+ */
+const LEGACY_WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
 /** Search is the primary tool: it grows (flex-1) but never collapses below this. */
 const SEARCH_MIN_WIDTH_PX = 200
@@ -204,11 +209,23 @@ export default function App() {
   }, [setThemeMode])
 
   useEffect(() => {
+    try {
+      localStorage.removeItem(LEGACY_WINDOWED_SIZE_KEY)
+    } catch (err) {
+      // Storage can be blocked; nothing else is expected to fail here.
+      if (!(err instanceof DOMException)) throw err
+    }
+  }, [])
+
+  useEffect(() => {
     void useStylesStore.getState().hydrateFavoritesRecent()
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_THEME') {
         applyThemeMode(msg.mode)
         setThemeMode(msg.mode)
+      }
+      if (msg.type === 'SG_FULLSCREEN_STATE') {
+        setIsFullscreen(msg.fullscreen)
       }
       if (msg.type === 'SG_INIT' || msg.type === 'SG_STYLES_UPDATE') {
         const raw: unknown = (msg as { styles?: unknown }).styles
@@ -310,60 +327,10 @@ export default function App() {
     }
   }, [])
 
+  // The host owns the panel frame. Ask; isFullscreen changes only when the
+  // host answers with SG_FULLSCREEN_STATE (see the host message effect).
   const toggleFullscreen = () => {
-    const iframe = window.frameElement as HTMLElement
-    if (!iframe) return
-    const wrapper = iframe.parentElement as HTMLElement
-    if (!wrapper) return
-
-    if (isFullscreen) {
-      let saved: { top?: string; right?: string; width?: string; height?: string } = {}
-      try {
-        const raw = localStorage.getItem(WINDOWED_SIZE_KEY)
-        if (raw) saved = JSON.parse(raw)
-      } catch { /* ignore malformed/unavailable storage */ }
-
-      wrapper.style.top = saved.top || '80px'
-      wrapper.style.right = saved.right || '16px'
-      wrapper.style.left = 'auto'
-      wrapper.style.transform = 'none'
-      wrapper.style.width = saved.width || '1000px'
-      wrapper.style.height = saved.height || '650px'
-      wrapper.style.minWidth = '600px'
-      wrapper.style.minHeight = '400px'
-      wrapper.style.maxWidth = '95vw'
-      wrapper.style.maxHeight = '90vh'
-      wrapper.style.borderRadius = '12px'
-      wrapper.style.boxShadow = '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)'
-      wrapper.style.resize = 'both'
-      setIsFullscreen(false)
-      return
-    }
-
-    try {
-      localStorage.setItem(WINDOWED_SIZE_KEY, JSON.stringify({
-        top: wrapper.style.top,
-        right: wrapper.style.right,
-        width: wrapper.style.width,
-        height: wrapper.style.height,
-      }))
-    } catch { /* ignore storage unavailable */ }
-
-    // Fullscreen mode
-    wrapper.style.top = '0'
-    wrapper.style.right = 'auto'
-    wrapper.style.left = '0'
-    wrapper.style.transform = 'none'
-    wrapper.style.width = '100vw'
-    wrapper.style.height = '100vh'
-    wrapper.style.minWidth = ''
-    wrapper.style.minHeight = ''
-    wrapper.style.maxWidth = ''
-    wrapper.style.maxHeight = ''
-    wrapper.style.borderRadius = '0'
-    wrapper.style.boxShadow = 'none'
-    wrapper.style.resize = 'none'
-    setIsFullscreen(true)
+    sendToHost({ type: 'SG_SET_FULLSCREEN', fullscreen: !isFullscreen })
   }
 
   return (

@@ -37,6 +37,41 @@ describe('parseHostMessage', () => {
   })
 })
 
+describe('fullscreen messages: bridge.ts and the host guard agree', () => {
+  it('host -> iframe: parseHostMessage accepts SG_FULLSCREEN_STATE with a boolean', () => {
+    expect(parseHostMessage({ type: 'SG_FULLSCREEN_STATE', fullscreen: true })).toEqual({
+      type: 'SG_FULLSCREEN_STATE',
+      fullscreen: true,
+    })
+    expect(parseHostMessage({ type: 'SG_FULLSCREEN_STATE', fullscreen: false, extra: 1 })).toEqual({
+      type: 'SG_FULLSCREEN_STATE',
+      fullscreen: false,
+    })
+  })
+
+  it('host -> iframe: rejects a missing or non-boolean flag', () => {
+    expect(parseHostMessage({ type: 'SG_FULLSCREEN_STATE' })).toBeNull()
+    expect(parseHostMessage({ type: 'SG_FULLSCREEN_STATE', fullscreen: 'true' })).toBeNull()
+    expect(parseHostMessage({ type: 'SG_FULLSCREEN_STATE', fullscreen: 1 })).toBeNull()
+  })
+
+  it('iframe -> host: what sendToHost posts for SG_SET_FULLSCREEN passes the host guard unchanged', () => {
+    const postMessage = vi.spyOn(window.parent, 'postMessage').mockImplementation(() => {})
+    for (const fullscreen of [true, false]) {
+      sendToHost({ type: 'SG_SET_FULLSCREEN', fullscreen })
+      const posted = postMessage.mock.calls.at(-1)![0]
+      expect(posted).toEqual({ type: 'SG_SET_FULLSCREEN', fullscreen })
+      expect(parseFrameMessage(posted)).toEqual({ type: 'SG_SET_FULLSCREEN', fullscreen })
+    }
+    postMessage.mockRestore()
+  })
+
+  it('the iframe request is not a host message and the host reply is not a frame message', () => {
+    expect(parseHostMessage({ type: 'SG_SET_FULLSCREEN', fullscreen: true })).toBeNull()
+    expect(parseFrameMessage({ type: 'SG_FULLSCREEN_STATE', fullscreen: true })).toBeNull()
+  })
+})
+
 describe('parseFrameMessage (host)', () => {
   it('accepts valid SG_READY / SG_APPLY', () => {
     expect(parseFrameMessage({ type: 'SG_READY' })).toEqual({ type: 'SG_READY' })

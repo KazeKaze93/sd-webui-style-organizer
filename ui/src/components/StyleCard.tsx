@@ -32,6 +32,7 @@ import {
   ROW_GAP_NORMAL_PX,
 } from './grid/constants'
 import { DeleteStyleDialog } from './DeleteStyleDialog'
+import { MoveToCategoryDialog } from './MoveToCategoryDialog'
 import { ThumbnailPreview } from './ThumbnailPreview'
 import { MenuItem, ViewportFixedMenu } from './ViewportFixedMenu'
 
@@ -57,6 +58,8 @@ const READ_ONLY_DELETE_TOAST =
   'This style is from the protected samples pack (read-only) and cannot be deleted.'
 const READ_ONLY_DUPLICATE_TOAST =
   'This style is from the protected samples pack (read-only); a copy cannot be saved into it.'
+const READ_ONLY_MOVE_TOAST =
+  'This style is from the protected samples pack (read-only) and cannot be moved.'
 
 /** Skip re-render when row identity + chrome mode + roving tab stop unchanged. */
 function styleCardPropsEqual(prev: Props, next: Props): boolean {
@@ -90,6 +93,7 @@ export const StyleCard = memo(function StyleCard({
   const [pickerPos, setPickerPos] = useState<{ x: number, y: number } | null>(null)
   const [restoreFocusEl, setRestoreFocusEl] = useState<HTMLElement | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
   const isLora = style.source_file === LORA_SOURCE
   const hasMultipleSources = duplicates.length > 1
   const sourceLabels = useMemo(
@@ -312,14 +316,14 @@ export const StyleCard = memo(function StyleCard({
                 Duplicate
               </MenuItem>
               <MenuItem
-                className="flex items-center gap-2"
+                className={`flex items-center gap-2 ${style.read_only ? previewReadOnlyClass : ''}`}
                 onSelect={() => {
-                  sendToHost({
-                    type: 'SG_MOVE_TO_CATEGORY',
-                    styleId: style.name,
-                    source_file: style.source_file,
-                  })
                   setMenuPos(null)
+                  if (style.read_only) {
+                    showToast(READ_ONLY_MOVE_TOAST, 'info')
+                    return
+                  }
+                  setMoveOpen(true)
                 }}
               >
                 <FolderInput size={14} aria-hidden="true" />
@@ -433,6 +437,15 @@ export const StyleCard = memo(function StyleCard({
             </>
           )}
         </ViewportFixedMenu>
+      )}
+
+      {moveOpen && (
+        <MoveToCategoryDialog
+          open
+          style={style}
+          displayName={displayName}
+          onClose={() => setMoveOpen(false)}
+        />
       )}
 
       {deleteOpen && (

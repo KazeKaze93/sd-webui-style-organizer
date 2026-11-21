@@ -483,6 +483,13 @@ interface StylesStore {
   selectAllInCategory: (cat: string) => void
   toggleStyle: (style: Style) => void
   setSelectedStyles: (styles: Style[]) => void
+  /**
+   * A style was renamed or re-categorised on the server (Move to category).
+   * Carry the iframe's own references — selection, favorites, recent, preset
+   * contributors, thumbnail version — to the new identity. Nothing is posted:
+   * the server already migrated favorites.json and recent.json.
+   */
+  renameStyleIdentity: (from: StyleIdentity, to: { name: string; category: string }) => void
   clearAll: () => void
   /**
    * Host SG_CLEAR_SELECTION chrome reset: clears selection + key set, conflicts,
@@ -1024,6 +1031,47 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     selectedStyles: styles,
     ...selectionDerived(styles),
   }),
+  renameStyleIdentity: (from, to) => {
+    const oldKey = styleRowKey(from)
+    const newKey = styleRowKey({ name: to.name, source_file: from.source_file })
+    const s = get()
+    const swap = (key: string) => (key === oldKey ? newKey : key)
+
+    const nextSelected = s.selectedStyles.map((row) =>
+      styleRowKey(row) === oldKey
+        ? { ...row, name: to.name, category: to.category, category_explicit: to.category }
+        : row,
+    )
+    const favorites = s.favorites.has(oldKey)
+      ? new Set([...s.favorites].map(swap))
+      : s.favorites
+    const recentNames = s.recentNames.includes(oldKey)
+      ? [...new Set(s.recentNames.map(swap))]
+      : s.recentNames
+    const styleContributors =
+      oldKey !== newKey && s.styleContributors[oldKey]
+        ? (() => {
+            const next = { ...s.styleContributors }
+            next[newKey] = new Set([...(next[newKey] ?? []), ...next[oldKey]])
+            delete next[oldKey]
+            return next
+          })()
+        : s.styleContributors
+    const thumbVersions =
+      oldKey !== newKey && s.thumbVersions[oldKey] !== undefined
+        ? { ...s.thumbVersions, [newKey]: s.thumbVersions[oldKey] }
+        : s.thumbVersions
+
+    set({
+      selectedStyles: nextSelected,
+      ...selectionDerived(nextSelected),
+      favorites,
+      recentNames,
+      styleContributors,
+      thumbVersions,
+    })
+    get().detectConflicts()
+  },
   clearAll: () => {
     const { selectedStyles } = get()
     selectedStyles.forEach(s =>

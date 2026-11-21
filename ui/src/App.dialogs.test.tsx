@@ -60,11 +60,18 @@ describe('toolbar dialogs open in the iframe', () => {
     __resetLayerStackForTests()
   })
 
+  const menuItem = (text: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('[role="menu"] [role="menuitem"]')].find(
+      (el) => el.textContent?.trim() === text,
+    )!
+
   it.each([
-    ['Import/Export', 'Import / Export'],
-    ['Backup / Restore', 'Backup & restore'],
-  ])('%s opens "%s" and sends no retired host-modal message', async (label, title) => {
-    await act(async () => toolbarButton(label).click())
+    ['Import / Export…', 'Import / Export'],
+    ['Backup & restore…', 'Backup & restore'],
+  ])('More → "%s" opens "%s" and sends no retired host-modal message', async (item, title) => {
+    await act(async () => toolbarButton('More').click())
+    await act(async () => menuItem(item).click())
+    expect(document.querySelector('[role="menu"]')).toBeNull()
     expect(dialogTitle()).toBe(title)
     await act(async () => closeTopLayer())
     expect(document.querySelector('[role="dialog"]')).toBeNull()

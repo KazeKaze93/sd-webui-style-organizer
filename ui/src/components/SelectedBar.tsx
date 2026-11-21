@@ -97,11 +97,22 @@ export function SelectedBar() {
 
   return (
     <>
-      {selectedStyles.length > 0 && (
-        <div className="shrink-0 flex items-center gap-2 px-4 pt-2" data-sg-tray-header="true">
-          <SelectedCountLabel />
-          <ConflictsControl />
-          <div className="flex-1" />
+      {/* Shown with wildcards alone too, so Clear stays reachable. The count and
+          the conflicts render nothing without selected styles. */}
+      <div className="shrink-0 flex items-center gap-2 px-4 pt-2" data-sg-tray-header="true">
+        <SelectedCountLabel />
+        <ConflictsControl />
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={() => sendToHost({ type: 'SG_CLEAR_ALL' })}
+          aria-label="Clear all selected styles and wildcards"
+          className={`shrink-0 px-1.5 py-1 text-xs rounded text-sg-muted hover:text-sg-text
+                     transition-colors ${CHIP_FOCUS_RING}`}
+        >
+          Clear
+        </button>
+        {selectedStyles.length > 0 && (
           <button
             type="button"
             onClick={() => setSaveOpen(true)}
@@ -112,8 +123,8 @@ export function SelectedBar() {
           >
             Save set ({selectedStyles.length})
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Scroll area: dnd-kit auto-scrolls this element while a chip is dragged. */}
       <div

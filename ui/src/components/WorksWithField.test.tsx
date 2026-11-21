@@ -4,15 +4,9 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendToHost, type Style } from '../bridge'
 import { __resetLayerStackForTests, closeTopLayer, hasOpenLayer } from '../lib/layerStack'
-import {
-  addTailElement,
-  buildDescription,
-  parseTail,
-  removeTailElement,
-  splitDescription,
-} from '../lib/styleForm'
+import { splitCombos } from '../lib/combosBlock'
 import { comboPartLabel, resolveCombosInSourceFile } from '../lib/styleIdentity'
-import { tailChips, worksWithCandidates } from '../lib/worksWith'
+import { blockChips, worksWithCandidates } from '../lib/worksWith'
 import { useStylesStore } from '../store/stylesStore'
 import { StyleEditorDialog } from './StyleEditorDialog'
 import { WorksWithField } from './WorksWithField'
@@ -50,65 +44,11 @@ const LIB: Style[] = [
 ]
 const IN_A = LIB.filter((s) => s.source_file === A)
 
-// --- tail model ---
-
-describe('tail: parse, remove, add', () => {
-  const TAIL = 'Combos: POSE_Stand;  BODY_Muscular + LIGHT_Rim (works best); LIGHT_*;UNKNOWN_X.'
-
-  it('splits at ";" outside parentheses; spacing stays outside the elements', () => {
-    expect(parseTail(TAIL).map((e) => e.text)).toEqual([
-      'POSE_Stand',
-      'BODY_Muscular + LIGHT_Rim (works best)',
-      'LIGHT_*',
-      'UNKNOWN_X',
-    ])
-    expect(parseTail('Combos: A (x; y); B').map((e) => e.text)).toEqual(['A (x; y)', 'B'])
-    expect(parseTail('')).toEqual([])
-  })
-
-  it.each([
-    [0, 'Combos: BODY_Muscular + LIGHT_Rim (works best); LIGHT_*;UNKNOWN_X.'],
-    [1, 'Combos: POSE_Stand;  LIGHT_*;UNKNOWN_X.'],
-    [2, 'Combos: POSE_Stand;  BODY_Muscular + LIGHT_Rim (works best); UNKNOWN_X.'],
-    [3, 'Combos: POSE_Stand;  BODY_Muscular + LIGHT_Rim (works best); LIGHT_*.'],
-  ])('removing element %i keeps every other byte', (index, expected) => {
-    expect(removeTailElement(TAIL, index)).toBe(expected)
-  })
-
-  it('removing the only element removes the tail; out-of-range does nothing', () => {
-    expect(removeTailElement('Combos: A.', 0)).toBe('')
-    expect(removeTailElement(TAIL, 9)).toBe(TAIL)
-  })
-
-  it('adding appends "; NAME" after the last element, keeping the period and trailing spaces', () => {
-    expect(addTailElement('Combos: A + B (c).', 'POSE_Sit')).toBe('Combos: A + B (c); POSE_Sit.')
-    expect(addTailElement('Combo: A  .  ', 'X')).toBe('Combo: A; X  .  ')
-    expect(addTailElement('Combos: A', 'X')).toBe('Combos: A; X')
-  })
-
-  it('a new tail uses the host format: text + ". " (or " " after a period) + "Combos: NAME."', () => {
-    expect(addTailElement('', 'POSE_Sit')).toBe('Combos: POSE_Sit.')
-    expect(buildDescription('Tall build', 'Tall build', 'Combos: POSE_Sit.')).toBe('Tall build. Combos: POSE_Sit.')
-    expect(buildDescription('Tall build.', 'Tall build.', 'Combos: POSE_Sit.')).toBe('Tall build. Combos: POSE_Sit.')
-    expect(buildDescription('Tall build.  ', 'Tall build.  ', 'Combos: POSE_Sit.')).toBe('Tall build. Combos: POSE_Sit.')
-    expect(buildDescription('', '', 'Combos: POSE_Sit.')).toBe('Combos: POSE_Sit.')
-    // The result splits back into the same text and tail.
-    expect(splitDescription('Tall build. Combos: POSE_Sit.')).toMatchObject({ text: 'Tall build.', tail: 'Combos: POSE_Sit.' })
-  })
-
-  it('an edited tail is re-attached with the original gap; removing all of it leaves the text', () => {
-    const original = 'Tall.  Combos: A; B.'
-    expect(buildDescription(original, 'Tall.', 'Combos: A.')).toBe('Tall.  Combos: A.')
-    expect(buildDescription(original, 'Tall.', '')).toBe('Tall.')
-    expect(buildDescription(original, 'Tall.', 'Combos: A; B.')).toBe(original)
-  })
-})
-
 // --- chips and search ---
 
 describe('chips and search', () => {
   it('one chip per element; "+" groups and comments; same-file resolution; unknowns kept', () => {
-    const chips = tailChips(
+    const chips = blockChips(
       'Combos: POSE_Stand; BODY_Muscular + LIGHT_Rim (works best); LIGHT_*; POSE_Kneel; HAIR_Long; (just a note).',
       IN_A,
     )
@@ -134,17 +74,23 @@ describe('chips and search', () => {
     expect(grouped.type === 'style' && grouped.comment).toBe('works best')
   })
 
-  it('the tray and the editor give the same labels for the same entries', () => {
-    const description = 'X. Combos: POSE_Stand; BODY_Muscular + LIGHT_Rim (works best); LIGHT_*.'
+  it.each([
+    'X. Combos: POSE_Stand; BODY_Muscular + LIGHT_Rim (works best); LIGHT_*.',
+    'X. Combos: POSE_Stand; LIGHT_Rim. Conflicts: BODY_Tall.',
+    'X. Combos: POSE_Sit. Good for profile images.',
+    'Combos: BODY_Muscular + LIGHT_Rim (note).',
+    'X. Combos: POSE_Stand; LIGHT_*',
+  ])('the tray and the editor read the same entries: %s', (description) => {
     const tray = resolveCombosInSourceFile(description, LIB, A).map(comboPartLabel)
-    const editor = tailChips(splitDescription(description).tail, IN_A).flatMap((c) => c.members.map((m) => m.label))
+    const editor = blockChips(splitCombos(description).block, IN_A).flatMap((c) => c.members.map((m) => m.label))
+    expect(tray.length).toBeGreaterThan(0)
     expect(editor).toEqual(tray)
   })
 
   it('search: same file only; not itself, not already listed, no names with "." ";" "+" "(" ")"', () => {
-    const tail = 'Combos: POSE_Stand.'
+    const block = 'Combos: POSE_Stand.'
     const names = (q: string, self: string | null = 'BODY_Tall') =>
-      worksWithCandidates(IN_A, self, tail, q).map((s) => s.name)
+      worksWithCandidates(IN_A, self, block, q).map((s) => s.name)
     expect(names('pose')).toEqual(['POSE_Sit'])
     expect(names('light')).toEqual(['LIGHT_Rim'])
     expect(names('tall')).toEqual([])
@@ -163,15 +109,15 @@ describe('WorksWithField', () => {
   let latest = ''
 
   function Harness({ initial }: { initial: string }) {
-    const [tail, setTail] = useState(initial)
+    const [block, setBlock] = useState(initial)
     const onChange = (next: string) => {
       latest = next
-      setTail(next)
+      setBlock(next)
     }
     return (
       <>
         <div id="ww-label">Works with (optional)</div>
-        <WorksWithField labelId="ww-label" tail={tail} onChange={onChange} inFile={IN_A} selfName="BODY_Tall" />
+        <WorksWithField labelId="ww-label" block={block} onChange={onChange} inFile={IN_A} selfName="BODY_Tall" />
       </>
     )
   }
@@ -237,7 +183,7 @@ describe('WorksWithField', () => {
     expect(latest).toBe('Combos: POSE_Stand; POSE_Sit.')
   })
 
-  it('first add creates the tail in the host format', async () => {
+  it('first add creates the block in the host format', async () => {
     await act(async () => root!.render(<Harness initial="" />))
     act(() => input().focus())
     await type('rim')
@@ -304,9 +250,97 @@ describe('Works with in the style editor', () => {
     __resetLayerStackForTests()
   })
 
-  const render = async () => {
-    await act(async () => root!.render(<StyleEditorDialog mode="edit" open style={subject} onClose={() => {}} />))
+  const render = async (style: Style = subject) => {
+    useStylesStore.setState({ styles: [...LIB.filter((s) => s.name !== style.name), style] })
+    await act(async () => root!.render(<StyleEditorDialog mode="edit" open style={style} onClose={() => {}} />))
   }
+  const field = (labelText: string) => {
+    const l = [...dialog().querySelectorAll('label')].find((x) => x.textContent === labelText)
+    return l ? (document.getElementById(l.htmlFor) as HTMLInputElement) : null
+  }
+  const setValue = async (el: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    await act(async () => {
+      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+      Object.getOwnPropertyDescriptor(proto, 'value')!.set!.call(el, value)
+      el.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+  const save = async () => {
+    await act(async () => button('Save').click())
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0))
+    })
+    return (saved[0] as { description: string }).description
+  }
+  const chipLabels = () =>
+    [...dialog().querySelectorAll<HTMLElement>('[data-sg-works-chip]')].map((c) => c.getAttribute('aria-label'))
+  const searchInput = () => dialog().querySelector<HTMLInputElement>('input[aria-label="Search styles to add"]')!
+
+  const withConflicts = row('BODY_Tall', 'BODY', {
+    description: 'Tall build. Combos: POSE_Stand; LIGHT_Rim. Conflicts: BODY_Muscular.',
+  })
+
+  it('"Combos: …. Conflicts: …": chips from the block, the rest in "After Works with"', async () => {
+    await render(withConflicts)
+    expect(field('Description')!.value).toBe('Tall build.')
+    expect(chipLabels()).toEqual(['Stand', 'Rim'])
+    expect(field('After Works with')!.value).toBe('Conflicts: BODY_Muscular.')
+  })
+
+  it('"After Works with" is hidden when nothing follows the block', async () => {
+    await render()
+    expect(field('After Works with')).toBeNull()
+  })
+
+  it('adding a chip goes inside the block, before its period; Conflicts stays', async () => {
+    await render(withConflicts)
+    act(() => searchInput().focus())
+    await setValue(searchInput(), 'sit')
+    await act(async () => {
+      searchInput().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    })
+    expect(await save()).toBe('Tall build. Combos: POSE_Stand; LIGHT_Rim; POSE_Sit. Conflicts: BODY_Muscular.')
+  })
+
+  it('removing every chip keeps the text before and after', async () => {
+    await render(withConflicts)
+    for (const label of ['Stand', 'Rim']) {
+      const btn = dialog().querySelector<HTMLButtonElement>(`button[aria-label="Remove ${label}"]`)!
+      await act(async () => btn.click())
+    }
+    expect(await save()).toBe('Tall build. Conflicts: BODY_Muscular.')
+  })
+
+  it('editing only "After Works with" keeps the other bytes; editing only the text keeps the block and after', async () => {
+    await render(withConflicts)
+    await setValue(field('After Works with')!, 'Conflicts: BODY_Muscular; POSE_Sit.')
+    expect(await save()).toBe('Tall build. Combos: POSE_Stand; LIGHT_Rim. Conflicts: BODY_Muscular; POSE_Sit.')
+
+    saved = []
+    act(() => root!.render(<></>))
+    await render(withConflicts)
+    await setValue(field('Description')!, 'Very tall.')
+    expect(await save()).toBe('Very tall. Combos: POSE_Stand; LIGHT_Rim. Conflicts: BODY_Muscular.')
+  })
+
+  it('"Combos: A. Good for Y." and a block without a period read and save the same way', async () => {
+    const good = row('BODY_Tall', 'BODY', { description: 'X. Combos: POSE_Sit. Good for profile images.' })
+    await render(good)
+    expect(chipLabels()).toEqual(['Sit'])
+    expect(field('After Works with')!.value).toBe('Good for profile images.')
+    await setValue(prompt(), 'changed')
+    expect(await save()).toBe(good.description)
+
+    saved = []
+    act(() => root!.render(<></>))
+    const open = row('BODY_Tall', 'BODY', { description: 'X. Combos: POSE_Sit; LIGHT_Rim' })
+    await render(open)
+    expect(chipLabels()).toEqual(['Sit', 'Rim'])
+    expect(field('After Works with')).toBeNull()
+    const btn = dialog().querySelector<HTMLButtonElement>('button[aria-label="Remove Rim"]')!
+    await act(async () => btn.click())
+    expect(await save()).toBe('X. Combos: POSE_Sit')
+  })
   const dialog = () => document.body.querySelector<HTMLElement>('[role="dialog"]')!
   const button = (text: string) => [...dialog().querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent === text)!
   const prompt = () => {
@@ -314,7 +348,7 @@ describe('Works with in the style editor', () => {
     return document.getElementById(l.htmlFor) as HTMLTextAreaElement
   }
 
-  it('an untouched tail saves the description byte for byte, the unknown entry included', async () => {
+  it('an untouched block saves the description byte for byte, the unknown entry included', async () => {
     await render()
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(prompt(), 'changed')
@@ -327,7 +361,7 @@ describe('Works with in the style editor', () => {
     expect((saved[0] as { description: string }).description).toBe(subject.description)
   })
 
-  it('removing a chip makes the form dirty and saves the shorter tail', async () => {
+  it('removing a chip makes the form dirty and saves the shorter block', async () => {
     await render()
     expect(button('Save').disabled).toBe(true)
     const remove = dialog().querySelector<HTMLButtonElement>('button[aria-label="Remove UNKNOWN_X"]')!

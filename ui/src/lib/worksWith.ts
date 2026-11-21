@@ -1,5 +1,5 @@
 import type { Style } from '../bridge'
-import { parseTail, TAIL_UNSAFE_NAME_RE } from './styleForm'
+import { BLOCK_UNSAFE_NAME_RE, parseBlock } from './combosBlock'
 import {
   comboPartLabel,
   parseComboPart,
@@ -11,12 +11,12 @@ import {
 
 const RESULT_LIMIT = 8
 
-export type TailChipMember = { resolved: ResolvedCombo | MissingCombo; label: string }
-export type TailChip = { members: TailChipMember[]; label: string }
+export type BlockChipMember = { resolved: ResolvedCombo | MissingCombo; label: string }
+export type BlockChip = { members: BlockChipMember[]; label: string }
 
-/** One chip per ";" element; a "+" group is one chip. Resolution: same file only. */
-export function tailChips(tail: string, inFile: readonly Style[]): TailChip[] {
-  return parseTail(tail).map((el) => {
+/** One chip per ";" element of the Combos block; a "+" group is one chip. Resolution: same file only. */
+export function blockChips(block: string, inFile: readonly Style[]): BlockChip[] {
+  return parseBlock(block).map((el) => {
     const members = splitOutsideParens(el.text, '+').map((piece) => {
       const resolved = resolveComboPart(parseComboPart(piece), inFile)
       return { resolved, label: comboPartLabel(resolved) }
@@ -25,10 +25,10 @@ export function tailChips(tail: string, inFile: readonly Style[]): TailChip[] {
   })
 }
 
-/** Names already referenced by the tail (any member of any element). */
-export function tailNames(tail: string): Set<string> {
+/** Names already referenced by the block (any member of any element). */
+export function blockNames(block: string): Set<string> {
   const out = new Set<string>()
-  for (const el of parseTail(tail)) {
+  for (const el of parseBlock(block)) {
     for (const piece of splitOutsideParens(el.text, '+')) {
       const name = parseComboPart(piece).name
       if (name) out.add(name)
@@ -39,20 +39,20 @@ export function tailNames(tail: string): Set<string> {
 
 /**
  * Styles that can be added: same source file, not the edited style, not
- * already listed, and no character that would break the tail grammar
+ * already listed, and no character that would break the block grammar
  * ("." ends the list, ";" "+" "(" ")" are separators).
  */
 export function worksWithCandidates(
   inFile: readonly Style[],
   selfName: string | null,
-  tail: string,
+  block: string,
   query: string,
 ): Style[] {
   const q = query.trim().toLowerCase()
   if (!q) return []
-  const listed = tailNames(tail)
+  const listed = blockNames(block)
   return inFile
-    .filter((s) => s.name !== selfName && !listed.has(s.name) && !TAIL_UNSAFE_NAME_RE.test(s.name))
+    .filter((s) => s.name !== selfName && !listed.has(s.name) && !BLOCK_UNSAFE_NAME_RE.test(s.name))
     .filter((s) => {
       const display = comboPartLabel({ type: 'style', token: s.name, style: s, comment: '' })
       return s.name.toLowerCase().includes(q) || display.toLowerCase().includes(q)

@@ -1,4 +1,5 @@
 import type { Style } from '../bridge'
+import { blockList, splitCombos } from './combosBlock'
 
 const FORBIDDEN_LEAF_CHARS = new Set(['/', '\\', ':', '\0'])
 
@@ -134,13 +135,14 @@ export function parseComboPart(raw: string): ComboPart {
 }
 
 /**
- * Parses "Combos: ..." into items (`;`), then `+` pieces, then name/comment parts.
+ * Parses the "Combos: ..." block (combosBlock.splitCombos, shared with the
+ * style editor) into items (`;`), then `+` pieces, then name/comment parts.
  * `;` / `+` inside parentheses do not split.
  */
 export function parseComboTokens(description: string): string[] {
-  const match = description.match(/Combos?:\s*([^.]+)/i)
-  if (!match) return []
-  return splitOutsideParens(match[1], ';')
+  const { block } = splitCombos(description)
+  if (!block) return []
+  return splitOutsideParens(blockList(block), ';')
 }
 
 export function parseComboParts(description: string): ComboPart[] {

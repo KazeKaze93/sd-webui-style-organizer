@@ -2,9 +2,9 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { X } from 'lucide-react'
 import type { Style } from '../bridge'
 import { useLayer } from '../lib/layerStack'
-import { addTailElement, removeTailElement } from '../lib/styleForm'
+import { addBlockElement, removeBlockElement } from '../lib/combosBlock'
 import { comboPartLabel } from '../lib/styleIdentity'
-import { tailChips, worksWithCandidates, type TailChipMember } from '../lib/worksWith'
+import { blockChips, worksWithCandidates, type BlockChipMember } from '../lib/worksWith'
 import { cn } from '../lib/utils'
 
 const FOCUS_RING =
@@ -12,8 +12,9 @@ const FOCUS_RING =
 
 type Props = {
   labelId: string
-  tail: string
-  onChange: (tail: string) => void
+  /** The description's Combos block (combosBlock.splitCombos); "" when there is none. */
+  block: string
+  onChange: (block: string) => void
   /** Styles of the source file the edited style lives in (or will be saved to). */
   inFile: readonly Style[]
   selfName: string | null
@@ -21,11 +22,11 @@ type Props = {
 }
 
 /**
- * "Works with" chips over the description's Combos tail. Removing or adding
+ * "Works with" chips over the description's Combos block. Removing or adding
  * an element rewrites only that element and one separator; the rest of the
- * tail stays byte for byte.
+ * block stays byte for byte.
  */
-export function WorksWithField({ labelId, tail, onChange, inFile, selfName, disabled = false }: Props) {
+export function WorksWithField({ labelId, block, onChange, inFile, selfName, disabled = false }: Props) {
   const [query, setQuery] = useState('')
   const [resultsOpen, setResultsOpen] = useState(false)
   const [active, setActive] = useState(0)
@@ -34,10 +35,10 @@ export function WorksWithField({ labelId, tail, onChange, inFile, selfName, disa
   const listRef = useRef<HTMLUListElement>(null)
   const listId = useId()
 
-  const chips = useMemo(() => tailChips(tail, inFile), [tail, inFile])
+  const chips = useMemo(() => blockChips(block, inFile), [block, inFile])
   const results = useMemo(
-    () => worksWithCandidates(inFile, selfName, tail, query),
-    [inFile, selfName, tail, query],
+    () => worksWithCandidates(inFile, selfName, block, query),
+    [inFile, selfName, block, query],
   )
   const showResults = resultsOpen && results.length > 0
 
@@ -61,7 +62,7 @@ export function WorksWithField({ labelId, tail, onChange, inFile, selfName, disa
   }
 
   const remove = (i: number) => {
-    onChange(removeTailElement(tail, i))
+    onChange(removeBlockElement(block, i))
     // Focus the previous chip after the list re-renders, or the input.
     requestAnimationFrame(() => {
       if (i > 0) chipRefs.current[i - 1]?.focus()
@@ -70,7 +71,7 @@ export function WorksWithField({ labelId, tail, onChange, inFile, selfName, disa
   }
 
   const add = (style: Style) => {
-    onChange(addTailElement(tail, style.name))
+    onChange(addBlockElement(block, style.name))
     setQuery('')
     setResultsOpen(false)
     setActive(0)
@@ -117,7 +118,7 @@ export function WorksWithField({ labelId, tail, onChange, inFile, selfName, disa
     }
   }
 
-  const memberView = (m: TailChipMember, key: number) => {
+  const memberView = (m: BlockChipMember, key: number) => {
     const r = m.resolved
     return (
       <span key={key} className="inline-flex items-baseline gap-1 min-w-0">

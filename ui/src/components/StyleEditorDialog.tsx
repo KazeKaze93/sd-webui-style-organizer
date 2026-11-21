@@ -2,12 +2,11 @@ import { useId, useMemo, useRef, useState } from 'react'
 import { sendToHost, type Style } from '../bridge'
 import { categoryOptions, libraryCategories } from '../lib/categoryMove'
 import { postStyleRequest, sourceFileLeaf } from '../lib/styleActions'
+import { buildDescription, splitCombos } from '../lib/combosBlock'
 import {
-  buildDescription,
   buildSaveRequest,
   initialNameFields,
   resolveName,
-  splitDescription,
   writableSources,
   type EditorMode,
 } from '../lib/styleForm'
@@ -33,7 +32,9 @@ type Props =
  * Create or edit a style. Edit saves into the style's own file; create into a
  * writable source of the user's choice. Requests mirror the host editor:
  * /style/save when the name stays, /style/rename (with the fields) when it
- * changes. The "Combos:" tail of the description is kept byte for byte.
+ * changes. The description is edited in three parts around its Combos block
+ * (text before, Works with chips, text after); untouched parts are kept byte
+ * for byte.
  */
 export function StyleEditorDialog(props: Props) {
   const { mode, open, onClose } = props
@@ -54,13 +55,14 @@ export function StyleEditorDialog(props: Props) {
 
   const initial = useMemo(() => {
     const names = initialNameFields(style)
-    const description = splitDescription(style?.description ?? '')
+    const description = splitCombos(style?.description ?? '')
     return {
       ...names,
       prompt: style?.prompt ?? '',
       negative: style?.negative_prompt ?? '',
-      descriptionText: description.text,
-      tail: description.tail,
+      descriptionText: description.before,
+      block: description.block,
+      after: description.after,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -71,7 +73,8 @@ export function StyleEditorDialog(props: Props) {
   const [prompt, setPrompt] = useState(initial.prompt)
   const [negative, setNegative] = useState(initial.negative)
   const [descriptionText, setDescriptionText] = useState(initial.descriptionText)
-  const [tail, setTail] = useState(initial.tail)
+  const [block, setBlock] = useState(initial.block)
+  const [after, setAfter] = useState(initial.after)
   const [busy, setBusy] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
@@ -87,6 +90,7 @@ export function StyleEditorDialog(props: Props) {
     negative: useId(),
     description: useId(),
     worksWith: useId(),
+    after: useId(),
   }
 
   const optionsStyle = useMemo(
@@ -116,7 +120,8 @@ export function StyleEditorDialog(props: Props) {
     prompt !== initial.prompt ||
     negative !== initial.negative ||
     descriptionText !== initial.descriptionText ||
-    tail !== initial.tail
+    block !== initial.block ||
+    after !== initial.after
 
   // Edit with no change: Save stays disabled (nothing to send).
   const canSave = dirty && outcome.name !== null && !!source && !busy
@@ -129,7 +134,11 @@ export function StyleEditorDialog(props: Props) {
 
   const save = async () => {
     if (!canSave || outcome.name === null) return
-    const description = buildDescription(style?.description ?? '', descriptionText, tail)
+    const description = buildDescription(style?.description ?? '', {
+      before: descriptionText,
+      block,
+      after,
+    })
     const request = buildSaveRequest({
       mode,
       originalName: style?.name ?? null,
@@ -315,12 +324,28 @@ export function StyleEditorDialog(props: Props) {
         <div id={ids.worksWith} className={LABEL}>Works with (optional)</div>
         <WorksWithField
           labelId={ids.worksWith}
-          tail={tail}
-          onChange={setTail}
+          block={block}
+          onChange={setBlock}
           inFile={inFile}
           selfName={style?.name ?? null}
           disabled={busy}
         />
+
+        {/* Text stored after the Combos block (e.g. "Conflicts: …"); shown only when there is some. */}
+        {initial.after && (
+          <>
+            <label htmlFor={ids.after} className={cn(LABEL, 'mt-3')}>After Works with</label>
+            <input
+              id={ids.after}
+              type="text"
+              value={after}
+              disabled={busy}
+              spellCheck={false}
+              onChange={(e) => setAfter(e.target.value)}
+              className={cn(FIELD, 'h-9', FOCUS_RING)}
+            />
+          </>
+        )}
       </ModalShell>
 
       <ModalShell

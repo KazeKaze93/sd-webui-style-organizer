@@ -28,6 +28,29 @@ export const LORA_SOURCE = '__style_grid_lora__'
 /** Sidebar special-view id for the LoRA section, parallel to Favorites/Recent. */
 export const LORA_VIEW = '🧬 LoRA'
 
+/** How the virtualized grid draws styles: text tiles, or square preview tiles. */
+export type ViewMode = 'grid' | 'gallery'
+
+/** One value per browser, shared by the txt2img and img2img iframes. */
+export const VIEW_MODE_STORAGE_KEY = 'sg_view_mode'
+
+/** Stored view mode; anything missing, unknown or unreadable is 'grid'. Never throws. */
+export function loadViewMode(): ViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_STORAGE_KEY) === 'gallery' ? 'gallery' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
+
+function saveViewMode(mode: ViewMode): void {
+  try {
+    localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode)
+  } catch {
+    // Storage blocked or full: the choice still applies for this session.
+  }
+}
+
 interface Conflict {
   styleA: string
   styleB: string
@@ -453,6 +476,7 @@ interface StylesStore {
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
   themeMode: ThemeMode
+  viewMode: ViewMode
   /** Favorite style row keys (styleRowKey) persisted in data/favorites.json. */
   favorites: Set<string>
   /** Most recently applied style row keys (styleRowKey, max 10) in data/recent.json. */
@@ -484,6 +508,8 @@ interface StylesStore {
   setCategory: (cat: string | null) => void
   setActiveSource: (src: string | null) => void
   setThemeMode: (mode: ThemeMode) => void
+  /** Switch Grid / Gallery and remember it in localStorage (sg_view_mode). */
+  setViewMode: (mode: ViewMode) => void
   toggleCollapse: (cat: string) => void
   selectAllInCategory: (cat: string) => void
   toggleStyle: (style: Style) => void
@@ -624,6 +650,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   ) as string[],
   collapsedCategories: new Set(),
   themeMode: 'dark',
+  viewMode: loadViewMode(),
   favorites: new Set(),
   recentNames: [],
   favoritesRecentHydrated: false,
@@ -709,6 +736,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
   },
   setThemeMode: (themeMode) => set({ themeMode }),
+  setViewMode: (viewMode) => {
+    saveViewMode(viewMode)
+    set({ viewMode })
+  },
   toggleCollapse: (cat) => set((s) => {
     const next = new Set(s.collapsedCategories)
     if (next.has(cat)) next.delete(cat)

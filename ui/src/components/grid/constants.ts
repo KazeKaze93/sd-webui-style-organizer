@@ -103,3 +103,33 @@ function autoFillColumnsClass(windowed: boolean): string {
 export function autoFillGridClass(windowed: boolean): string {
   return ['grid', 'content-start', autoFillColumnsClass(windowed), gridGapClass()].join(' ')
 }
+
+/** Gallery tiles: minimum card width (fullscreen / windowed panel). */
+export const GALLERY_MIN_CARD_WIDTH_PX = 150
+export const GALLERY_MIN_CARD_WIDTH_WINDOWED_PX = 130
+/** Name block under a gallery thumbnail: two `text-xs` lines (2 × 16) + `py-1.5` (12). */
+export const GALLERY_LABEL_HEIGHT_PX = 44
+
+/** Minimum card width for the view: grid keeps minCardWidthPx, gallery its own minimum. */
+export function minCardWidthForViewPx(windowed: boolean, viewMode: 'grid' | 'gallery'): number {
+  if (viewMode === 'gallery') {
+    return windowed ? GALLERY_MIN_CARD_WIDTH_WINDOWED_PX : GALLERY_MIN_CARD_WIDTH_PX
+  }
+  return minCardWidthPx(windowed)
+}
+
+/** Width of one gallery card: the container split into `columns` with `gapPx` between; ≥ 1. */
+export function galleryCardWidthPx(containerWidth: number, columns: number, gapPx: number): number {
+  const cols = Math.max(1, Math.floor(columns))
+  return Math.max(1, Math.floor((containerWidth - gapPx * (cols - 1)) / cols))
+}
+
+/** Gallery card height: a square thumbnail box plus the name block. */
+export function galleryCardHeightPx(cardWidth: number): number {
+  return cardWidth + GALLERY_LABEL_HEIGHT_PX
+}
+
+/** Virtualizer size of a gallery card row: card height + ROW_GAP. */
+export function galleryRowHeightPx(cardWidth: number): number {
+  return galleryCardHeightPx(cardWidth) + rowGapPx()
+}

@@ -29,6 +29,8 @@ export type HostMessage =
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
   | { type: 'SG_THEME'; mode: ThemeMode }
+  /** The host owns the panel frame; this is the resulting state after SG_SET_FULLSCREEN. */
+  | { type: 'SG_FULLSCREEN_STATE'; fullscreen: boolean }
 
 /** Messages sent from the React iframe back to Forge host script. */
 export type FrameMessage =
@@ -54,6 +56,8 @@ export type FrameMessage =
   | { type: 'SG_CLEAR_ALL' }
   | { type: 'SG_SOURCE_CHANGE'; source: string | null }
   | { type: 'SG_REFRESH' }
+  /** Ask the host to enter or leave fullscreen. The host answers SG_FULLSCREEN_STATE. */
+  | { type: 'SG_SET_FULLSCREEN'; fullscreen: boolean }
 
 export interface Style {
   name:              string
@@ -160,6 +164,10 @@ export function parseHostMessage(data: unknown): HostMessage | null {
       if (typeof data.prompt !== 'string') return null
       if (typeof data.neg !== 'string') return null
       return { type, prompt: data.prompt, neg: data.neg }
+
+    case 'SG_FULLSCREEN_STATE':
+      if (typeof data.fullscreen !== 'boolean') return null
+      return { type, fullscreen: data.fullscreen }
 
     default:
       return null

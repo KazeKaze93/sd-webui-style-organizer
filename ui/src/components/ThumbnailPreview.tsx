@@ -2,6 +2,12 @@ import { createPortal } from 'react-dom'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Style } from '../bridge'
 import { styleRowKey, useStylesStore, useThumbVersion } from '../store/stylesStore'
+import { createHoverIntent, type HoverIntent } from '../lib/hoverIntent'
+
+/** Delay before the preview opens: avoids flicker during fast cursor travel. */
+const PREVIEW_SHOW_DELAY_MS = 300
+/** Grace period to move the pointer from the card onto the preview. */
+const PREVIEW_HIDE_DELAY_MS = 100
 
 interface Props {
   style: Style
@@ -9,18 +15,14 @@ interface Props {
 }
 
 export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children }: Props) {
-  /**
-   * Delays preview open (300ms) to reduce flicker during fast cursor travel,
-   * and falls back to text-only popup if thumbnail image fails to load.
-   */
+  /** Falls back to a text-only popup if the thumbnail image fails to load. */
   const [visible, setVisible] = useState(false)
   const [loadedUrl, setLoadedUrl] = useState<string | null>(null)
   const [above, setAbove] = useState(true)
   const [popupPos, setPopupPos] = useState({ left: 0, top: 0 })
   const key = useMemo(() => styleRowKey(style), [style])
   const thumbVersion = useThumbVersion(key)
-  const enterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const leaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const intentRef = useRef<HoverIntent | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const activeSource = useStylesStore((s) => s.activeSource)
   const sourceForThumb = style.source_file || activeSource || ''
@@ -29,11 +31,20 @@ export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children
   }&v=${thumbVersion}`
   const imgOk = loadedUrl === thumbUrl
 
-  const handleEnter = () => {
-    if (leaveTimer.current) clearTimeout(leaveTimer.current)
-    enterTimer.current = setTimeout(() => {
-      if (containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect()
+  const displayName = style.display_name || (style.name.includes('_')
+    ? style.name.split('_').slice(1).join(' ')
+    : style.name)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const intent = createHoverIntent({
+      showDelayMs: PREVIEW_SHOW_DELAY_MS,
+      hideDelayMs: PREVIEW_HIDE_DELAY_MS,
+      // Still on the card, and this iframe still owns focus (no host modal over it).
+      canShow: () => el.matches(':hover') && document.hasFocus(),
+      onShow: () => {
+        const rect = el.getBoundingClientRect()
         setAbove(rect.top > 200)
         const popupWidth = 240
         const left = Math.max(
@@ -42,27 +53,28 @@ export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children
         )
         const top = rect.top > 200 ? rect.top - 8 : rect.bottom + 8
         setPopupPos({ left, top })
-      }
-      setVisible(true)
-    }, 300)
-  }
-
-  const handleLeave = () => {
-    if (enterTimer.current) clearTimeout(enterTimer.current)
-    leaveTimer.current = setTimeout(() => {
-      setVisible(false)
-      setLoadedUrl(null)
-    }, 100)
-  }
-
-  const displayName = style.display_name || (style.name.includes('_')
-    ? style.name.split('_').slice(1).join(' ')
-    : style.name)
-
-  useEffect(() => {
+        setVisible(true)
+      },
+      onHide: () => {
+        setVisible(false)
+        setLoadedUrl(null)
+      },
+    })
+    intentRef.current = intent
+    // Native listeners, not React's onMouseEnter/onMouseLeave: after a layer
+    // portaled to <body> (context menu, its backdrop) is removed under the
+    // cursor, the browser reports the next move as body -> card, and React
+    // synthesizes onMouseEnter twice for it (once from mouseout on the portal
+    // container, once from mouseover with an unmanaged relatedTarget).
+    const onEnter = () => intent.enter()
+    const onLeave = () => intent.leave()
+    el.addEventListener('mouseenter', onEnter)
+    el.addEventListener('mouseleave', onLeave)
     return () => {
-      if (enterTimer.current) clearTimeout(enterTimer.current)
-      if (leaveTimer.current) clearTimeout(leaveTimer.current)
+      el.removeEventListener('mouseenter', onEnter)
+      el.removeEventListener('mouseleave', onLeave)
+      intent.dispose()
+      intentRef.current = null
     }
   }, [])
 
@@ -70,19 +82,14 @@ export const ThumbnailPreview = memo(function ThumbnailPreview({ style, children
     <div
       className="relative"
       ref={containerRef}
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
     >
       {children}
 
       {visible && createPortal(
         <div
           className="fixed z-[10050]"
-          onMouseEnter={() => {
-            if (enterTimer.current) clearTimeout(enterTimer.current)
-            if (leaveTimer.current) clearTimeout(leaveTimer.current)
-          }}
-          onMouseLeave={handleLeave}
+          onMouseEnter={() => intentRef.current?.hold()}
+          onMouseLeave={() => intentRef.current?.leave()}
           style={{
             minWidth: '200px',
             maxWidth: '280px',

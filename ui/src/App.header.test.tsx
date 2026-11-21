@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App, { HEADER_NARROW_MAX_PX } from './App'
 import { sendToHost } from './bridge'
+import { __resetFocusSourceForTests } from './lib/focusSource'
 import { __resetGridFocusForTests } from './lib/gridFocus'
 import { __resetLayerStackForTests } from './lib/layerStack'
 
@@ -36,15 +37,43 @@ describe('one-row header', () => {
     })
   }
 
-  const pressEscape = async () => {
+  /** Keydown on the focused element, so it reaches document (focusSource) and window (App). */
+  const pressKey = async (key: string) => {
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+      ;(document.activeElement ?? document.body).dispatchEvent(
+        new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
+      )
+    })
+  }
+  const pressEscape = () => pressKey('Escape')
+
+  /** Text of every open tooltip (Radix renders the label twice: visible and for assistive tech). */
+  const tooltipTexts = () =>
+    [...document.querySelectorAll<HTMLElement>('[data-slot="tooltip-content"]')].map((el) =>
+      el.querySelector('p')?.textContent ?? '',
+    )
+  const moreTooltipShown = () => tooltipTexts().includes('More')
+
+  /** What a mouse does on its way onto / off a button: React's enter/leave come from over/out. */
+  const hover = async (el: HTMLElement) => {
+    await act(async () => {
+      el.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
+      el.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }))
+      // Radix opens a hovered tooltip from a timer, even with a 0ms delay.
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+  }
+  const unhover = async (el: HTMLElement) => {
+    await act(async () => {
+      el.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }))
+      el.dispatchEvent(new MouseEvent('pointerleave', { bubbles: false }))
     })
   }
 
   beforeEach(async () => {
     __resetGridFocusForTests()
     __resetLayerStackForTests()
+    __resetFocusSourceForTests()
     sendToHostMock.mockClear()
     vi.stubGlobal(
       'fetch',
@@ -66,6 +95,7 @@ describe('one-row header', () => {
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
     __resetLayerStackForTests()
+    __resetFocusSourceForTests()
   })
 
   it('is a single non-wrapping row', () => {
@@ -146,5 +176,58 @@ describe('one-row header', () => {
     expect(titleText.className.split(/\s+/)).toContain(`${variant}sr-only`)
     const badge = header().querySelector('[data-sg-tab-badge]')!
     expect(badge.className.split(/\s+/)).toContain(`${variant}hidden`)
+  })
+  describe('toolbar tooltips open on hover or Tab focus only', () => {
+    it('Escape out of the More menu puts focus back on ⋯ without its tooltip', async () => {
+      await act(async () => headerButton('More').click())
+      expect(menu()).not.toBeNull()
+      await pressEscape()
+      expect(menu()).toBeNull()
+      expect(document.activeElement).toBe(headerButton('More'))
+      expect(moreTooltipShown()).toBe(false)
+    })
+
+    it('closing the Import / Export dialog puts focus back on ⋯ without its tooltip', async () => {
+      await act(async () => headerButton('More').click())
+      await act(async () => menuItems()[0].click())
+      expect(dialogTitle()).toBe('Import / Export')
+      const close = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+        (b) => b.textContent === 'Close',
+      )!
+      await act(async () => close.click())
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
+      expect(document.activeElement).toBe(headerButton('More'))
+      expect(moreTooltipShown()).toBe(false)
+    })
+
+    it('hover shows the tooltip and leaving hides it', async () => {
+      const more = headerButton('More')
+      await hover(more)
+      expect(moreTooltipShown()).toBe(true)
+      await unhover(more)
+      expect(moreTooltipShown()).toBe(false)
+    })
+
+    it('Tab focus shows the tooltip; focus restored after Escape does not', async () => {
+      const more = headerButton('More')
+      await pressKey('Tab')
+      await act(async () => more.focus())
+      expect(moreTooltipShown()).toBe(true)
+
+      await act(async () => more.blur())
+      expect(moreTooltipShown()).toBe(false)
+      await pressKey('Escape')
+      await act(async () => more.focus())
+      expect(document.activeElement).toBe(more)
+      expect(moreTooltipShown()).toBe(false)
+    })
+
+    it('while the More menu is open its tooltip never renders', async () => {
+      const more = headerButton('More')
+      await act(async () => more.click())
+      expect(menu()).not.toBeNull()
+      await hover(more)
+      expect(moreTooltipShown()).toBe(false)
+    })
   })
 })

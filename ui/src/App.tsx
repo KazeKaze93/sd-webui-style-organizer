@@ -29,6 +29,7 @@ import { closeTopLayer, hasOpenLayer } from './lib/layerStack'
 import { cn } from './lib/utils'
 import { styleGridPost } from './lib/styleGridFetch'
 import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
+import { installFocusSourceTracking, isTabFocus } from './lib/focusSource'
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -107,6 +108,45 @@ const ToolBtn = ({
   /** Whether that popup is open: sets aria-expanded. */
   expanded?: boolean
 }) => {
+  // Controlled tooltip: it opens on hover, or on focus only when the focus was
+  // a Tab move (lib/focusSource). Focus that a closing menu or dialog puts back
+  // on the button must not open it: nothing hovers the button then, so no
+  // pointerleave would ever close it.
+  const [tipOpen, setTipOpen] = useState(false)
+  const triggerRef = useRef<HTMLElement | null>(null)
+  const hoveredRef = useRef(false)
+  const focusedViaTabRef = useRef(false)
+
+  const onTipOpenChange = (next: boolean) => {
+    if (!next) {
+      setTipOpen(false)
+      return
+    }
+    if (expanded) return
+    const tabFocused = document.activeElement === triggerRef.current && isTabFocus()
+    if (hoveredRef.current || tabFocused) setTipOpen(true)
+  }
+
+  const triggerHandlers = {
+    ref: (el: HTMLElement | null) => {
+      triggerRef.current = el
+    },
+    onPointerEnter: () => {
+      hoveredRef.current = true
+    },
+    onPointerLeave: () => {
+      hoveredRef.current = false
+      const tabFocused = document.activeElement === triggerRef.current && focusedViaTabRef.current
+      if (!tabFocused) setTipOpen(false)
+    },
+    onFocus: () => {
+      focusedViaTabRef.current = isTabFocus()
+    },
+    onBlur: () => {
+      focusedViaTabRef.current = false
+    },
+  }
+
   const button = (
     <button
       type="button"
@@ -134,8 +174,9 @@ const ToolBtn = ({
     </button>
   )
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
+    // While the button's own menu is open the tooltip stays closed.
+    <Tooltip open={expanded ? false : tipOpen} onOpenChange={onTipOpenChange}>
+      <TooltipTrigger asChild {...triggerHandlers}>
         {disabled ? (
           <span className="inline-flex rounded">{button}</span>
         ) : (
@@ -231,6 +272,9 @@ export default function App() {
   useEffect(() => {
     setThemeMode(appliedThemeMode())
   }, [setThemeMode])
+
+  // Toolbar tooltips need to know whether focus came from Tab (see ToolBtn).
+  useEffect(() => installFocusSourceTracking(), [])
 
   useEffect(() => {
     try {

@@ -11,6 +11,7 @@ import { SourceFilter } from './components/SourceFilter'
 import { Sidebar } from './components/Sidebar'
 import { StyleGrid } from './components/StyleGrid'
 import { GridScroller } from './components/grid/GridScroller'
+import { gridMinVisibleHeightPx } from './components/grid/constants'
 import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
 import { Toast } from './components/Toast'
@@ -58,6 +59,9 @@ const WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
 /** Search is the primary tool: it grows (flex-1) but never collapses below this. */
 const SEARCH_MIN_WIDTH_PX = 200
+
+/** Top padding of the grid scroller content (the `pt-3` wrapper around the grid). */
+const GRID_PAD_TOP_PX = 12
 
 const ToolBtn = ({
   icon: Icon,
@@ -485,7 +489,16 @@ export default function App() {
       )}
 
       {/* Body */}
-      <div className="relative flex min-h-0" style={{ flex: '1 1 0', overflow: 'hidden' }}>
+      {/* minHeight: the grid keeps a header and two card rows; the tray shrinks first. */}
+      <div
+        className="relative flex"
+        data-sg-body="true"
+        style={{
+          flex: '1 1 0',
+          overflow: 'hidden',
+          minHeight: GRID_PAD_TOP_PX + gridMinVisibleHeightPx(compactMode, !isFullscreen),
+        }}
+      >
         {/* Sidebar */}
         <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
           style={{ width: isFullscreen ? '210px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
@@ -504,8 +517,8 @@ export default function App() {
         <Toast />
       </div>
 
-      {/* Bottom panels — fixed height */}
-      <div className="shrink-0">
+      {/* Bottom panels — capped in BottomPanel; may shrink so the grid keeps its minimum. */}
+      <div className="min-h-0 flex flex-col" style={{ flex: '0 1 auto' }}>
         <BottomPanel />
       </div>
       <ThumbProgressModal />

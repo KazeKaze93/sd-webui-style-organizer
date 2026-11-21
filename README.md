@@ -144,20 +144,21 @@ The small tab badge in the panel header shows the active host context.
 
 **Where to open it**
 
-- **Right-click** a **category row** in the **left sidebar** (the colored category list). This is the **only** category context menu.
+- In the **left sidebar** (the colored category list), hover a **category row** or move focus to it with **Tab**: a **⋯** button replaces the row's count. Click it (or press **Enter** / **Space** on it) to open the category menu.
+- **Right-click** the row, or press the **ContextMenu** key / **Shift+F10** on it, to open the same menu. **Escape** closes it and returns focus to where it was opened.
+- The fixed entries (All, Favorites, Recent, LoRA, Presets) have no ⋯. Right-clicking **LoRA** opens the same menu without **Generate previews…**.
 - Right-clicking a **category header** inside the main grid (the sticky `▼ CATEGORY (count)` row) **no longer opens a menu** — that duplicate entry point was removed. A normal **left-click** on the header still collapses/expands the section; **Select All** on that row is unchanged.
 
 **Menu actions**
 
 | Item | What it does |
 |---|---|
-| **Wildcard: random (can repeat)** → **Whole category** | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
-| **Wildcard: random (can repeat)** → **Pick styles...** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
-| **Wildcard: shuffle (no repeats in a batch)** → **Whole category** | Inserts a token into the **positive prompt** on the Forge side: `{sgd:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
-| **Wildcard: shuffle (no repeats in a batch)** → **Pick styles...** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
-| **Generate previews…** | Queues **thumbnail generation** for styles in that category (batch job in the host). Always shown; does not report a missing-preview count. |
+| **Random** (whole category, may repeat) | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
+| **Shuffle** (whole category, no repeats in a batch) | Inserts a token into the **positive prompt** on the Forge side: `{sgd:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
+| **Pick styles…** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. A **Random / Shuffle** toggle at the start of the mode bar chooses the wildcard kind (Random by default); switching keeps the ticked styles. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** (or **Add as shuffle wildcard**) inserts a **slice** token for exactly that selection; **Cancel** discards it. |
+| **Generate previews…** | Queues **thumbnail generation** for styles in that category (batch job in the host). Shown for every category except LoRA; does not report a missing-preview count. |
 
-![Sidebar category context menu — Wildcard: random (can repeat) and Wildcard: shuffle (no repeats in a batch) with Whole category / Pick styles..., and Generate previews…](docs/screenshots/category-context-wildcard-previews.png)
+![Sidebar category menu — Random, Shuffle, Pick styles… and Generate previews…](docs/screenshots/category-context-wildcard-previews.png)
 
 ![Slice-selection mode — mode bar with selection count and Select all / Clear all / Add as wildcard / Cancel; per-card checkboxes; search stays active](docs/screenshots/slice-selection-mode.png)
 
@@ -191,7 +192,7 @@ The small tab badge in the panel header shows the active host context.
 A **shuffle wildcard** draws styles **without repeats across batches**. `{sgd:category}` uses every style once before any style comes back, advancing **one deck position per batch**. Images inside one batch share the same pick (same as `{sg:...}`). To get a different style on every image, set **batch size 1** and raise **batch count**.
 
 - **Syntax:** `{sgd:category}` for a whole category, `{sgd:category:spec}` for a slice. The spec grammar is the same as for `{sg:...}` (names, `-excludes`, `Root_*` globs), and the order of entries does not matter.
-- **Insert:** right-click a category and use the *Wildcard: shuffle* group (*Whole category* or *Pick styles...*), or type the token by hand. Shuffle chips have their own icon and can be reordered, removed and saved in presets like any other wildcard.
+- **Insert:** open a category's menu and choose *Shuffle* (whole category) or *Pick styles…* with *Shuffle* in the mode bar, or type the token by hand. Shuffle chips have their own icon and can be reordered, removed and saved in presets like any other wildcard.
 - **Scope of uniqueness:** one generation, counted in **batches** (batch count), not images. A fixed seed repeats the same order, seed -1 gives a new order on every click.
 - **Several tokens:** repeating the same token in one prompt draws a different style for each occurrence.
 - **Positive and negative prompts:** the same shuffle token in both fields resolves to the same style for a given image.

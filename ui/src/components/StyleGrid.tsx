@@ -28,7 +28,7 @@ import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
 import { SegmentedControl, type SegmentOption } from './SegmentedControl'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
-import { WildcardMenuItems } from './WildcardMenuItems'
+import { CategoryMenuItems } from './CategoryMenuItems'
 import { autoFillGridClass, VirtualStyleGrid } from './grid'
 
 const FAVORITES_VIEW = '★ Favorites'
@@ -405,9 +405,10 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
           y={loraCatMenu.y}
           onClose={() => setLoraCatMenu(null)}
         >
-          <WildcardMenuItems
+          <CategoryMenuItems
             category={loraCatMenu.cat}
             onClose={() => setLoraCatMenu(null)}
+            lora
           />
         </ViewportFixedMenu>
       )}

@@ -1,7 +1,7 @@
 /**
  * Host side of SG_STYLE_RENAMED: the guard in post-message.js and the
- * remap-before-refresh order in handlers/style-renamed.js. Nothing sends this
- * message yet; the iframe modals that will are a later step.
+ * remap-before-refresh order in handlers/style-renamed.js. The iframe's editor
+ * and Move dialog send it after a rename.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -89,6 +89,7 @@ describe('iframe-messages.js wiring', () => {
     expect(IFRAME_MESSAGES_SRC).toMatch(
       /msg\.type === "SG_STYLE_RENAMED"\) \{\s*applyStyleRenamed\(tab, msg, \{\s*remap: remapStyleNameReferences,\s*refresh: refreshHostAndFrame,/,
     )
-    expect(IFRAME_MESSAGES_SRC).toMatch(/msg\.type === "SG_REFRESH"\) \{\s*refreshHostAndFrame\(tab\);/)
+    // SG_REFRESH reaches the same refreshHostAndFrame through applyRefresh (hostRefresh.test.ts).
+    expect(IFRAME_MESSAGES_SRC).toMatch(/msg\.type === "SG_REFRESH"\) \{\s*applyRefresh\(tab, msg, \{ refresh: refreshHostAndFrame \}\);/)
   })
 })

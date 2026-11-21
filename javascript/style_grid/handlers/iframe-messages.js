@@ -55,6 +55,9 @@ import {
 import {
     applyStyleRenamed,
 } from "./style-renamed.js";
+import {
+    applyRefresh,
+} from "./refresh.js";
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
             // Same-origin + this iframe's contentWindow only (two tabs each register a listener).
@@ -142,8 +145,9 @@ function installIframeMessageBridge(tab, frame) {
             }
 
             // Shared by SG_REFRESH and SG_STYLE_RENAMED: host state first, then the iframe catalog.
-            function refreshHostAndFrame(refreshTab) {
-                refreshPanel(refreshTab);
+            // opts go to refreshPanel (quietVanishedToast).
+            function refreshHostAndFrame(refreshTab, opts) {
+                refreshPanel(refreshTab, opts);
                 fetch("/style_grid/check_update")
                     .then(function () { return fetch("/style_grid/styles"); })
                     .then(function (r) { return r.json(); })
@@ -165,7 +169,7 @@ function installIframeMessageBridge(tab, frame) {
             }
 
             if (msg.type === "SG_REFRESH") {
-                refreshHostAndFrame(tab);
+                applyRefresh(tab, msg, { refresh: refreshHostAndFrame });
             }
             // The iframe renamed a style on the server. Remap before refresh:
             // see handlers/style-renamed.js.

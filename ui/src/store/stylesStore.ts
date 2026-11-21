@@ -547,6 +547,8 @@ interface StylesStore {
   /** Full style names selected for the current slice. */
   sliceSelection: string[]
   startSliceMode: (category: string, kind?: WildcardKind) => void
+  /** Switch the open slice between random and shuffle; keeps the category and the picks. */
+  setSliceKind: (kind: WildcardKind) => void
   exitSliceMode: () => void
   toggleSliceSelection: (name: string) => void
   /** Select all currently visible (search/filter-applied) names — caller supplies the list. */
@@ -1197,6 +1199,10 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   startSliceMode: (category, kind = WILDCARD_KIND_DICE) => set({
     sliceMode: { category, kind },
     sliceSelection: [],
+  }),
+  setSliceKind: (kind) => set((s) => {
+    if (!s.sliceMode || s.sliceMode.kind === kind) return {}
+    return { sliceMode: { ...s.sliceMode, kind } }
   }),
   exitSliceMode: () => set({ sliceMode: null, sliceSelection: [] }),
   toggleSliceSelection: (name) => set((s) => {

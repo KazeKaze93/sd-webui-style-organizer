@@ -1,4 +1,4 @@
-import { styleGridPost } from './styleGridFetch'
+import { readApiResponse, styleGridPost } from './styleGridFetch'
 
 /** How many colliding names the summary lists before "+N more" (host: IMPORT_SUMMARY_MAX_NAMES). */
 export const IMPORT_SUMMARY_MAX_NAMES = 10
@@ -16,40 +16,6 @@ export function isJsonFile(file: Pick<File, 'name' | 'type'>): boolean {
   return /\.json$/i.test(file.name) || file.type === 'application/json'
 }
 
-/** Error text of a failed response, the way the host's parseApiResponse reads it. */
-function responseError(status: number, ok: boolean, body: Record<string, unknown>): string | null {
-  if (typeof body.error === 'string' && body.error) {
-    // The host appends the colliding names to an error body that carries them.
-    const collisions = Array.isArray(body.collisions) ? body.collisions.map(String) : []
-    return collisions.length
-      ? `${body.error}\n\nColliding names: ${collisions.join(', ')}`
-      : body.error
-  }
-  if (ok) return null
-  if (typeof body.detail === 'string' && body.detail) return body.detail
-  if (Array.isArray(body.detail)) {
-    const msg = body.detail
-      .map((d) => (d && typeof d === 'object' && typeof (d as { msg?: unknown }).msg === 'string'
-        ? (d as { msg: string }).msg
-        : ''))
-      .filter(Boolean)
-      .join('; ')
-    if (msg) return msg
-  }
-  return `HTTP ${status}`
-}
-
-async function readBody(res: Response): Promise<{ body: Record<string, unknown>; parsed: boolean }> {
-  const text = await res.text().catch(() => '')
-  if (!text) return { body: {}, parsed: true }
-  try {
-    const data: unknown = JSON.parse(text)
-    return { body: data && typeof data === 'object' ? (data as Record<string, unknown>) : {}, parsed: true }
-  } catch {
-    return { body: {}, parsed: false }
-  }
-}
-
 export type ExportResult = { ok: true; data: unknown } | { ok: false; error: string }
 
 /** GET /style_grid/export, the host's request. */
@@ -60,10 +26,9 @@ export async function fetchExport(): Promise<ExportResult> {
   } catch {
     return { ok: false, error: 'Export failed' }
   }
-  const { body, parsed } = await readBody(res)
-  if (!parsed) return { ok: false, error: res.ok ? 'Export failed: Invalid JSON in response' : `Export failed: HTTP ${res.status}` }
-  if (!res.ok) return { ok: false, error: `Export failed: ${responseError(res.status, false, body)}` }
-  return { ok: true, data: body }
+  const result = await readApiResponse(res)
+  if (!result.ok) return { ok: false, error: `Export failed: ${result.error}` }
+  return { ok: true, data: result.body }
 }
 
 /** Save `data` as a pretty-printed JSON file through a Blob URL in this document. */
@@ -158,9 +123,14 @@ export async function importJsonText(text: string): Promise<ImportResult> {
   } catch {
     return { ok: false, error: 'Import failed' }
   }
-  const { body, parsed } = await readBody(res)
-  if (!parsed) return { ok: false, error: res.ok ? 'Invalid JSON in response' : `HTTP ${res.status}` }
-  const error = responseError(res.status, res.ok, body)
-  if (error) return { ok: false, error }
-  return { ok: true, summary: importSummaryOf(body) }
+  const result = await readApiResponse(res)
+  if (!result.ok) {
+    // The host appends the colliding names to an error body that carries them.
+    const collisions = Array.isArray(result.body.collisions) ? result.body.collisions.map(String) : []
+    const error = collisions.length && typeof result.body.error === 'string'
+      ? `${result.error}\n\nColliding names: ${collisions.join(', ')}`
+      : result.error
+    return { ok: false, error }
+  }
+  return { ok: true, summary: importSummaryOf(result.body) }
 }

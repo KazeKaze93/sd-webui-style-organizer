@@ -13,6 +13,7 @@ import { StyleGrid } from './components/StyleGrid'
 import { GridScroller } from './components/grid/GridScroller'
 import { StyleEditorDialog } from './components/StyleEditorDialog'
 import { ImportExportDialog } from './components/ImportExportDialog'
+import { BackupRestoreDialog } from './components/BackupRestoreDialog'
 import { gridMinVisibleHeightPx } from './components/grid/constants'
 import { BottomPanel } from './components/BottomPanel'
 import { ThumbProgressModal } from './components/ThumbProgressModal'
@@ -131,6 +132,7 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [newStyleOpen, setNewStyleOpen] = useState(false)
   const [importExportOpen, setImportExportOpen] = useState(false)
+  const [backupOpen, setBackupOpen] = useState(false)
   const searchRootRef = useRef<HTMLDivElement>(null)
   const [loraFetchStatus, setLoraFetchStatus] = useState<{
     status: string; done: number; total: number; errors: number
@@ -365,7 +367,7 @@ export default function App() {
             <ToolBtn
               icon={Save}
               label="Backup / Restore"
-              onClick={() => sendToHost({ type: 'SG_BACKUP' })}
+              onClick={() => setBackupOpen(true)}
             />
             <ToolBtn
               icon={Import}
@@ -502,6 +504,7 @@ export default function App() {
       {importExportOpen && (
         <ImportExportDialog open onClose={() => setImportExportOpen(false)} />
       )}
+      {backupOpen && <BackupRestoreDialog open onClose={() => setBackupOpen(false)} />}
     </div>
   )
 }

@@ -41,11 +41,11 @@ export type ApiResult =
   | { ok: false; error: string; body: Record<string, unknown> }
 
 /**
- * Read a Style Grid response the way the host's parseApiResponse (api.js) did:
- * a non-JSON body is "HTTP <status>" (or "Invalid JSON in response" on 2xx);
- * a failed status reports `error`, a string `detail`, or the `detail[].msg`
- * list. A 2xx body with an `error` is a failure too (the host's callers
- * checked `body.error`).
+ * Read a Style Grid response (same rules as the host's parseApiResponse in
+ * javascript/style_grid/api.js): a non-JSON body is "HTTP <status>" (or
+ * "Invalid JSON in response" on 2xx); a failed status reports `error`, a
+ * string `detail`, or the `detail[].msg` list. A 2xx body with an `error` is
+ * a failure too: several routes report errors with HTTP 200.
  */
 export async function readApiResponse(res: Response): Promise<ApiResult> {
   const text = await res.text().catch(() => '')

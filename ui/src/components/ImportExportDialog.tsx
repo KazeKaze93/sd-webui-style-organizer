@@ -38,9 +38,9 @@ function readFileText(file: File): Promise<string> {
 type Outcome = { summary: ImportSummary | null }
 
 /**
- * Export the whole library as one JSON file, or import one. The requests are
- * the host's (render.js showExportImport); the host is only asked to refresh
- * after a successful import.
+ * Export the whole library as one JSON file, or import one. The dialog calls
+ * /export and /import itself; the host is only asked to refresh after a
+ * successful import.
  */
 export function ImportExportDialog({ open, onClose }: Props) {
   const showToast = useStylesStore((s) => s.showToast)

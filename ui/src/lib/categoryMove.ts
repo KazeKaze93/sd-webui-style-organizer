@@ -36,13 +36,13 @@ export type MovePlan = {
   /** True when the CSV name changes (canonical names). */
   renames: boolean
   newName: string
-  /** Body for POST /style_grid/style/rename (same fields as the host move). */
+  /** Body for POST /style_grid/style/rename; `category` writes the CSV category column. */
   payload: { old_name: string; new_name: string; source: string; category: string }
 }
 
 /**
  * What moving `style` to `category` writes. Canonical names get the new prefix
- * and the category column (what the host Move did); non-standard names keep
+ * and the category column; non-standard names keep
  * their name and only the category column changes.
  */
 export function planMove(style: MovableStyle, category: string): MovePlan {

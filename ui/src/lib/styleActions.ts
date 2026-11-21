@@ -1,7 +1,7 @@
 import type { Style } from '../bridge'
 import { styleGridDelete, styleGridPost } from './styleGridFetch'
 
-/** Suffix of a duplicated style's name, as the host has always used. */
+/** Suffix of a duplicated style's name (`NAME_copy`, then `NAME_copy_2`…). */
 export const COPY_SUFFIX = '_copy'
 
 export type StyleActionResult =
@@ -70,8 +70,9 @@ async function failureOf(res: Response, fallback: string): Promise<string | null
 }
 
 /**
- * Delete a style row, then its thumbnail. Same requests and payloads the host
- * modal used. The thumbnail request is best-effort: the style is already gone.
+ * Delete a style row (POST /style/delete), then its thumbnail
+ * (DELETE /thumbnail). The thumbnail request is best-effort: the style is
+ * already gone.
  */
 export async function deleteStyleRequest(
   style: Pick<Style, 'name' | 'source_file'>,

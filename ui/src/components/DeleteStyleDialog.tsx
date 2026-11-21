@@ -18,7 +18,9 @@ type Props = {
 /**
  * Confirmation before deleting a style from its CSV. The iframe makes the
  * requests itself; the host is only asked to refresh afterwards, because the
- * style may be applied to the prompt fields.
+ * style may be applied to the prompt fields. The refresh is quiet: the host
+ * strips the deleted style's text without its "no longer in the library"
+ * toast, since the user removed it on purpose.
  */
 export function DeleteStyleDialog({ open, style, displayName, onClose }: Props) {
   const showToast = useStylesStore((s) => s.showToast)
@@ -34,7 +36,7 @@ export function DeleteStyleDialog({ open, style, displayName, onClose }: Props) 
         showToast(result.error, 'error')
         return
       }
-      sendToHost({ type: 'SG_REFRESH' })
+      sendToHost({ type: 'SG_REFRESH', quiet_vanished: true })
       onClose()
     } finally {
       setBusy(false)

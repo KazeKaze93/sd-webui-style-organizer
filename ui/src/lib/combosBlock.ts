@@ -110,8 +110,8 @@ export function removeBlockElement(block: string, index: number): string {
 
 /**
  * Add `name` as a new last element: `; NAME` after the last element (so
- * before the block's period), or a new block `Combos: NAME.` (the host's
- * format) when there is none.
+ * before the block's period), or a new block `Combos: NAME.` when there is
+ * none.
  */
 export function addBlockElement(block: string, name: string): string {
   const els = parseBlock(block)
@@ -126,9 +126,9 @@ export const BLOCK_UNSAFE_NAME_RE = /[.;+()]/
 /**
  * Description to save from edited parts. Untouched parts return `original`
  * byte for byte; an edited part keeps the stored whitespace around it.
- * A block created where there was none is attached the way the host's
- * joinDescriptionAndCombos did: `<before trimmed>` + (". " or " " after a
- * period) + `Combos: <items>.`, followed by any `after` text.
+ * A block created where there was none is attached as `<before trimmed>` +
+ * (". ", or " " after a period) + `Combos: <items>.`, followed by any
+ * `after` text.
  */
 export function buildDescription(
   original: string,

@@ -36,9 +36,8 @@ const button = (kind: 'primary' | 'secondary' | 'danger') =>
   )
 
 /**
- * Create a snapshot of the library or restore one. Requests are the host's
- * (render.js showBackupRestore); the host is only asked to refresh after a
- * restore.
+ * Create a snapshot of the library or restore one. The dialog calls the
+ * backup routes itself; the host is only asked to refresh after a restore.
  */
 export function BackupRestoreDialog({ open, onClose }: Props) {
   const showToast = useStylesStore((s) => s.showToast)
@@ -129,7 +128,7 @@ export function BackupRestoreDialog({ open, onClose }: Props) {
 
   const thumbsLabel = (() => {
     if (list.status !== 'ready') return 'Include thumbnails'
-    // The host showed "(empty)" when there is nothing to include.
+    // "(empty)" when there are no thumbnails to include.
     return list.thumbnailsBytes > 0
       ? `Include thumbnails (~${formatBytes(list.thumbnailsBytes)})`
       : 'Include thumbnails (empty)'

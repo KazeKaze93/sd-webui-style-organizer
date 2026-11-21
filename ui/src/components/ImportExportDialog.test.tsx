@@ -36,7 +36,7 @@ describe('import/export helpers', () => {
     expect(isJsonFile({ name, type })).toBe(expected)
   })
 
-  it('toast text follows the host formatImportSummary', () => {
+  it('toast text: imported count, up to 10 collisions, invalid entries; info when something was skipped', () => {
     expect(importSummaryMessage({ imported: 1, collisions: [], invalid: 0 })).toEqual({
       message: 'Imported 1 style.',
       variant: 'success',
@@ -227,6 +227,8 @@ describe('ImportExportDialog', () => {
       'info:Imported 3 styles. Skipped 2 already in the library: BODY_Tall, POSE_Sit. Skipped 1 invalid entry (missing name).',
     ])
     expect(hostMessages()).toEqual([{ type: 'SG_REFRESH' }])
+    // Import keeps the host's vanished-style toast.
+    expect(hostMessages()[0]).not.toHaveProperty('quiet_vanished')
     // Done: the dialog stays with the summary, and the same file is not imported twice.
     expect(onClose).not.toHaveBeenCalled()
     expect(importButton().disabled).toBe(true)

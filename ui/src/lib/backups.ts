@@ -19,7 +19,7 @@ export type BackupList = { backups: Snapshot[]; thumbnailsBytes: number; keepSna
  */
 export const DEFAULT_KEEP_SNAPSHOTS = 20
 
-/** Sizes as the host printed them (render.js formatBytes). */
+/** Byte size with one decimal: "512 B", "1.5 KB", "5.0 MB" (binary units). */
 export function formatBytes(n: number): string {
   const num = Number(n) || 0
   if (num < 1024) return `${num} B`
@@ -118,7 +118,7 @@ export async function fetchBackups(): Promise<Result<BackupList>> {
 
 export type CreateOutcome = { created: true; snapshot: string | null } | { created: false }
 
-/** POST /style_grid/backup `{include_thumbnails}`, as the host sent it. */
+/** POST /style_grid/backup `{include_thumbnails}`. */
 export async function createBackup(includeThumbnails: boolean): Promise<Result<CreateOutcome>> {
   let res: Response
   try {
@@ -134,7 +134,7 @@ export async function createBackup(includeThumbnails: boolean): Promise<Result<C
   return { ok: true, value: { created: true, snapshot } }
 }
 
-/** POST /style_grid/restore `{snapshot}`, as the host sent it. */
+/** POST /style_grid/restore `{snapshot}` (the route also accepts `name`). */
 export async function restoreBackup(name: string): Promise<Result<{ safety: string | null }>> {
   let res: Response
   try {

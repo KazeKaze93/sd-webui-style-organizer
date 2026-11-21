@@ -48,7 +48,12 @@ export type FrameMessage =
   | { type: 'SG_CLOSE_REQUEST' }
   | { type: 'SG_CLEAR_ALL' }
   | { type: 'SG_SOURCE_CHANGE'; source: string | null }
-  | { type: 'SG_REFRESH' }
+  /**
+   * Reload host state and the catalog after a library change. quiet_vanished:
+   * a selected style is gone on purpose (deleted here), so the host strips its
+   * text without the "no longer in the library" toast.
+   */
+  | { type: 'SG_REFRESH'; quiet_vanished?: boolean }
   /** Ask the host to enter or leave fullscreen. The host answers SG_FULLSCREEN_STATE. */
   | { type: 'SG_SET_FULLSCREEN'; fullscreen: boolean }
   /**

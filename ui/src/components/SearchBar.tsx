@@ -27,6 +27,13 @@ export function SearchBar() {
   const { styles, activeSource, search, setSearch, toggleStyle, selectedStyles } = useStylesStore()
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState(search)
+  // The store's search can change from outside (an empty state's "Clear search"):
+  // follow it, or the field would keep text the grid no longer filters by.
+  const [syncedSearch, setSyncedSearch] = useState(search)
+  if (search !== syncedSearch) {
+    setSyncedSearch(search)
+    setInputValue(search)
+  }
   const inputRef = useRef<HTMLInputElement>(null)
   const listId = useId()
 

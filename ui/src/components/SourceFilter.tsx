@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { sourceLabel } from '../lib/sourceLabel'
 import { useStylesStore } from '../store/stylesStore'
 
 const FOCUS_RING =
@@ -12,11 +13,7 @@ export function SourceFilter() {
   if (sources.length === 0) return null
   const onlySourceIsReadOnly = sources.length === 1 &&
     styles.some(s => s.source_file === sources[0] && s.read_only)
-  const labelOf = (src: string) => {
-    const normalized = src.replace(/\\/g, '/')
-    const base = normalized.split('/').pop() || src
-    return base.replace(/\.csv$/i, '')
-  }
+  const labelOf = sourceLabel
   const currentLabel = activeSource ? labelOf(activeSource) : 'All Sources'
   const selectWidthCh = Math.min(Math.max(currentLabel.length + 4, 14), 40)
   // The dropdown is the header's designated shrink target (12ch–24ch); the full

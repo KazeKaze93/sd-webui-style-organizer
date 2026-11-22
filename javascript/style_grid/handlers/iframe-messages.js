@@ -33,8 +33,14 @@ import {
     refreshPanel,
 } from "./panel.js";
 import {
+    cancelBatchThumbnails,
+    skipBatchThumbnails,
     startBatchThumbnails,
 } from "./thumbnails-batch.js";
+import {
+    createSinglePreviewReporter,
+    repostPreviewState,
+} from "./preview-progress.js";
 import {
     generateThumbnail,
     uploadThumbnail,
@@ -101,6 +107,8 @@ function installIframeMessageBridge(tab, frame) {
                 announceFullscreenState(state[tab].sgPanelResize, frame, postToFrame);
                 // One SG_INIT per iframe document; also cancels the load fallback.
                 if (state[tab].sgStylesInitGate) state[tab].sgStylesInitGate.onReady();
+                // A reloaded panel: show the running batch and tiles still generating.
+                repostPreviewState(state[tab], function (m) { postToFrame(frame, m); });
             }
 
             if (msg.type === "SG_APPLY") {
@@ -314,7 +322,7 @@ function installIframeMessageBridge(tab, frame) {
                                     return sourceMatchKey(s.source || s.source_file) === activeKey;
                                 });
                             }
-                            startBatchThumbnails(tab, catName, stylesInCat);
+                            startBatchThumbnails(tab, catName, stylesInCat, batchSource);
                         })
                         .catch(function () {
                             var frLoad = state[tab] && state[tab].sgFrame;
@@ -330,41 +338,21 @@ function installIframeMessageBridge(tab, frame) {
             }
             if (msg.type === "SG_GENERATE_PREVIEW") {
                 var genSource = msg.source || state[tab].selectedSourceFile || "";
-                generateThumbnail(tab, msg.styleId, function () {}, function (status, progressValue) {
-                    if (frame.contentWindow) {
-                        postToFrame(frame, {
-                            type: "SG_THUMB_PROGRESS",
-                            status: status,
-                            styleId: msg.styleId,
-                            progress: progressValue,
-                        });
-                        if (status === "done") {
-                            postToFrame(frame, {
-                                type: "SG_THUMB_PROGRESS",
-                                status: "done",
-                                styleId: msg.styleId,
-                                progress: 100,
-                            });
-                            setTimeout(function () {
-                                if (frame && frame.contentWindow) {
-                                    postToFrame(frame, {
-                                        type: "SG_THUMB_DONE",
-                                        styleId: msg.styleId,
-                                        version: Date.now(),
-                                        source_file: genSource,
-                                    });
-                                }
-                            }, 300);
-                        }
-                        if (status === "error") {
-                            postToFrame(frame, {
-                                type: "SG_THUMB_PROGRESS",
-                                status: "error",
-                                styleId: msg.styleId,
-                            });
-                        }
-                    }
-                }, genSource);
+                if (!state[tab].sgPreviewJobs) state[tab].sgPreviewJobs = {};
+                var reportSingle = createSinglePreviewReporter(msg.styleId, genSource, state[tab].sgPreviewJobs, {
+                    post: function (m) {
+                        if (frame && frame.contentWindow) postToFrame(frame, m);
+                    },
+                    setTimeout: function (fn, ms) { return setTimeout(fn, ms); },
+                    now: function () { return Date.now(); },
+                });
+                generateThumbnail(tab, msg.styleId, function () {}, reportSingle, genSource);
+            }
+            if (msg.type === "SG_BATCH_CANCEL") {
+                cancelBatchThumbnails(tab);
+            }
+            if (msg.type === "SG_BATCH_SKIP") {
+                skipBatchThumbnails(tab);
             }
             if (msg.type === "SG_UPLOAD_PREVIEW") {
                 var uploadSource = msg.source || state[tab].selectedSourceFile || "";

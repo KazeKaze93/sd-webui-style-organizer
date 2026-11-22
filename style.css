@@ -127,27 +127,6 @@
 /* ---- Light theme (live overlays only) ---- */
 .gradio-container.light .sg-editor-modal, .light .sg-editor-modal { background: #fff; }
 
-/* ---- Batch thumbnail generation modal ---- */
-.sg-batch-progress-text {
-    font-size: 13px;
-    color: var(--body-text-color, #d1d5db);
-    margin: 8px 0;
-}
-.sg-batch-bar-wrap {
-    height: 6px;
-    background: var(--background-fill-secondary, #1f2937);
-    border-radius: 3px;
-    overflow: hidden;
-    margin: 8px 0 12px;
-}
-.sg-batch-bar-fill {
-    height: 100%;
-    width: 0%;
-    background: var(--color-accent, #6366f1);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-}
-
 /* ---- Panel resize handles (host frame around the Style Grid iframe) ----
    Created by handlers/panel-resize.js inside #sg-panel-wrapper-<tab>.
    --sg-resize-edge / --sg-resize-corner are set on the wrapper from the

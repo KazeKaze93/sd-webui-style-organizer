@@ -26,6 +26,10 @@ function createTabState() {
             sgV2HostInitSent: false,
             /** Per-frame SG_INIT gate (handlers/styles-init.js), set by initSGFrame. */
             sgStylesInitGate: null,
+            /** Latest SG_BATCH_PROGRESS posted to this tab's frame (re-posted on SG_READY while running). */
+            sgBatchLast: null,
+            /** Single preview jobs still generating, by previewJobKey (handlers/preview-progress.js). */
+            sgPreviewJobs: {},
         };
     }
 

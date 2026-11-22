@@ -417,7 +417,7 @@ describe('card menu: Move to category', () => {
         .dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }))
     })
     const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (i) => i.textContent?.trim() === 'Move to category...',
+      (i) => i.textContent?.trim() === 'Move to category…',
     )!
     await act(async () => item.click())
     return item

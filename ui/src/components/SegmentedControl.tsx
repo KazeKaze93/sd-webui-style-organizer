@@ -9,6 +9,14 @@ const FOCUS_RING =
 
 const SEGMENT_CLASS = 'h-6 flex items-center justify-center rounded-sm transition-colors'
 
+/** Checked-segment colors per tone (literal strings for Tailwind). */
+const CHECKED_CLASS = {
+  accent: 'bg-sg-accent text-white',
+  wildcard: 'bg-sg-wildcard text-white',
+} as const
+
+export type SegmentTone = keyof typeof CHECKED_CLASS
+
 /**
  * One segment. With an icon it renders the icon alone with a tooltip (needs a
  * TooltipProvider above); without one it renders the label as text.
@@ -26,18 +34,19 @@ type SegmentProps<T extends string> = {
   checked: boolean
   onSelect: (value: T) => void
   buttonRef: (el: HTMLButtonElement | null) => void
+  tone: SegmentTone
 }
 
-function segmentClass(checked: boolean, iconOnly: boolean) {
+function segmentClass(checked: boolean, iconOnly: boolean, tone: SegmentTone) {
   return cn(
     SEGMENT_CLASS,
     iconOnly ? 'w-7' : 'px-2 text-xs font-medium',
     FOCUS_RING,
-    checked ? 'bg-sg-accent text-white' : 'text-sg-muted hover:text-sg-text',
+    checked ? CHECKED_CLASS[tone] : 'text-sg-muted hover:text-sg-text',
   )
 }
 
-function IconSegment<T extends string>({ option, checked, onSelect, buttonRef }: SegmentProps<T>) {
+function IconSegment<T extends string>({ option, checked, onSelect, buttonRef, tone }: SegmentProps<T>) {
   const tip = useGatedTooltip()
   const Icon = option.icon!
   return (
@@ -53,7 +62,7 @@ function IconSegment<T extends string>({ option, checked, onSelect, buttonRef }:
           tabIndex={checked ? 0 : -1}
           {...option.data}
           onClick={() => onSelect(option.value)}
-          className={segmentClass(checked, true)}
+          className={segmentClass(checked, true, tone)}
         >
           <Icon size={14} aria-hidden />
         </button>
@@ -65,7 +74,7 @@ function IconSegment<T extends string>({ option, checked, onSelect, buttonRef }:
   )
 }
 
-function TextSegment<T extends string>({ option, checked, onSelect, buttonRef }: SegmentProps<T>) {
+function TextSegment<T extends string>({ option, checked, onSelect, buttonRef, tone }: SegmentProps<T>) {
   return (
     <button
       ref={buttonRef}
@@ -75,7 +84,7 @@ function TextSegment<T extends string>({ option, checked, onSelect, buttonRef }:
       tabIndex={checked ? 0 : -1}
       {...option.data}
       onClick={() => onSelect(option.value)}
-      className={segmentClass(checked, false)}
+      className={segmentClass(checked, false, tone)}
     >
       {option.label}
     </button>
@@ -91,12 +100,15 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   ariaLabel,
+  tone = 'accent',
   data,
 }: {
   options: ReadonlyArray<SegmentOption<T>>
   value: T
   onChange: (value: T) => void
   ariaLabel: string
+  /** Checked-segment color: header accent (default) or the wildcard color. */
+  tone?: SegmentTone
   data?: Record<`data-${string}`, string>
 }) {
   const buttons = useRef<Array<HTMLButtonElement | null>>([])
@@ -148,6 +160,7 @@ export function SegmentedControl<T extends string>({
             option={o}
             checked={value === o.value}
             onSelect={onChange}
+            tone={tone}
             buttonRef={(el) => {
               buttons.current[i] = el
             }}

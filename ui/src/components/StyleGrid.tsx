@@ -9,9 +9,7 @@ import {
   type WildcardKind,
 } from '../bridge'
 import {
-  SLICE_ADD_SHUFFLE,
   SLICE_ADD_SHUFFLE_ARIA,
-  SLICE_BAR_TITLE_SHUFFLE,
   SLICE_MODE_GROUP_LABEL,
   SLICE_MODE_RANDOM,
   SLICE_MODE_SHUFFLE,
@@ -295,6 +293,8 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
     if (!sliceMode) return null
     const cat = sliceMode.category
     const isDeck = sliceMode.kind === WILDCARD_KIND_DECK
+    // An empty selection compacts to spec "" = the whole category: not a slice.
+    const nothingPicked = sliceSelection.length === 0
     return (
       <div
         role="toolbar"
@@ -302,19 +302,19 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         className="flex flex-wrap items-center gap-2 px-1 py-2 mb-2 rounded-md
                    border border-sg-wildcard/40 bg-sg-wildcard/10"
       >
+        <span className="text-sm text-sg-text font-medium" data-sg-slice-title="true">
+          Wildcard from <span className="text-sg-wildcard-text">{cat}</span>
+        </span>
         <SegmentedControl
           options={SLICE_KIND_OPTIONS}
           value={sliceMode.kind}
           onChange={setSliceKind}
           ariaLabel={SLICE_MODE_GROUP_LABEL}
+          tone="wildcard"
           data={{ 'data-sg-slice-kind': 'true' }}
         />
-        <span className="text-sm text-sg-text font-medium">
-          {isDeck ? SLICE_BAR_TITLE_SHUFFLE : 'Slice: '}
-          <span className="text-sg-wildcard-text">{cat}</span>
-        </span>
-        <span className="text-xs text-sg-muted" aria-live="polite">
-          {sliceSelection.length} selected
+        <span className="text-xs text-sg-wildcard-text" aria-live="polite" data-sg-slice-count="true">
+          {sliceSelection.length} picked
         </span>
         <div className="flex-1" />
         <button
@@ -333,18 +333,30 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
                      hover:bg-sg-surface/60 transition-colors"
           onClick={() => clearSliceSelection()}
         >
-          Clear all
+          Clear
         </button>
         <button
           type="button"
-          aria-label={
-            isDeck
-              ? SLICE_ADD_SHUFFLE_ARIA
-              : 'Add selection as wildcard slice'
+          aria-label="Cancel wildcard slice selection"
+          className="text-xs px-2.5 h-7 rounded border border-sg-border text-sg-text
+                     hover:bg-sg-surface/60 transition-colors"
+          onClick={() => exitSliceMode()}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          data-sg-slice-add="true"
+          aria-label={isDeck ? SLICE_ADD_SHUFFLE_ARIA : 'Add selection as random wildcard'}
+          disabled={nothingPicked}
+          aria-disabled={nothingPicked}
+          className={
+            nothingPicked
+              ? 'text-xs px-3 h-7 rounded font-medium bg-sg-wildcard/25 text-sg-muted cursor-not-allowed'
+              : 'text-xs px-3 h-7 rounded font-medium bg-sg-wildcard text-white hover:bg-sg-wildcard/85 transition-colors'
           }
-          className="text-xs px-2.5 py-1 rounded bg-sg-wildcard/30 border border-sg-wildcard/50
-                     text-sg-text hover:bg-sg-wildcard/45 transition-colors font-medium"
           onClick={() => {
+            if (nothingPicked) return
             const spec = buildSliceSpec(cat, sliceSelection, allNamesInCategory)
             sendToHost(
               isDeck
@@ -359,16 +371,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
             exitSliceMode()
           }}
         >
-          {isDeck ? SLICE_ADD_SHUFFLE : 'Add as wildcard'}
-        </button>
-        <button
-          type="button"
-          aria-label="Cancel wildcard slice selection"
-          className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
-                     hover:bg-sg-surface/60 transition-colors"
-          onClick={() => exitSliceMode()}
-        >
-          Cancel
+          Add wildcard
         </button>
       </div>
     )

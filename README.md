@@ -236,8 +236,8 @@ Click **outside** the menu to close it (moving the pointer off the menu does **n
 
 **Generating a preview**
 
-- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview**. The host runs an SD render and saves an image under user-data `thumbnails/` (see **Data and Persistence**).
-- **Per category:** use the **category** context menu → **Generate previews…** (see §5).
+- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview**. The host runs an SD render and saves an image under user-data `thumbnails/` (see **Data and Persistence**). While it runs, the tile shows its own progress: a small spinner at the right end of a grid tile (then a ✓ for a moment), or a dimmed **Generating** overlay on a gallery thumbnail until the new image replaces it. Errors appear as a toast.
+- **Per category:** use the **category** context menu → **Generate previews…** (see §5). Only styles without a preview are queued. Progress shows in that category's header (**Generating previews 4 / 12**, a thin bar along its bottom edge, **Skip** for the style being generated, **Cancel** for the rest) and in the line at the bottom of the sidebar (**Generating 4 / 12** with **Cancel**), so it stays visible when the header is scrolled away. When the batch ends, both briefly show the result (for example *Previews ready: 9 new · 2 already had*) or *Cancelled after 4 / 12*. One batch runs at a time.
 
 After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.
 

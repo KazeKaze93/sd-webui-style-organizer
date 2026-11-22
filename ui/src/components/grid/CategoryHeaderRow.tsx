@@ -1,6 +1,9 @@
 import { memo } from 'react'
+import { Loader2 } from 'lucide-react'
+import { sendToHost } from '../../bridge'
 import { setFocusedCell } from '../../lib/gridFocus'
-import { useCategoryColor, useCategorySelectedCount } from '../../store/stylesStore'
+import { batchHeaderText, batchPercent, type PreviewBatch } from '../../lib/previewProgress'
+import { useCategoryBatch, useCategoryColor, useCategorySelectedCount } from '../../store/stylesStore'
 import { categoryPanelId } from './buildGridRows'
 import { HEADER_CONTENT_HEIGHT_PX } from './constants'
 
@@ -16,6 +19,58 @@ function CategoryName({ category }: { category: string }) {
     >
       {category}
     </span>
+  )
+}
+
+/**
+ * Category batch preview status, right-aligned before Select All. Skip and
+ * Cancel stay out of the grid's roving focus (the header has two cells); the
+ * sidebar footer's Cancel is the keyboard path.
+ */
+function BatchStatus({ batch }: { batch: PreviewBatch }) {
+  const running = batch.status === 'running'
+  return (
+    <div
+      data-sg-batch-status={batch.status}
+      className="min-w-0 flex items-center gap-1.5 text-xs text-sg-wildcard-text"
+    >
+      {running && <Loader2 size={12} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+      <span className="min-w-0 truncate" data-sg-batch-text="true" title={batchHeaderText(batch)}>
+        {running ? (
+          <>
+            {/* A narrow panel keeps spinner + counter only; the sidebar footer has the words. */}
+            <span className="max-[799px]:hidden">Generating previews </span>
+            {batch.processed} / {batch.total}
+          </>
+        ) : (
+          batchHeaderText(batch)
+        )}
+      </span>
+      {running && (
+        <>
+          <button
+            type="button"
+            tabIndex={-1}
+            data-sg-batch-skip="true"
+            aria-label="Skip the style being generated"
+            onClick={() => sendToHost({ type: 'SG_BATCH_SKIP' })}
+            className="shrink-0 px-1.5 py-0.5 rounded text-sg-muted hover:text-sg-text hover:bg-sg-surface/60 transition-colors"
+          >
+            Skip
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            data-sg-batch-cancel="true"
+            aria-label="Cancel preview generation"
+            onClick={() => sendToHost({ type: 'SG_BATCH_CANCEL' })}
+            className="shrink-0 px-1.5 h-5 rounded border border-sg-border text-sg-text hover:bg-sg-surface/60 transition-colors"
+          >
+            Cancel
+          </button>
+        </>
+      )}
+    </div>
   )
 }
 
@@ -46,6 +101,7 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
   onContextMenu,
 }: CategoryHeaderRowProps) {
   const selectedCount = useCategorySelectedCount(category)
+  const batch = useCategoryBatch(category)
   const allSelected = count > 0 && selectedCount === count
   const panelId = categoryPanelId(category)
 
@@ -57,7 +113,7 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
       // Fixed height: the virtualizer positions the next row from this constant.
       // Natural height (py-1 + 24px glyph line) was 36px and covered the first cards row.
       style={{ height: HEADER_CONTENT_HEIGHT_PX }}
-      className={`flex items-center gap-2
+      className={`relative flex items-center gap-2
                  rounded-md transition-colors -mx-1 px-1
                  hover:bg-sg-surface/30
                  ${isStickyActive ? 'bg-sg-bg z-10' : 'bg-sg-bg/95'}`}
@@ -71,7 +127,8 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
           : undefined
       }
     >
-      <div role="gridcell" className="min-w-0 flex-1">
+      {/* With a batch status beside it the name keeps its width; the status shrinks instead. */}
+      <div role="gridcell" className={`${batch ? 'min-w-fit' : 'min-w-0'} flex-1`}>
         <button
           type="button"
           data-cell-row={rowIndex}
@@ -93,6 +150,7 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
           </span>
         </button>
       </div>
+      {batch && <BatchStatus batch={batch} />}
       <div role="gridcell" className="shrink-0">
         <button
           type="button"
@@ -109,6 +167,17 @@ export const CategoryHeaderRow = memo(function CategoryHeaderRow({
           {allSelected ? 'Deselect All' : 'Select All'}
         </button>
       </div>
+      {batch?.status === 'running' && (
+        // Inside the fixed-height header (HEADER_CONTENT_HEIGHT_PX): adds no height.
+        <div
+          aria-hidden="true"
+          data-sg-batch-bar="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-sg-wildcard/20"
+        >
+          {/* Inline width: a dynamic Tailwind class would fail the pre-push residue check. */}
+          <div className="h-full bg-sg-wildcard transition-[width]" style={{ width: `${batchPercent(batch)}%` }} />
+        </div>
+      )}
     </div>
   )
 })

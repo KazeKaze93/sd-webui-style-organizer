@@ -15,6 +15,26 @@ export interface WildcardRef {
   kind?: WildcardKind
 }
 
+export type PreviewJobStatus = 'generating' | 'done' | 'error'
+export type BatchStatus = 'running' | 'finished' | 'cancelled'
+
+/** Category batch preview generation, as the host reports it. */
+export interface BatchProgress {
+  category: string
+  source: string
+  status: BatchStatus
+  /** Styles queued for generation (those without a preview). */
+  total: number
+  /** Queued styles that are over (new, skipped or failed). */
+  processed: number
+  newCount: number
+  /** Styles of the category that already had a preview (not queued). */
+  alreadyHad: number
+  /** Styles dropped with Skip. */
+  skipped: number
+  failed: number
+}
+
 /** Messages sent from Forge host script to the React iframe. */
 export type HostMessage =
   | { type: 'SG_CLEAR_SELECTION' }
@@ -25,7 +45,10 @@ export type HostMessage =
   | { type: 'SG_TOAST'; message: string; variant: 'success' | 'error' | 'info' }
   | { type: 'SG_STYLE_APPLIED'; style: Style }
   | { type: 'SG_THUMB_DONE';     styleId: string; version: number; source_file: string }
-  | { type: 'SG_THUMB_PROGRESS'; status: string; styleId: string; progress?: number }
+  /** Single preview generation: one message per status, then SG_THUMB_DONE after 'done'. */
+  | { type: 'SG_THUMB_PROGRESS'; status: PreviewJobStatus; styleId: string; source_file: string }
+  /** Category batch: at start, after every style, once at the end (re-sent on SG_READY while running). */
+  | ({ type: 'SG_BATCH_PROGRESS' } & BatchProgress)
   | { type: 'SG_PROMPT_CHANGED'; prompt: string; neg: string }
   | { type: 'SG_CLOSE' }
   | { type: 'SG_THEME'; mode: ThemeMode }
@@ -56,6 +79,10 @@ export type FrameMessage =
   | { type: 'SG_REFRESH'; quiet_vanished?: boolean }
   /** Ask the host to enter or leave fullscreen. The host answers SG_FULLSCREEN_STATE. */
   | { type: 'SG_SET_FULLSCREEN'; fullscreen: boolean }
+  /** Stop the running category batch (host: owner tab only). */
+  | { type: 'SG_BATCH_CANCEL' }
+  /** Drop the style the batch is generating and go on with the next one. */
+  | { type: 'SG_BATCH_SKIP' }
   /**
    * The iframe renamed a style on the server. The host remaps its references
    * (selection, applied text) to the new name, then refreshes like SG_REFRESH.
@@ -95,6 +122,20 @@ function isThemeMode(value: unknown): value is ThemeMode {
 function isToastVariant(value: unknown): value is 'success' | 'error' | 'info' {
   return value === 'success' || value === 'error' || value === 'info'
 }
+
+function isPreviewJobStatus(value: unknown): value is PreviewJobStatus {
+  return value === 'generating' || value === 'done' || value === 'error'
+}
+
+function isBatchStatus(value: unknown): value is BatchStatus {
+  return value === 'running' || value === 'finished' || value === 'cancelled'
+}
+
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
+const BATCH_COUNTS = ['total', 'processed', 'newCount', 'alreadyHad', 'skipped', 'failed'] as const
 
 /**
  * Runtime guard for host → iframe HostMessage shapes (SG_*).
@@ -152,15 +193,29 @@ export function parseHostMessage(data: unknown): HostMessage | null {
       }
 
     case 'SG_THUMB_PROGRESS':
-      if (typeof data.status !== 'string') return null
-      if (typeof data.styleId !== 'string') return null
-      if (data.progress !== undefined && typeof data.progress !== 'number') return null
+      if (!isPreviewJobStatus(data.status)) return null
+      if (typeof data.styleId !== 'string' || !data.styleId) return null
+      if (typeof data.source_file !== 'string') return null
+      return { type, status: data.status, styleId: data.styleId, source_file: data.source_file }
+
+    case 'SG_BATCH_PROGRESS': {
+      if (typeof data.category !== 'string' || !data.category) return null
+      if (typeof data.source !== 'string') return null
+      if (!isBatchStatus(data.status)) return null
+      if (!BATCH_COUNTS.every((k) => isCount(data[k]))) return null
       return {
         type,
+        category: data.category,
+        source: data.source,
         status: data.status,
-        styleId: data.styleId,
-        progress: data.progress,
+        total: data.total as number,
+        processed: data.processed as number,
+        newCount: data.newCount as number,
+        alreadyHad: data.alreadyHad as number,
+        skipped: data.skipped as number,
+        failed: data.failed as number,
       }
+    }
 
     case 'SG_PROMPT_CHANGED':
       if (typeof data.prompt !== 'string') return null

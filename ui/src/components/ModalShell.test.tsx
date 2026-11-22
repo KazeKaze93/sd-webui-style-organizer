@@ -10,7 +10,7 @@ import { createHoverIntent } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer, hasOpenLayer } from '../lib/layerStack'
 import { useStylesStore, type PresetRecord } from '../store/stylesStore'
 import { INITIAL_FOCUS_ATTR, ModalShell } from './ModalShell'
-import { PresetRow } from './PresetRow'
+import { PresetCard } from './PresetCard'
 import { SaveSetDialog } from './SaveSetDialog'
 
 vi.mock('../bridge', async () => {
@@ -366,9 +366,18 @@ describe('dialogs on ModalShell keep their behaviour', () => {
     expect(dialogs()).toHaveLength(0)
   })
 
-  it('PresetRow rename: labelled input holds the name, Enter renames, Escape closes', async () => {
-    await render(<PresetRow name="My set" preset={PRESET} />)
-    await click(buttonIn(host!, 'Rename'))
+  /** The card's ⋯ menu, then one of its items. */
+  const presetMenuItem = async (item: string) => {
+    await click(host!.querySelector<HTMLButtonElement>('button[aria-label="My set options"]')!)
+    const menuItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (el) => el.textContent?.trim() === item,
+    )!
+    await click(menuItem)
+  }
+
+  it('PresetCard rename: labelled input holds the name, Enter renames, Escape closes', async () => {
+    await render(<PresetCard name="My set" preset={PRESET} />)
+    await presetMenuItem('Rename…')
     const d = dialog()
     const titleId = d.getAttribute('aria-labelledby')!
     expect(document.getElementById(titleId)!.textContent).toBe('Rename set')
@@ -381,7 +390,7 @@ describe('dialogs on ModalShell keep their behaviour', () => {
     expect(dialogs()).toHaveLength(0)
     expect(renamePreset).not.toHaveBeenCalled()
 
-    await click(buttonIn(host!, 'Rename'))
+    await presetMenuItem('Rename…')
     const again = dialog().querySelector<HTMLInputElement>('input')!
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!
@@ -395,9 +404,9 @@ describe('dialogs on ModalShell keep their behaviour', () => {
     expect(dialogs()).toHaveLength(0)
   })
 
-  it('PresetRow delete: focus starts on Cancel, text is unchanged, Delete deletes', async () => {
-    await render(<PresetRow name="My set" preset={PRESET} />)
-    await click(buttonIn(host!, 'Delete'))
+  it('PresetCard delete: focus starts on Cancel, text is unchanged, Delete deletes', async () => {
+    await render(<PresetCard name="My set" preset={PRESET} />)
+    await presetMenuItem('Delete…')
     const d = dialog()
     expect(document.getElementById(d.getAttribute('aria-labelledby')!)!.textContent).toBe('Delete set?')
     expect(d.textContent).toContain('Delete “My set” permanently? This cannot be undone.')

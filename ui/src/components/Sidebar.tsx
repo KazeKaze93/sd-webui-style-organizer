@@ -2,6 +2,7 @@ import {
   memo,
   startTransition,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -9,15 +10,15 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { BookMarked, Clock, Dna, MoreHorizontal, Star } from 'lucide-react'
+import { BookMarked, Dna, Mouse, Star } from 'lucide-react'
 import { LORA_SOURCE, LORA_VIEW, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { CategoryMenuItems } from './CategoryMenuItems'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
+import { isTabFocus } from '../lib/focusSource'
 import { cn } from '../lib/utils'
 
 const FAVORITES_ID = '★ Favorites'
-const RECENT_ID = '🕑 Recent'
 
 const NAV_FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -25,9 +26,21 @@ const NAV_FOCUS_RING =
 /** Gap between a button and the menu anchored under it (as the header More menu). */
 const MENU_OFFSET_PX = 4
 
+/** Spoken once for every row with a menu (aria-describedby); the footer line itself is visual only. */
+const ROW_MENU_DESCRIPTION = 'Right-click or press Shift+F10 for options'
+
 type MenuAnchor = { x: number; y: number; restoreFocusTo: HTMLElement }
 
-/** Menu position under an element: for ⋯ and for keyboard-opened context menus. */
+/** Handlers and description a row with a context menu puts on its nav button. */
+type FooterHintProps = {
+  'aria-describedby': string
+  onPointerEnter: () => void
+  onPointerLeave: () => void
+  onFocus: () => void
+  onBlur: () => void
+}
+
+/** Menu position under an element: for keyboard-opened context menus. */
 function anchorUnder(el: HTMLElement): MenuAnchor {
   const rect = el.getBoundingClientRect()
   return { x: rect.left, y: rect.bottom + MENU_OFFSET_PX, restoreFocusTo: el }
@@ -76,17 +89,16 @@ const countClass = (active: boolean) =>
   cn('text-xs shrink-0', active ? '' : 'opacity-60')
 
 /**
- * One draggable category row: the nav button (select; the drag starts from it)
- * and the ⋯ menu button side by side, never nested. ⋯ shows on row hover and
- * on visible (keyboard) focus in the count's place, and never starts a drag or
- * selects. Not :focus-within: a mouse click leaves the nav button focused, and
- * ⋯ would then stay up after the pointer leaves.
+ * One draggable category row: the nav button selects the category and starts
+ * the drag. Its menu opens with a right-click (at the cursor) or the
+ * ContextMenu key / Shift+F10 (under the row); there is no button for it.
  */
 function CategoryRow({
   cat,
   count,
   isActive,
   menuOpen,
+  hintProps,
   onSelect,
   onOpenMenu,
   onDragStart,
@@ -96,6 +108,7 @@ function CategoryRow({
   count: number
   isActive: boolean
   menuOpen: boolean
+  hintProps: FooterHintProps
   onSelect: () => void
   onOpenMenu: (anchor: MenuAnchor) => void
   onDragStart: () => void
@@ -112,12 +125,13 @@ function CategoryRow({
       dragControls={controls}
       whileDrag={{ scale: 1.02, opacity: 0.9 }}
       className={cn(
-        'group relative flex items-center rounded-md text-sm transition-colors cursor-grab active:cursor-grabbing',
+        'relative flex items-center rounded-md text-sm transition-colors cursor-grab active:cursor-grabbing',
         isActive
           ? 'bg-sg-accent text-white'
           : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
       )}
       data-sg-category-row={cat}
+      data-sg-menu-open={menuOpen ? 'true' : undefined}
       onDragStart={() => {
         draggedRef.current = true
         onDragStart()
@@ -126,6 +140,7 @@ function CategoryRow({
     >
       <button
         type="button"
+        {...hintProps}
         onPointerDown={(e: ReactPointerEvent<HTMLButtonElement>) => {
           draggedRef.current = false
           controls.start(e)
@@ -150,43 +165,10 @@ function CategoryRow({
       >
         <span className="flex items-center gap-2">
           <CategoryName category={cat} active={isActive} />
-          <span
-            className={cn(
-              countClass(isActive),
-              menuOpen ? 'invisible' : 'group-hover:invisible group-has-[:focus-visible]:invisible',
-            )}
-            data-sg-category-count
-          >
+          <span className={countClass(isActive)} data-sg-category-count>
             {count}
           </span>
         </span>
-      </button>
-      <button
-        type="button"
-        aria-label={`${cat} options`}
-        aria-haspopup="menu"
-        aria-expanded={menuOpen}
-        onClick={(e) => {
-          e.stopPropagation()
-          onOpenMenu(anchorUnder(e.currentTarget))
-        }}
-        onContextMenu={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          onOpenMenu(anchorUnder(e.currentTarget))
-        }}
-        className={cn(
-          'absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 flex items-center justify-center rounded cursor-pointer transition-opacity',
-          // Hidden by opacity, never display:none: the menu returns focus here on
-          // close while the pointer is over its backdrop (row not hovered), and a
-          // display:none button cannot take focus. Visible focus then shows it again.
-          menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
-          NAV_FOCUS_RING,
-          isActive ? 'text-white hover:bg-white/15' : 'text-sg-muted hover:text-sg-text hover:bg-sg-border/60',
-        )}
-        data-sg-category-options
-      >
-        <MoreHorizontal size={15} aria-hidden />
       </button>
     </Reorder.Item>
   )
@@ -196,10 +178,14 @@ function CategoryRow({
  * Profile (P toggle N=5000): Sidebar 44 stack hits; `count` 2.0% self;
  * motion/measureScroll ~28% bucket — layoutId springs + full-list recount on
  * parent/selection churn. Cache source-scoped counts; drop layoutId motion.
+ *
+ * Layout: the list scrolls; a one-line footer under it names the row under the
+ * pointer (or with keyboard focus) and says a right-click opens its menu. The
+ * footer always keeps its height, so the list never shifts.
  */
 export const Sidebar = memo(function Sidebar() {
   const {
-    activeCategory, setCategory, categories, favoritesSize, recentCount,
+    activeCategory, setCategory, categories, favoritesSize,
     setCategoryOrder, presetsCount, styles, activeSource,
   } = useStylesStore(
     useShallow(s => ({
@@ -207,7 +193,6 @@ export const Sidebar = memo(function Sidebar() {
       setCategory: s.setCategory,
       categories: s.categories,
       favoritesSize: s.favorites.size,
-      recentCount: s.recentNames.length,
       setCategoryOrder: s.setCategoryOrder,
       presetsCount: Object.keys(s.presets).length,
       styles: s.styles,
@@ -217,10 +202,28 @@ export const Sidebar = memo(function Sidebar() {
   )
   const allColor = useCategoryColor('All')
   const [catMenu, setCatMenu] = useState<(MenuAnchor & { cat: string }) | null>(null)
+  /** Row whose name the footer shows (hover or keyboard focus). */
+  const [hintName, setHintName] = useState<string | null>(null)
+  /** A category row is being dragged: the footer stays empty. */
+  const [dragging, setDragging] = useState(false)
+  const hintId = useId()
 
   const openCatMenu = (anchor: MenuAnchor, cat: string) => {
     setCatMenu({ ...anchor, cat })
   }
+  /** Footer hint wiring for a row with a context menu (category rows and LoRA). */
+  const hintFor = (name: string): FooterHintProps => ({
+    'aria-describedby': hintId,
+    onPointerEnter: () => setHintName(name),
+    onPointerLeave: () => setHintName((cur) => (cur === name ? null : cur)),
+    // Keyboard focus only: focus a closing menu puts back is not a visit.
+    onFocus: () => {
+      if (isTabFocus()) setHintName(name)
+    },
+    onBlur: () => setHintName((cur) => (cur === name ? null : cur)),
+  })
+  const footerName = dragging || catMenu ? null : hintName
+
   const cats = categories()
   const catsSig = cats.join('\0')
   const [dragOrder, setDragOrder] = useState<string[]>(cats)
@@ -258,7 +261,6 @@ export const Sidebar = memo(function Sidebar() {
 
   const specialCategories = [
     { id: FAVORITES_ID, label: 'Favorites', Icon: Star, count: favoritesSize },
-    { id: RECENT_ID, label: 'Recent', Icon: Clock, count: recentCount },
     { id: LORA_VIEW, label: 'LoRA', Icon: Dna, count: categoryCounts.get(LORA_VIEW) ?? 0 },
   ]
 
@@ -269,107 +271,135 @@ export const Sidebar = memo(function Sidebar() {
   const countFor = (cat: string | null) => categoryCounts.get(cat) ?? 0
 
   return (
-    <div className="w-44 shrink-0 flex flex-col gap-1 pr-2">
-      <button
-        type="button"
-        onClick={() => startTransition(() => setCategory(null))}
-        aria-current={!activeCategory ? 'true' : undefined}
-        className={cn(
-          'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
-          NAV_FOCUS_RING,
-          !activeCategory
-            ? 'bg-sg-accent text-white'
-            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
-        )}
-      >
-        <span className="flex items-center gap-2 min-w-0">
-          {!activeCategory && <ActiveColorDot color={allColor} />}
-          <span className="truncate" style={activeCategory ? { color: allColor } : undefined}>All</span>
-        </span>
-        <span className={countClass(!activeCategory)}>
-          {countFor(null)}
-        </span>
-      </button>
-      {specialCategories.map(({ id, label, Icon, count }) => {
-      const alwaysShow = id === FAVORITES_ID || id === RECENT_ID
-      if (!alwaysShow && count === 0) return null
-      const isActive = activeCategory === id
-      return (
-        <button
-          key={id}
-          type="button"
-          onClick={() => startTransition(() => setCategory(activeCategory === id ? null : id))}
-          aria-current={isActive ? 'true' : undefined}
-          onContextMenu={id === LORA_VIEW ? (e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            openCatMenu(contextMenuAnchor(e), 'LoRA')
-          } : undefined}
-          className={cn(
-            'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
-            NAV_FOCUS_RING,
-            isActive
-              ? 'bg-sg-accent text-white'
-              : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
-            count === 0 ? 'opacity-40' : '',
-          )}
-        >
-          <span className="flex min-w-0 items-center gap-2">
-            <Icon className="h-4 w-4 shrink-0" aria-hidden />
-            <span className="truncate">{label}</span>
-          </span>
-          <span className={countClass(isActive)}>{count}</span>
-        </button>
-      )
-    })}
-      <button
-        type="button"
-        onClick={() => startTransition(() => setCategory(activeCategory === 'presets' ? null : 'presets'))}
-        aria-current={activeCategory === 'presets' ? 'true' : undefined}
-        className={cn(
-          'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
-          NAV_FOCUS_RING,
-          activeCategory === 'presets'
-            ? 'bg-sg-accent text-white'
-            : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
-        )}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <BookMarked className="h-4 w-4 shrink-0" aria-hidden />
-          <span className="truncate">Presets</span>
-        </span>
-        <span className={cn(countClass(activeCategory === 'presets'), 'tabular-nums')}>
-          {presetsCount}
-        </span>
-      </button>
-      <div className="border-t border-sg-border my-1" />
-      <Reorder.Group
-        axis="y"
-        values={dragOrder}
-        onReorder={(newOrder) => {
-          dragOrderRef.current = newOrder
-          setDragOrder(newOrder)
-        }}
-        as="div"
-        className="flex flex-col gap-1"
-      >
-        {dragOrder.map(cat => (
-          <CategoryRow
-            key={cat}
-            cat={cat}
-            count={countFor(cat)}
-            isActive={activeCategory === cat}
-            menuOpen={catMenu?.cat === cat}
-            onSelect={() => startTransition(() => setCategory(activeCategory === cat ? null : cat))}
-            onOpenMenu={(anchor) => openCatMenu(anchor, cat)}
-            onDragStart={() => { dragActiveRef.current = true }}
-            onDragEnd={() => {
-              dragActiveRef.current = false
-              setCategoryOrder(dragOrderRef.current)
+    <div className="h-full min-h-0 flex flex-col" data-sg-sidebar="true">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto p-2">
+        <div className="w-44 shrink-0 flex flex-col gap-1 pr-2">
+          <button
+            type="button"
+            onClick={() => startTransition(() => setCategory(null))}
+            aria-current={!activeCategory ? 'true' : undefined}
+            className={cn(
+              'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
+              NAV_FOCUS_RING,
+              !activeCategory
+                ? 'bg-sg-accent text-white'
+                : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+            )}
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              {!activeCategory && <ActiveColorDot color={allColor} />}
+              <span className="truncate" style={activeCategory ? { color: allColor } : undefined}>All</span>
+            </span>
+            <span className={countClass(!activeCategory)}>
+              {countFor(null)}
+            </span>
+          </button>
+          {specialCategories.map(({ id, label, Icon, count }) => {
+            const alwaysShow = id === FAVORITES_ID
+            if (!alwaysShow && count === 0) return null
+            const isActive = activeCategory === id
+            // LoRA is the one fixed entry with a right-click menu, so it sets the footer too.
+            const isLora = id === LORA_VIEW
+            return (
+              <button
+                key={id}
+                type="button"
+                {...(isLora ? hintFor('LoRA') : {})}
+                onClick={() => startTransition(() => setCategory(activeCategory === id ? null : id))}
+                aria-current={isActive ? 'true' : undefined}
+                onContextMenu={isLora ? (e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  openCatMenu(contextMenuAnchor(e), 'LoRA')
+                } : undefined}
+                className={cn(
+                  'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
+                  NAV_FOCUS_RING,
+                  isActive
+                    ? 'bg-sg-accent text-white'
+                    : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+                  count === 0 ? 'opacity-40' : '',
+                )}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="truncate">{label}</span>
+                </span>
+                <span className={countClass(isActive)}>{count}</span>
+              </button>
+            )
+          })}
+          <button
+            type="button"
+            onClick={() => startTransition(() => setCategory(activeCategory === 'presets' ? null : 'presets'))}
+            aria-current={activeCategory === 'presets' ? 'true' : undefined}
+            className={cn(
+              'w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-md text-sm transition-colors',
+              NAV_FOCUS_RING,
+              activeCategory === 'presets'
+                ? 'bg-sg-accent text-white'
+                : 'text-sg-muted hover:text-sg-text hover:bg-sg-surface',
+            )}
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <BookMarked className="h-4 w-4 shrink-0" aria-hidden />
+              <span className="truncate">Presets</span>
+            </span>
+            <span className={cn(countClass(activeCategory === 'presets'), 'tabular-nums')}>
+              {presetsCount}
+            </span>
+          </button>
+          <div className="border-t border-sg-border my-1" />
+          <Reorder.Group
+            axis="y"
+            values={dragOrder}
+            onReorder={(newOrder) => {
+              dragOrderRef.current = newOrder
+              setDragOrder(newOrder)
             }}
-          />
-        ))}
-      </Reorder.Group>
+            as="div"
+            className="flex flex-col gap-1"
+          >
+            {dragOrder.map(cat => (
+              <CategoryRow
+                key={cat}
+                cat={cat}
+                count={countFor(cat)}
+                isActive={activeCategory === cat}
+                menuOpen={catMenu?.cat === cat}
+                hintProps={hintFor(cat)}
+                onSelect={() => startTransition(() => setCategory(activeCategory === cat ? null : cat))}
+                onOpenMenu={(anchor) => openCatMenu(anchor, cat)}
+                onDragStart={() => {
+                  dragActiveRef.current = true
+                  setDragging(true)
+                }}
+                onDragEnd={() => {
+                  dragActiveRef.current = false
+                  setDragging(false)
+                  setCategoryOrder(dragOrderRef.current)
+                }}
+              />
+            ))}
+          </Reorder.Group>
+        </div>
+      </div>
+      {/* Reserved line: always h-6, empty unless a row with a menu is hovered or Tab-focused. */}
+      <div
+        aria-hidden="true"
+        data-sg-sidebar-hint="true"
+        className="shrink-0 h-6 border-t border-sg-border px-2 text-[11px] text-sg-muted flex items-center gap-1.5 min-w-0 whitespace-nowrap"
+      >
+        {footerName && (
+          <>
+            <Mouse size={12} className="shrink-0" aria-hidden />
+            <span className="min-w-0 truncate">{footerName}: right-click for options</span>
+          </>
+        )}
+      </div>
+      <span id={hintId} className="sr-only">
+        {ROW_MENU_DESCRIPTION}
+      </span>
       {catMenu && (
         <ViewportFixedMenu
           x={catMenu.x}

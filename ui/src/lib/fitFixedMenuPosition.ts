@@ -7,7 +7,7 @@ export const MENU_VIEWPORT_PAD = MENU_MARGIN
 /**
  * Place a fixed menu at (x, y) without leaving the viewport.
  * Flips upward when there is not enough room below the anchor,
- * then clamps to edges (same idea as ThumbnailPreview flip).
+ * then clamps to edges.
  *
  * Callers that may exceed the viewport must cap height (e.g.
  * max-height: calc(100vh - 2*MENU_MARGIN) + overflow-y:auto) before

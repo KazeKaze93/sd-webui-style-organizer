@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../bridge'
 import { __resetGridFocusForTests, getFocusedCell, setFocusedCell } from '../lib/gridFocus'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer } from '../lib/layerStack'
 import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
 import { GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
@@ -79,6 +78,32 @@ async function mousePress(el: HTMLElement) {
   })
 }
 
+/**
+ * Hover the way a mouse does, then wait past the old preview delay (300 ms).
+ * jsdom never matches :hover, and the removed preview checked it before
+ * showing; report the hovered tile as :hover so such a popup could appear.
+ */
+async function hoverAndWait(el: HTMLElement) {
+  const matches = Element.prototype.matches
+  vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+    if (selector === ':hover') return this === el || this.contains(el)
+    return matches.call(this, selector)
+  })
+  await act(async () => {
+    el.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
+    el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+    el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+    el.parentElement?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+    await new Promise((resolve) => setTimeout(resolve, 400))
+  })
+}
+
+/** The removed hover preview: a fixed portal with the name, prompt and a right-click line. */
+const previewPopup = () =>
+  [...document.body.querySelectorAll<HTMLElement>('body > div')].find(
+    (el) => el.textContent?.includes('Right-click for options') || el.className.includes('z-[10050]'),
+  ) ?? null
+
 const contextMenu = async (el: HTMLElement, init: MouseEventInit) => {
   await act(async () => {
     el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, ...init }))
@@ -98,7 +123,6 @@ function mount() {
 
 function unmount() {
   act(() => {
-    dismissAllHoverIntents()
     root?.unmount()
   })
   root = null
@@ -109,7 +133,7 @@ function unmount() {
   vi.restoreAllMocks()
 }
 
-describe('style tile: star and ⋯', () => {
+describe('gallery tile: star and ⋯', () => {
   beforeEach(() => {
     __resetGridFocusForTests()
     __resetLayerStackForTests()
@@ -136,7 +160,7 @@ describe('style tile: star and ⋯', () => {
   it('the actions are siblings of the card button, out of the tab order, labelled', async () => {
     const s = style()
     setStore([s])
-    await render(s)
+    await render(s, { gallery: true })
     expect(card().contains(actions())).toBe(false)
     expect(card().parentElement!.contains(actions())).toBe(true)
     expect(star().tabIndex).toBe(-1)
@@ -153,7 +177,7 @@ describe('style tile: star and ⋯', () => {
   it('hidden by opacity (never display:none), shown on tile hover and visible focus', async () => {
     const s = style()
     setStore([s])
-    await render(s)
+    await render(s, { gallery: true })
     const cell = host!.querySelector<HTMLElement>('[role="gridcell"]')!
     expect(cell.className).toContain('group/tile')
     const cls = actions().className
@@ -165,17 +189,16 @@ describe('style tile: star and ⋯', () => {
     expect(cls).toContain('group-has-[:focus-visible]/tile:pointer-events-auto')
     // Mouse focus (the menu returns focus to the card) must not keep them up.
     expect(cls).not.toContain('group-focus-within')
-    // Grid tile: right side, vertically centered, opaque background.
-    expect(cls).toContain('right-1.5')
-    expect(cls).toContain('top-1/2')
-    expect(cls).toContain('bg-sg-surface')
+    // Gallery tile: top-right over the thumbnail.
+    expect(cls).toContain('top-1')
+    expect(cls).toContain('right-1')
   })
 
   it('★ toggles the favorite and flips its label; no selection, no picker, no focused-cell change', async () => {
     const a = style()
     const b = style({ source_file: 'webui/styles_solo.csv' }) // same name, two packs: a card click would open the picker
     setStore([a, b])
-    await render(a)
+    await render(a, { gallery: true })
     setFocusedCell({ row: 3, col: 2 })
     await mousePress(star())
     expect(useStylesStore.getState().favorites.has(styleRowKey(a))).toBe(true)
@@ -194,7 +217,7 @@ describe('style tile: star and ⋯', () => {
   it('⋯ opens the menu under itself, stays visible while open; Escape returns focus to the card', async () => {
     const s = style()
     setStore([s])
-    await render(s)
+    await render(s, { gallery: true })
     card().focus()
     stubRect(more(), 300, 100, 24, 24)
     await mousePress(more())
@@ -284,6 +307,19 @@ describe('style tile: star and ⋯', () => {
     expect(header.children[1].textContent).toBe('LoRA')
   })
 
+  it('hovering a gallery tile shows no preview popup; ★ / ⋯ still sit beside the card in a relative wrapper', async () => {
+    const s = style({ description: 'tall woman' })
+    setStore([s], { thumbKeys: new Set([styleRowKey(s)]) })
+    await render(s, { gallery: true })
+    await hoverAndWait(card())
+    expect(previewPopup()).toBeNull()
+    expect(document.body.textContent).not.toContain('Right-click for options')
+    const wrap = card().parentElement!
+    expect(wrap.className).toBe('relative')
+    expect(wrap.contains(actions())).toBe(true)
+    expect(card().contains(actions())).toBe(false)
+  })
+
   it('gallery tile: actions top-right over the thumbnail, tile height unchanged', async () => {
     const s = style()
     setStore([s], { favorites: new Set([styleRowKey(s)]) })
@@ -309,7 +345,60 @@ describe('style tile: star and ⋯', () => {
   })
 })
 
-describe('style tile actions inside the virtualized grid', () => {
+describe('grid tile: no hover icons', () => {
+  beforeEach(() => {
+    __resetGridFocusForTests()
+    __resetLayerStackForTests()
+    mount()
+  })
+  afterEach(unmount)
+
+  const noActions = () => {
+    expect(host!.querySelector('[data-sg-tile-actions]')).toBeNull()
+    expect(host!.querySelector('button[aria-label$="to favorites"], button[aria-label$="from favorites"]')).toBeNull()
+    expect(host!.querySelector('button[aria-label^="More actions for"]')).toBeNull()
+  }
+
+  it('hovering a grid tile shows no preview popup', async () => {
+    const s = style({ description: 'tall woman' })
+    setStore([s], { thumbKeys: new Set([styleRowKey(s)]) })
+    await act(async () => {
+      root!.render(<StyleCard style={s} viewMode="grid" cellRow={0} cellCol={0} tabIndex={0} />)
+    })
+    await hoverAndWait(card())
+    expect(previewPopup()).toBeNull()
+    expect(document.body.textContent).not.toContain('Right-click for options')
+  })
+
+  it('renders no ★ / ⋯ by default, on hover and on focus; right-click still opens the menu; favorites keep the ★ indicator', async () => {
+    const s = style()
+    setStore([s], { favorites: new Set([styleRowKey(s)]) })
+    await act(async () => {
+      root!.render(<StyleCard style={s} viewMode="grid" cellRow={0} cellCol={0} tabIndex={0} />)
+    })
+    noActions()
+    expect(host!.querySelector('[role="gridcell"]')!.className).toBe('')
+    await act(async () => {
+      card().dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))
+      card().dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }))
+    })
+    noActions()
+    await act(async () => card().focus())
+    expect(document.activeElement).toBe(card())
+    noActions()
+
+    const indicator = card().querySelector('svg.text-sg-warning-text')!
+    expect(indicator).not.toBeNull()
+    expect(indicator.getAttribute('class')).not.toContain('opacity-0')
+
+    await contextMenu(card(), { button: 2, clientX: 30, clientY: 40 })
+    expect(menu()).not.toBeNull()
+    expect(menu()!.style.left).toBe('30px')
+    expect(menuTexts()).toContain('Remove from favorites')
+  })
+})
+
+describe('gallery tile actions inside the virtualized grid', () => {
   const LAYOUT = [['offsetHeight', 600], ['offsetWidth', 800], ['clientHeight', 600], ['clientWidth', 800]] as const
 
   beforeEach(async () => {
@@ -319,7 +408,7 @@ describe('style tile actions inside the virtualized grid', () => {
       Object.defineProperty(HTMLElement.prototype, prop, { configurable: true, get: () => value })
     }
     const styles = ['BODY_A', 'BODY_B', 'BODY_C'].map((name) => style({ name }))
-    setStore(styles, { activeCategory: 'BODY' })
+    setStore(styles, { activeCategory: 'BODY', viewMode: 'gallery' })
     mount()
     await act(async () => {
       root!.render(

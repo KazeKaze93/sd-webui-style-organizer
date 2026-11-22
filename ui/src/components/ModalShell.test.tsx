@@ -6,7 +6,6 @@ import { act, useRef, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../bridge'
-import { createHoverIntent } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer, hasOpenLayer } from '../lib/layerStack'
 import { useStylesStore, type PresetRecord } from '../store/stylesStore'
 import { INITIAL_FOCUS_ATTR, ModalShell } from './ModalShell'
@@ -279,27 +278,6 @@ describe('ModalShell', () => {
     expect(css).toMatch(
       /\[data-sg-initial-focus="true"\]:focus \{[^}]*box-shadow:\s*0 0 0 1px rgb\(var\(--sg-bg\)\),\s*0 0 0 3px rgb\(var\(--sg-accent\)\);/,
     )
-  })
-
-  it('opening a dialog dismisses a visible hover preview', async () => {
-    vi.useFakeTimers()
-    const onHide = vi.fn()
-    const onShow = vi.fn()
-    const intent = createHoverIntent({
-      showDelayMs: 10,
-      hideDelayMs: 10,
-      canShow: () => true,
-      onShow,
-      onHide,
-    })
-    intent.enter()
-    vi.advanceTimersByTime(10)
-    expect(onShow).toHaveBeenCalledTimes(1)
-    vi.useRealTimers()
-
-    await openHarness({ onClose: () => {} })
-    expect(onHide).toHaveBeenCalledTimes(1)
-    intent.dispose()
   })
 })
 

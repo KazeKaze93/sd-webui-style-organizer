@@ -6,7 +6,7 @@ It supports:
 - category-based browsing
 - source-aware filtering
 - deduplicated All Sources view with source picker
-- favorites and recent styles
+- favorites
 - **LoRA cards** in a dedicated **🧬 LoRA** sidebar view (scanned from disk, read-only)
 - drag reorder of selected styles
 - presets, backup, import/export
@@ -71,7 +71,7 @@ git clone <this-repository-url> sd-webui-style-organizer
 3. Pick a source (`All Sources` or a specific CSV).
 4. Search or browse categories.
 5. Click a style card to apply/unapply.
-6. Use the **top bar** icon buttons (right of the search box): **⋯ More** holds Import / Export and Backup & restore; **Clear** is in the selection tray. Presets live in the **left sidebar**. The **Presets** view shows each saved set as a card with its styles and wildcards (missing styles marked), an **Apply** / **Applied · Remove** button and a **⋯** menu for Rename… and Delete…; the last tile saves the current selection as a new set.
+6. Use the **top bar** icon buttons (right of the search box): **Clear prompts and selection** (eraser) empties the positive and negative prompts and the selection, **⋯ More** holds Import / Export and Backup & restore; the selection tray keeps its own **Clear** too. Presets live in the **left sidebar**. The **Presets** view shows each saved set as a card with its styles and wildcards (missing styles marked), an **Apply** / **Applied · Remove** button and a **⋯** menu for Rename… and Delete…; the last tile saves the current selection as a new set.
 
 ## Theme
 
@@ -87,7 +87,7 @@ Style Grid works in both generation tabs:
 - txt2img
 - img2img
 
-Behavior is the same in both modes (source filter, deduplication, favorites/recent, context menus, previews, presets).
+Behavior is the same in both modes (source filter, deduplication, favorites, context menus, previews, presets).
 The small tab badge in the panel header shows the active host context.
 
 ![Style Grid in img2img](docs/screenshots/img2img-support.png)
@@ -107,7 +107,7 @@ The small tab badge in the panel header shows the active host context.
 - Type in the search box to filter the grid in real time. Query tokens are **AND**-matched (whitespace-separated, case-insensitive): every token must appear in the haystack.
 - Grid search and autocomplete both use `matchesSearch`: style **name** (including underscore→space forms and display-name forms) plus **description**, with `Combos:` / `Conflicts:` reference lists stripped from the description so those lists do not pollute matches.
 - Autocomplete suggestions respect the active source filter (with All Sources, suggestions are deduped by name like the grid). Cap: top 8.
-- **Favorites**, **Recent**, and **Presets** views also respect search and the active source filter (they previously ignored them).
+- **Favorites** and **Presets** views also respect search and the active source filter (they previously ignored them).
 - Use arrow keys + Enter to pick a suggestion quickly, or click the item with mouse.
 
 ![Search with autocomplete suggestions](docs/screenshots/search-autocomplete.png)
@@ -116,7 +116,7 @@ The small tab badge in the panel header shows the active host context.
 - Card click toggles selection and applies/unapplies style.
 - Selected styles are tracked in the bottom selected bar.
 - Reorder selected styles by dragging chips in the selected bar.
-- Hovering a card (grid or gallery) shows two small buttons: **★** adds or removes the style from favorites, and **⋯** opens the style menu (see §6). Neither one selects the card.
+- In the gallery, hovering a card shows two small buttons: **★** adds or removes the style from favorites, and **⋯** opens the style menu (see §6). Neither one selects the card.
 
 ![Apply styles from cards — selection and bottom bar](docs/screenshots/apply-and-reorder.png)
 
@@ -127,15 +127,13 @@ The small tab badge in the panel header shows the active host context.
 - Click outside the picker to close it without applying.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
-### 4) Favorites, recent, and LoRA
-- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
-- **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
-- Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
+### 4) Favorites and LoRA
+- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or, in the gallery, the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites are stored by **name + CSV source**, so the same name from two files can be favorited independently.
+- Open **Favorites** in the left sidebar to filter the grid to that list (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
 
 ![LoRA sidebar view — cards grouped by folder, CivitAI titles on tiles](docs/screenshots/lora-view.png)
 
-![Recent — last applied styles](docs/screenshots/recent-styles.png)
 
 ![Favorites — styles saved via context menu](docs/screenshots/favorites-view.png)
 
@@ -145,9 +143,9 @@ The small tab badge in the panel header shows the active host context.
 
 **Where to open it**
 
-- In the **left sidebar** (the colored category list), hover a **category row** or move focus to it with **Tab**: a **⋯** button replaces the row's count. Click it (or press **Enter** / **Space** on it) to open the category menu.
-- **Right-click** the row, or press the **ContextMenu** key / **Shift+F10** on it, to open the same menu. **Escape** closes it and returns focus to where it was opened.
-- The fixed entries (All, Favorites, Recent, LoRA, Presets) have no ⋯. Right-clicking **LoRA** opens the same menu without **Generate previews…**.
+- **Right-click** a **category row** in the **left sidebar** (the colored category list), or press the **ContextMenu** key / **Shift+F10** on it, to open the category menu. **Escape** closes it and returns focus to where it was opened.
+- Right-clicking **LoRA** opens the same menu without **Generate previews…**.
+- While the pointer is over a category row (or **LoRA**), or it has keyboard focus, the line at the bottom of the sidebar reads *NAME: right-click for options*.
 - Right-clicking a **category header** inside the main grid (the sticky `▼ CATEGORY (count)` row) **no longer opens a menu** — that duplicate entry point was removed. A normal **left-click** on the header still collapses/expands the section; **Select All** on that row is unchanged.
 
 **Menu actions**
@@ -206,7 +204,7 @@ A **shuffle wildcard** draws styles **without repeats across batches**. `{sgd:ca
 
 **Where to open it**
 
-- **Right-click** a **style card** in the grid (card title hint: *Right-click for options*). *(Left-click still applies the normal select / source-picker rules.)*
+- **Right-click** a **style card** in the grid. *(Left-click still applies the normal select / source-picker rules.)*
 
 **On the tile (not menu items)**
 
@@ -234,7 +232,7 @@ Click **outside** the menu to close it (moving the pointer off the menu does **n
 
 ![Style card context menu](docs/screenshots/style-card-context-menu.png)
 
-### 7) Thumbnail previews and the hover popup
+### 7) Thumbnail previews
 
 **Generating a preview**
 
@@ -249,19 +247,7 @@ Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…&source=…` 
 
 **What the card shows**
 
-- The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — you see it when you **hover**.
-
-**Hover popup (preview window)**
-
-- **Pause ~300 ms** on a card to open the popup (reduces flicker when moving the mouse quickly).
-- **Top:** the thumbnail image (if the file exists and loads). If the image is missing or fails to load, you still get the **text** below.
-- **Title:** the style display name.
-- **Prompt:** first **120 characters** of the style’s **`prompt`** column, with `...` if longer.
-- **Negative:** first **60 characters** of **`negative_prompt`**, prefixed with **−** and shown in a muted red tone.
-
-The popup is **fixed** near the card and flips **above** or **below** depending on available space.
-
-![Hover popup — thumbnail, prompt snippet, negative line](docs/screenshots/thumbnail-hover-preview.png)
+- The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — switch to **Gallery** to see it.
 
 ---
 
@@ -277,7 +263,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 **What this means:** not a separate “toolbar” window — it is the **top header row** of the Style Grid panel: **Style Grid** title, `txt2img`/`img2img` tag, **source** dropdown, **search**, then a row of **small icon buttons on the right** (`ToolBtn` with lucide icons + tooltips). Hover an icon for its label. **Presets** are in the **left sidebar**, not here. There is no Random button.
 
-**Grid / Gallery** (the two-segment switch right of the search box): **Gallery** shows each style's preview as a square tile with its name below; **Grid** stays the text-only tiles. The hover popup (preview image, prompt, negative prompt) works in both, and the choice is remembered in this browser.
+**Grid / Gallery** (the two-segment switch right of the search box): **Gallery** shows each style's preview as a square tile with its name below; **Grid** stays the text-only tiles. The choice is remembered in this browser.
 
 ![Top bar — icon buttons (right of search)](docs/screenshots/top-bar-icons.png)
 

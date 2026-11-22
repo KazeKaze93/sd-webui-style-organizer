@@ -235,7 +235,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
       : style.name)
     return (
       <div key={styleRowKey(style)} className="relative">
-        <StyleCard style={style} windowed={windowed} />
+        <StyleCard style={style} windowed={windowed} hoverActions={false} />
         <button
           type="button"
           className={`absolute inset-0 z-20 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg ${

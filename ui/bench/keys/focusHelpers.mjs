@@ -16,6 +16,7 @@ export async function describeActive(frame) {
         inGridCell: false,
         isHeaderCell: false,
         isBody: true,
+        cellId: '',
         title: '',
         role: null,
         tabIndex: el?.tabIndex ?? null,
@@ -57,8 +58,18 @@ export async function describeActive(frame) {
       el.getAttribute('role') === 'gridcell' ||
       Boolean(el.closest('[role="gridcell"]'))
 
+    // Stable identity of a grid cell (card or header cell): its roving-focus position.
+    const cellEl = el.closest('[data-cell-row][data-cell-col]')
+    const cellId = cellEl
+      ? `${cellEl.getAttribute('data-cell-row')}:${cellEl.getAttribute('data-cell-col')}`
+      : ''
+
+    // Cards carry no title attribute: name them by aria-label, else the visible name.
+    const cardName = (c) =>
+      (c.getAttribute('aria-label') || '').split('\n')[0] ||
+      (c.querySelector('[data-sg-gallery-label], .truncate')?.textContent || '').trim()
     const title = card
-      ? (card.getAttribute('title') || '').split('\n')[0]
+      ? cardName(card)
       : header
         ? header.getAttribute('data-sg-category-header') || ''
         : ''
@@ -70,6 +81,7 @@ export async function describeActive(frame) {
       inGridCell,
       isHeaderCell: Boolean(header),
       isBody: false,
+      cellId,
       title,
       role: el.getAttribute('role'),
       tabIndex: el.tabIndex,

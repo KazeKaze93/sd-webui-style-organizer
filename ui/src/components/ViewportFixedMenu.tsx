@@ -40,6 +40,8 @@ type Props = {
   className?: string
   style?: CSSProperties
   backdropClassName?: string
+  /** id of the element that names the menu (e.g. a heading inside it). */
+  ariaLabelledBy?: string
 }
 
 function enabledMenuItems(menu: HTMLElement): HTMLElement[] {
@@ -85,6 +87,7 @@ export function ViewportFixedMenu({
   className = DEFAULT_MENU_CLASS,
   style,
   backdropClassName = DEFAULT_BACKDROP_CLASS,
+  ariaLabelledBy,
 }: Props) {
   const close = onClose ?? onDismiss
   const ref = useRef<HTMLDivElement>(null)
@@ -206,6 +209,7 @@ export function ViewportFixedMenu({
         ref={ref}
         role="menu"
         tabIndex={-1}
+        aria-labelledby={ariaLabelledBy}
         className={className}
         style={{
           ...style,

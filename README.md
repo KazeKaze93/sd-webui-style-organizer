@@ -116,6 +116,7 @@ The small tab badge in the panel header shows the active host context.
 - Card click toggles selection and applies/unapplies style.
 - Selected styles are tracked in the bottom selected bar.
 - Reorder selected styles by dragging chips in the selected bar.
+- Hovering a card (grid or gallery) shows two small buttons: **★** adds or removes the style from favorites, and **⋯** opens the style menu (see §6). Neither one selects the card.
 
 ![Apply styles from cards — selection and bottom bar](docs/screenshots/apply-and-reorder.png)
 
@@ -127,7 +128,7 @@ The small tab badge in the panel header shows the active host context.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
 ### 4) Favorites, recent, and LoRA
-- **Favorites:** right‑click a style card → **Add to Favorites** / **Remove from Favorites**. Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
+- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
 - **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
 - Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
@@ -217,15 +218,15 @@ A **shuffle wildcard** draws styles **without repeats across batches**. `{sgd:ca
 | Item | What it does |
 |---|---|
 | **Select** / **Deselect** | Same as a left-click on the card: applies or removes the style from the active selection (and host prompt), without opening the duplicate-source picker. |
-| **Add to Favorites** / **Remove from Favorites** | Toggles the star list for this style **row** (name + source); the tile star updates immediately. |
+| **Add to favorites** / **Remove from favorites** | Toggles the star list for this style **row** (name + source); the tile star updates immediately. |
 | **Copy prompt** | Copies this style’s **`prompt`** text to the clipboard (toast on success/failure). |
-| **Edit** | Opens the host **style editor** for this style. |
+| **Edit…** | Opens the host **style editor** for this style. |
 | **Duplicate** | Opens the host flow to duplicate the style (typically into the same or chosen source). |
-| **Move to category...** | Opens the host dialog to change the style’s **category** field. |
-| **Generate preview (SD)** | Runs **thumbnail generation** for this style (Stable Diffusion–based preview in the host). |
-| **Upload preview image** | Opens the host **file picker** to set a custom thumbnail image. |
+| **Move to category…** | Opens the host dialog to change the style’s **category** field. |
+| **Generate preview** | Runs **thumbnail generation** for this style (Stable Diffusion–based preview in the host). |
+| **Upload preview…** | Opens the host **file picker** to set a custom thumbnail image. |
 | **Remove preview** | Shown only when the style already has a thumbnail. Deletes the cached preview for this style’s **name + source** (surfaces errors instead of silently no-oping). |
-| **Delete** | Removes the style (host confirms and updates CSV). Styles from the shipped **`samples/`** pack cannot be modified via the API (read-only). |
+| **Delete…** | Removes the style (host confirms and updates CSV). Styles from the shipped **`samples/`** pack cannot be modified via the API (read-only). |
 
 **LoRA cards:** Edit / Duplicate / Move / Generate preview / Upload preview / Remove preview / Delete are **hidden**. Select, Favorites, and Copy prompt remain. The server also rejects CSV save/delete for LoRA-sourced rows.
 
@@ -237,7 +238,7 @@ Click **outside** the menu to close it (moving the pointer off the menu does **n
 
 **Generating a preview**
 
-- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview (SD)**. The host runs an SD render and saves an image under user-data `thumbnails/` (see **Data and Persistence**).
+- **Per style:** open the style’s context menu (**right-click** the card) → **Generate preview**. The host runs an SD render and saves an image under user-data `thumbnails/` (see **Data and Persistence**).
 - **Per category:** use the **category** context menu → **Generate previews…** (see §5).
 
 After a successful run, the iframe is notified so the UI can refresh that style’s thumbnail version.

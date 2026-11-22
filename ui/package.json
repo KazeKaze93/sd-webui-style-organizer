@@ -14,7 +14,8 @@
     "bench": "node bench/run.mjs",
     "bench:layout": "node bench/layout.mjs",
     "bench:compare": "node bench/compare.mjs",
-    "bench:keys": "node bench/keys/run.mjs"
+    "bench:keys": "node bench/keys/run.mjs",
+    "bench:menu": "node bench/menu/run.mjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

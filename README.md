@@ -147,7 +147,7 @@ The small tab badge in the panel header shows the active host context.
 
 - **Right-click** a **category row** in the **left sidebar** (the colored category list), or press the **ContextMenu** key / **Shift+F10** on it, to open the category menu. **Escape** closes it and returns focus to where it was opened.
 - Right-clicking **LoRA** opens the same menu without **Generate previews…**.
-- Hovering a category row (or **LoRA**) shows its style count and the hint *Right-click a category or style for options*.
+- While the pointer is over a category row (or **LoRA**), or it has keyboard focus, the line at the bottom of the sidebar reads *NAME: right-click for options*.
 - Right-clicking a **category header** inside the main grid (the sticky `▼ CATEGORY (count)` row) **no longer opens a menu** — that duplicate entry point was removed. A normal **left-click** on the header still collapses/expands the section; **Select All** on that row is unchanged.
 
 **Menu actions**

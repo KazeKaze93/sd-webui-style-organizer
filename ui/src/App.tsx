@@ -545,8 +545,9 @@ export default function App() {
         }}
       >
         {/* Sidebar */}
-        <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
-          style={{ width: isFullscreen ? '210px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
+        {/* The sidebar scrolls its own list and keeps a footer line under it. */}
+        <div className="shrink-0 border-r border-sg-border min-h-0 flex flex-col"
+          style={{ width: '210px' }}>
           <Sidebar />
         </div>
 

@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../bridge'
 import { __resetFocusSourceForTests, installFocusSourceTracking } from '../lib/focusSource'
-import { HOVER_POPUP_SHOW_DELAY_MS } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer } from '../lib/layerStack'
 import { LORA_SOURCE, useStylesStore } from '../store/stylesStore'
 import { Sidebar } from './Sidebar'
@@ -23,34 +22,26 @@ const row = (name: string, category: string, source_file = 'webui/a.csv'): Style
   category,
 })
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-describe('sidebar category hint tooltip', () => {
+describe('sidebar footer hint line', () => {
   let root: Root | null = null
   let host: HTMLDivElement | null = null
   let uninstallFocus: (() => void) | null = null
 
+  const footer = () => host!.querySelector<HTMLElement>('[data-sg-sidebar-hint]')!
   const rowEl = (cat: string) => host!.querySelector<HTMLElement>(`[data-sg-category-row="${cat}"]`)!
   const nav = (cat: string) => rowEl(cat).querySelector<HTMLButtonElement>('button')!
   const fixed = (label: string) =>
     [...host!.querySelectorAll<HTMLButtonElement>('button')].find((b) => b.textContent?.startsWith(label))!
-  /** Visible hint content (Radix also renders a hidden copy for assistive tech). */
-  const hint = () => document.querySelector<HTMLElement>('[data-sg-category-hint]')
-  const hintLines = () => [...(hint()?.querySelectorAll(':scope > p') ?? [])].map((p) => p.textContent)
-
-  const hover = async (el: HTMLElement, ms = HOVER_POPUP_SHOW_DELAY_MS + 60) => {
+  const enter = async (el: HTMLElement) => {
     await act(async () => {
       el.dispatchEvent(new MouseEvent('pointerover', { bubbles: true }))
       el.dispatchEvent(new MouseEvent('pointerenter', { bubbles: false }))
-      el.dispatchEvent(new MouseEvent('pointermove', { bubbles: true }))
-      await wait(ms)
     })
   }
-  const unhover = async (el: HTMLElement) => {
+  const leave = async (el: HTMLElement) => {
     await act(async () => {
       el.dispatchEvent(new MouseEvent('pointerout', { bubbles: true, relatedTarget: document.body }))
       el.dispatchEvent(new MouseEvent('pointerleave', { bubbles: false }))
-      await wait(20)
     })
   }
 
@@ -86,65 +77,74 @@ describe('sidebar category hint tooltip', () => {
     __resetLayerStackForTests()
   })
 
-  it('hover shows it only after the hint delay, with the count and the right-click line', async () => {
-    await hover(nav('BODY'), Math.floor(HOVER_POPUP_SHOW_DELAY_MS / 3))
-    expect(hint()).toBeNull()
-    await act(async () => {
-      await wait(HOVER_POPUP_SHOW_DELAY_MS)
-    })
-    expect(hint()).not.toBeNull()
-    expect(hintLines()).toEqual(['BODY · 2 styles', 'Right-click a category or style for options'])
-    expect(hint()!.getAttribute('data-align')).toBe('start')
-    expect(hint()!.querySelector('svg.lucide-mouse')!.getAttribute('width')).toBe('12')
-    expect(hint()!.className).toContain('bg-sg-popover')
-    expect(hint()!.className).toContain('border-sg-border')
-    await unhover(nav('BODY'))
-    expect(hint()).toBeNull()
+  it('the footer sits outside the scrolling list and keeps its height when empty', () => {
+    const f = footer()
+    expect(f.textContent).toBe('')
+    expect(f.querySelector('svg')).toBeNull()
+    for (const cls of ['shrink-0', 'h-6', 'border-t', 'border-sg-border', 'whitespace-nowrap']) {
+      expect(f.classList.contains(cls)).toBe(true)
+    }
+    expect(f.getAttribute('aria-hidden')).toBe('true')
+    const scroller = f.previousElementSibling as HTMLElement
+    expect(scroller.className).toContain('overflow-y-auto')
+    expect(scroller.contains(rowEl('BODY'))).toBe(true)
+    expect(scroller.contains(f)).toBe(false)
   })
 
-  it('singular count', async () => {
-    await hover(nav('POSE'))
-    expect(hintLines()[0]).toBe('POSE · 1 style')
+  it('hovering a category shows "<NAME>: right-click for options"; leaving clears it', async () => {
+    await enter(nav('BODY'))
+    expect(footer().textContent).toBe('BODY: right-click for options')
+    expect(footer().querySelector('svg.lucide-mouse')!.getAttribute('width')).toBe('12')
+    expect(footer().querySelector('span')!.className).toContain('truncate')
+    await enter(nav('POSE'))
+    expect(footer().textContent).toBe('POSE: right-click for options')
+    await leave(nav('POSE'))
+    expect(footer().textContent).toBe('')
   })
 
-  it('opens on Tab focus, not on programmatic focus', async () => {
-    await act(async () => {
-      nav('POSE').focus()
-      await wait(HOVER_POPUP_SHOW_DELAY_MS + 60)
-    })
-    expect(hint()).toBeNull()
+  it('keyboard (Tab) focus shows it; programmatic focus does not; blur clears it', async () => {
+    await act(async () => nav('POSE').focus())
+    expect(footer().textContent).toBe('')
     await act(async () => nav('POSE').blur())
 
     await act(async () => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
       nav('POSE').focus()
-      await wait(HOVER_POPUP_SHOW_DELAY_MS + 60)
     })
-    expect(hintLines()[0]).toBe('POSE · 1 style')
+    expect(footer().textContent).toBe('POSE: right-click for options')
+    await act(async () => nav('POSE').blur())
+    expect(footer().textContent).toBe('')
   })
 
-  it('stays closed while the row menu is open', async () => {
+  it('stays empty while a context menu is open', async () => {
     await act(async () => {
       nav('BODY').dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: 5, clientY: 5 }))
     })
-    expect(rowEl('BODY').getAttribute('data-sg-menu-open')).toBe('true')
-    await hover(nav('BODY'))
-    expect(hint()).toBeNull()
+    await enter(nav('BODY'))
+    expect(footer().textContent).toBe('')
     act(() => {
       closeTopLayer()
     })
-    await unhover(nav('BODY'))
-    await hover(nav('BODY'))
-    expect(hint()).not.toBeNull()
+    expect(footer().textContent).toBe('BODY: right-click for options')
   })
 
-  it.each(['All', 'Favorites', 'Recent', 'Presets'])('no hint on the fixed entry %s', async (label) => {
-    await hover(fixed(label))
-    expect(hint()).toBeNull()
+  it.each(['All', 'Favorites', 'Recent', 'Presets'])('the fixed entry %s never sets it', async (label) => {
+    await enter(fixed(label))
+    expect(footer().textContent).toBe('')
+    expect(fixed(label).hasAttribute('aria-describedby')).toBe(false)
   })
 
-  it('LoRA has the hint, with LoRA wording', async () => {
-    await hover(fixed('LoRA'))
-    expect(hintLines()).toEqual(['LoRA · 1 LoRA', 'Right-click a category or style for options'])
+  it('LoRA sets "LoRA: right-click for options"', async () => {
+    await enter(fixed('LoRA'))
+    expect(footer().textContent).toBe('LoRA: right-click for options')
+  })
+
+  it('rows with a menu are described by one hidden static element', () => {
+    const ids = [nav('BODY'), nav('POSE'), fixed('LoRA')].map((b) => b.getAttribute('aria-describedby'))
+    expect(new Set(ids).size).toBe(1)
+    const desc = document.getElementById(ids[0]!)!
+    expect(desc.textContent).toBe('Right-click or press Shift+F10 for options')
+    expect(desc.className).toContain('sr-only')
+    expect(host!.querySelectorAll(`[id="${ids[0]}"]`)).toHaveLength(1)
   })
 })

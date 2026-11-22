@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Import, History, MoreHorizontal, Plus, Globe,
   Palette, Maximize2, Minimize2, X,
@@ -32,6 +32,7 @@ import { styleGridPost } from './lib/styleGridFetch'
 import { applyThemeMode, appliedThemeMode } from './lib/themeMode'
 import { installFocusSourceTracking } from './lib/focusSource'
 import { useGatedTooltip } from './lib/useGatedTooltip'
+import { AppActionsContext, type AppActions } from './lib/appActions'
 
 const FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -199,6 +200,12 @@ export default function App() {
 
   const activeSourceIsReadOnly = !!activeSource &&
     styles.some(s => s.source_file === activeSource && s.read_only)
+  /** Openers for the grid's empty states; canCreateStyle is the header + button's rule. */
+  const appActions = useMemo<AppActions>(() => ({
+    openImportExport: () => setImportExportOpen(true),
+    openNewStyle: () => setNewStyleOpen(true),
+    canCreateStyle: !!activeSource && !activeSourceIsReadOnly,
+  }), [activeSource, activeSourceIsReadOnly])
 
   const fetchLoraTitles = async () => {
     try {
@@ -373,6 +380,7 @@ export default function App() {
   }
 
   return (
+    <AppActionsContext.Provider value={appActions}>
     <div className="flex flex-col bg-sg-bg text-sg-text"
       style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
@@ -535,7 +543,9 @@ export default function App() {
         {/* Grid — GridScroller is the scroll element the virtualized grid measures. */}
         <GridScroller className="px-3 pb-3 min-h-0"
           style={{ flex: '1 1 0', overflowY: 'auto', overflowX: 'auto', minWidth: 0 }}>
-          <div className="pt-3">
+          {/* Flex column at least as tall as the visible scroller, so an empty
+              state (flex-1) centers in view; the grid itself keeps its own height. */}
+          <div className="pt-3 min-h-full flex flex-col" data-sg-grid-host="true">
             <StyleGrid windowed={!isFullscreen} />
           </div>
         </GridScroller>
@@ -562,5 +572,6 @@ export default function App() {
       )}
       {backupOpen && <BackupRestoreDialog open onClose={() => setBackupOpen(false)} />}
     </div>
+    </AppActionsContext.Provider>
   )
 }

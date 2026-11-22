@@ -460,6 +460,11 @@ interface StylesStore {
   activeCategory: string | null
   sources: string[]
   activeSource: string | null
+  /**
+   * True once the first styles payload (SG_INIT / SG_STYLES_UPDATE) has been
+   * applied; never reset. Empty states wait for it, so nothing flashes before data.
+   */
+  stylesLoaded: boolean
   
   // Selection
   selectedStyles: Style[]
@@ -653,6 +658,7 @@ export function selectFilteredStyles(
 export const useStylesStore = create<StylesStore>((set, get) => ({
   toasts: [],
   styles: [],
+  stylesLoaded: false,
   tab: 'txt2img',
   search: '',
   activeCategory: null,
@@ -756,6 +762,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
 
     set({
       styles,
+      stylesLoaded: true,
       tab,
       sources,
       activeSource,

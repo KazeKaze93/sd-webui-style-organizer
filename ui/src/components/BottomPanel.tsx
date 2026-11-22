@@ -3,6 +3,10 @@ import { StyleInfoPanel } from './StyleInfoPanel'
 import { SelectedBar } from './SelectedBar'
 import { TRAY_MAX_HEIGHT_CSS } from './trayLayout'
 
+/** Ring only for keyboard focus; programmatic focus after a mouse action shows nothing. */
+const TRAY_FOCUS_RING =
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-sg-accent'
+
 /**
  * Profile (P toggle N=5000): motion ~28% active; `measureScroll` (framer-motion)
  * #2 self (~10.6–13%). Height AnimatePresence/`motion.div` measured layout on open.
@@ -26,9 +30,14 @@ export function BottomPanel() {
       }`}
       aria-hidden={!open}
     >
+      {/* Focusable region: where focus lands when the last conflict is resolved
+          (the conflicts trigger is gone by then). Not in the tab order. */}
       <div
         data-sg-tray="true"
-        className="min-h-0 overflow-hidden flex flex-col"
+        role="region"
+        aria-label="Selection"
+        tabIndex={-1}
+        className={`min-h-0 overflow-hidden flex flex-col ${TRAY_FOCUS_RING}`}
         style={{ maxHeight: TRAY_MAX_HEIGHT_CSS }}
       >
         {open ? (

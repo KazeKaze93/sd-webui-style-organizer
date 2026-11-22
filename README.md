@@ -290,7 +290,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 ![Fetch LoRA titles — toolbar tooltip in LoRA view](docs/screenshots/lora-fetch-titles.png)
 
 | *N* selected | Shown when at least one style is selected. |
-| Style conflicts | When conflicts exist, a pulsing count badge opens a **click-to-open** popover (not hover-only) listing reasons; each row can remove the conflicting style. |
+| Style conflicts | When a selected style's negative prompt removes another's tags, an amber **N conflicts** chip appears in the selection tray and the styles involved get an amber border. Clicking it opens one card per pair (→ one way, ↔ both ways) with **Remove** for either style or **Keep both**, which hides that pair until one of its styles leaves the selection. |
 | Fullscreen / Exit fullscreen | Toggles between the floating panel size and edge-to-edge layout. |
 | Close Style Grid | Closes the Style Grid panel. |
 

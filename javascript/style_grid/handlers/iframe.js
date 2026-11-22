@@ -3,7 +3,6 @@
 
 import {
     state,
-    pushStyleIntoCategories,
 } from "../state.js";
 import {
     closeSGPanel,
@@ -13,7 +12,11 @@ import {
 } from "./forge-tabs.js";
 import {
     installIframeMessageBridge,
+    sendStylesInit,
 } from "./iframe-messages.js";
+import {
+    createStylesInitGate,
+} from "./styles-init.js";
 import {
     buildThemeMessage,
     detectHostThemeMode,
@@ -80,26 +83,13 @@ function initSGFrame(tab) {
         // Escape is handled centrally by installHostKeyboardA11y (render.js):
         // host overlays first, then panel close + trigger focus + aria-expanded.
 
+        // SG_READY (iframe-messages.js) is the primary SG_INIT trigger; `load`
+        // only arms a fallback for a document that never sends SG_READY.
+        state[tab].sgStylesInitGate = createStylesInitGate({
+            send: function () { return sendStylesInit(tab, frame); },
+        });
         frame.addEventListener("load", function () {
-            setTimeout(function () {
-                fetch("/style_grid/styles")
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        if (!state[tab]) state[tab] = {};
-                        if (!state[tab].categories) state[tab].categories = {};
-                        allStyles.forEach(function (s) {
-                            pushStyleIntoCategories(state[tab].categories, s);
-                        });
-                        if (frame.contentWindow) {
-                            postToFrame(frame, {
-                                type: "SG_INIT",
-                                tab: tab,
-                                styles: allStyles,
-                            });
-                        }
-                    });
-            }, 500);
+            state[tab].sgStylesInitGate.onLoad();
         });
 
         installIframeMessageBridge(tab, frame);

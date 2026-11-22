@@ -308,7 +308,8 @@ function togglePanel(tabName, show) {
         setHostPageScrollLock(true);
         syncTriggerExpanded(tabName);
         hooks.syncWildcards(tabName);
-        if (!state[tabName].sgV2HostInitSent) postSGInitToFrame(tabName);
+        var initGate = state[tabName].sgStylesInitGate;
+        if (!state[tabName].sgV2HostInitSent && !(initGate && initGate.isInFlight())) postSGInitToFrame(tabName);
         hooks.forgeTab.lastBroadcast = null;
         hooks.scheduleSyncForgeHostTabToV2Frames();
         try { fr.focus(); } catch (_err) { /* ignore */ }

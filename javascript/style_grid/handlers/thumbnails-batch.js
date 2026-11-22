@@ -1,4 +1,9 @@
-/** Style Grid host — batch thumbnail generation (from events.js). */
+/**
+ * Style Grid host — batch thumbnail generation (from events.js).
+ * The loop is handlers/batch-runner.js; this file wires it to the host: API,
+ * per-tab frames, the host thumbnail cache and toasts. Progress, Skip and
+ * Cancel live in the panel (SG_BATCH_PROGRESS / SG_BATCH_SKIP / SG_BATCH_CANCEL).
+ */
 "use strict";
 
 import {
@@ -12,252 +17,70 @@ import {
     _saveThumbVersions,
 } from "../state.js";
 import {
-    el,
-} from "../render.js";
-import {
     loadThumbnailList,
 } from "./panel.js";
 import { postToFrame } from "../post-message.js";
+import { createBatchRunner } from "./batch-runner.js";
 
-var _batchState = { running: false, cancelled: false, skipped: false, jobId: null };
+function postToTab(tab, msg) {
+        var fr = state[tab] && state[tab].sgFrame;
+        if (fr && fr.contentWindow) postToFrame(fr, msg);
+    }
 
-function startBatchThumbnails(tabName, catName, styles) {
-       if (_batchState.running) {
-           var frBusy = state[tabName] && state[tabName].sgFrame;
-           if (frBusy && frBusy.contentWindow) {
-               postToFrame(frBusy, {
-                   type: "SG_TOAST",
-                   message: "Batch generation already running",
-                   variant: "error"
-               });
-           }
-           return;
-       }
+var _batchRunner = createBatchRunner({
+    apiPost: apiPost,
+    apiGet: apiGet,
+    post: function (tab, msg) {
+        // Kept for a reloaded panel (SG_READY re-post, preview-progress.js).
+        if (msg.type === "SG_BATCH_PROGRESS" && state[tab]) state[tab].sgBatchLast = msg;
+        postToTab(tab, msg);
+    },
+    toast: function (tab, message, variant) {
+        postToTab(tab, { type: "SG_TOAST", message: message, variant: variant });
+    },
+    hasThumbnail: function (tab, name, source) {
+        return state[tab].hasThumbnail.has(thumbIdentityKey(name, source));
+    },
+    onItemDone: function (tab, name, source) {
+        var key = thumbIdentityKey(name, source);
+        state[tab].hasThumbnail.add(key);
+        _thumbVersions[key] = Date.now();
+        localStorage.setItem("sg_thumb_v_" + key, _thumbVersions[key].toString());
+        _saveThumbVersions();
+        // Same message as a single upload: the panel shows the new preview now.
+        postToTab(tab, {
+            type: "SG_THUMB_DONE",
+            styleId: name,
+            version: _thumbVersions[key],
+            source_file: source,
+        });
+    },
+    onFinish: function (tab) {
+        loadThumbnailList(tab);
+    },
+    setTimeout: function (fn, ms) { return setTimeout(fn, ms); },
+});
 
-       var queue = styles.filter(function (s) {
-           return !state[tabName].hasThumbnail.has(thumbIdentityKey(s.name, s.source_file));
-       });
-       if (queue.length === 0) {
-           var frEmpty = state[tabName] && state[tabName].sgFrame;
-           if (frEmpty && frEmpty.contentWindow) {
-               postToFrame(frEmpty, {
-                   type: "SG_TOAST",
-                   message: "All styles already have previews",
-                   variant: "info"
-               });
-           }
-           return;
-       }
+/**
+ * @param {string} tabName
+ * @param {string} catName
+ * @param {Array<Object>} styles the category's styles for the active source
+ * @param {string} [source] source the panel asked for (echoed in SG_BATCH_PROGRESS)
+ */
+function startBatchThumbnails(tabName, catName, styles, source) {
+        return _batchRunner.start(tabName, catName, source || "", styles);
+    }
 
-       _batchState = { running: true, cancelled: false, skipped: false, jobId: null };
-       var total = queue.length;
-       var done = 0;
-       var failed = 0;
-       var skipped = 0;
+function cancelBatchThumbnails(tabName) {
+        return _batchRunner.cancel(tabName);
+    }
 
-       // Build modal
-       var overlay = el("div", { className: "sg-editor-overlay sg-batch-overlay" });
-       var modal = el("div", { className: "sg-editor-modal" });
-       var titleEl = el("h3", {
-           className: "sg-editor-title",
-           textContent: "🎨 Generating previews — " + catName
-       });
-       var progressText = el("div", {
-           className: "sg-batch-progress-text",
-           textContent: "Starting..."
-       });
-       var progressBar = el("div", { className: "sg-batch-bar-wrap" });
-       var progressFill = el("div", { className: "sg-batch-bar-fill" });
-       progressBar.appendChild(progressFill);
-
-       function cancelCurrentJobThen(next) {
-           var jobId = _batchState.jobId;
-           _batchState.jobId = null;
-           if (!jobId) {
-               next();
-               return;
-           }
-           var settled = false;
-           function finish() {
-               if (settled) return;
-               settled = true;
-               next();
-           }
-           apiPost("/style_grid/thumbnail/cancel", { job_id: jobId })
-               .then(finish)
-               .catch(finish);
-           setTimeout(finish, 2000);
-       }
-
-       var btnRow = el("div", { className: "sg-editor-btns" });
-       var skipBtn = el("button", {
-           className: "sg-btn sg-btn-secondary",
-           textContent: "⏭ Skip",
-           onClick: function () {
-               _batchState.skipped = true;
-               cancelCurrentJobThen(function () {});
-           }
-       });
-       var cancelBtn = el("button", {
-           className: "sg-btn sg-btn-danger",
-           textContent: "✕ Cancel",
-           onClick: function () {
-               _batchState.cancelled = true;
-               cancelBtn.textContent = "Cancelling...";
-               cancelBtn.disabled = true;
-               cancelCurrentJobThen(function () {});
-           }
-       });
-       btnRow.appendChild(skipBtn);
-       btnRow.appendChild(cancelBtn);
-
-       modal.appendChild(titleEl);
-       modal.appendChild(progressText);
-       modal.appendChild(progressBar);
-       modal.appendChild(btnRow);
-       overlay.appendChild(modal);
-       // Do NOT close on overlay click — only Cancel
-       document.body.appendChild(overlay);
-
-       function updateProgress(current, styleName, status) {
-           var pct = Math.round((current / total) * 100);
-           progressFill.style.width = pct + "%";
-           progressText.textContent = current + " / " + total +
-               (styleName ? " — " + styleName.split("_").slice(1).join(" ") : "") +
-               (status ? " (" + status + ")" : "");
-       }
-
-       function processNext(index) {
-           if (_batchState.cancelled || index >= queue.length) {
-               // Finished
-               _batchState.running = false;
-               _batchState.jobId = null;
-               overlay.remove();
-               var msg = "Done: " + done + "/" + total + " generated";
-               if (failed > 0) msg += ", " + failed + " failed";
-               if (skipped > 0) msg += ", " + skipped + " skipped";
-               var frDone = state[tabName] && state[tabName].sgFrame;
-               if (frDone && frDone.contentWindow) {
-                   postToFrame(frDone, {
-                       type: "SG_TOAST",
-                       message: msg,
-                       variant: "info"
-                   });
-               }
-               loadThumbnailList(tabName);
-               return;
-           }
-
-           var styleName = queue[index].name;
-           var styleSourceFile = queue[index].source_file || "";
-           _batchState.skipped = false;
-           updateProgress(index + 1, styleName, "generating...");
-
-           apiPost("/style_grid/thumbnail/generate", { name: styleName, source: styleSourceFile })
-               .then(function (r) {
-                   if (r.error || !r.job_id) {
-                       failed++;
-                       processNext(index + 1);
-                       return;
-                   }
-                   _batchState.jobId = r.job_id;
-                   pollBatchStatus(tabName, styleName, styleSourceFile, index, 0, r.job_id);
-               })
-               .catch(function () {
-                   failed++;
-                   processNext(index + 1);
-               });
-       }
-
-       function pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts, jobId) {
-           if (_batchState.cancelled) {
-               cancelCurrentJobThen(function () {
-                   _batchState.running = false;
-                   overlay.remove();
-                   var cancelMsg = "Cancelled. " + done + "/" + total + " completed.";
-                   var frCancel = state[tabName2] && state[tabName2].sgFrame;
-                   if (frCancel && frCancel.contentWindow) {
-                       postToFrame(frCancel, {
-                           type: "SG_TOAST",
-                           message: cancelMsg,
-                           variant: "info"
-                       });
-                   }
-                   loadThumbnailList(tabName2);
-               });
-               return;
-           }
-           if (_batchState.skipped) {
-               cancelCurrentJobThen(function () {
-                   skipped++;
-                   processNext(index + 1);
-               });
-               return;
-           }
-           if (attempts > 60) {
-               _batchState.jobId = null;
-               failed++;
-               processNext(index + 1);
-               return;
-           }
-
-           apiGet("/style_grid/thumbnail/gen_status?job_id=" +
-               encodeURIComponent(jobId))
-               .then(function (r) {
-                   if (!r || r.detail === "Not Found" || r.status === undefined) {
-                       _batchState.jobId = null;
-                       failed++;
-                       processNext(index + 1);
-                       return;
-                   }
-                   if (r.status === "done") {
-                       _batchState.jobId = null;
-                       done++;
-                       state[tabName2].hasThumbnail.add(thumbIdentityKey(styleName, styleSourceFile));
-                       var batchThumbKey = thumbIdentityKey(styleName, styleSourceFile);
-                       _thumbVersions[batchThumbKey] = Date.now();
-                       localStorage.setItem("sg_thumb_v_" + batchThumbKey, _thumbVersions[batchThumbKey].toString());
-                       _saveThumbVersions();
-                       // Same message as a single upload: the panel shows the new preview now.
-                       var frBatchDone = state[tabName2] && state[tabName2].sgFrame;
-                       if (frBatchDone && frBatchDone.contentWindow) {
-                           postToFrame(frBatchDone, {
-                               type: "SG_THUMB_DONE",
-                               styleId: styleName,
-                               version: _thumbVersions[batchThumbKey],
-                               source_file: styleSourceFile,
-                           });
-                       }
-                       updateProgress(index + 1, styleName, "✓");
-                       setTimeout(function () { processNext(index + 1); }, 300);
-                   } else if (r.status === "error" || r.status === "cancelled") {
-                       _batchState.jobId = null;
-                       if (r.status === "cancelled") {
-                           skipped++;
-                       } else {
-                           failed++;
-                       }
-                       processNext(index + 1);
-                   } else if (r.status === "queued" || r.status === "running") {
-                       setTimeout(function () {
-                           pollBatchStatus(tabName2, styleName, styleSourceFile, index, attempts + 1, jobId);
-                       }, 2000);
-                   } else {
-                       _batchState.jobId = null;
-                       failed++;
-                       processNext(index + 1);
-                   }
-               })
-               .catch(function () {
-                   _batchState.jobId = null;
-                   failed++;
-                   processNext(index + 1);
-               });
-       }
-
-       processNext(0);
-   }
+function skipBatchThumbnails(tabName) {
+        return _batchRunner.skip(tabName);
+    }
 
 export {
+    cancelBatchThumbnails,
+    skipBatchThumbnails,
     startBatchThumbnails,
 };

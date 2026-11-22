@@ -85,13 +85,6 @@ function closeSGPanel(tab) {
 function tryCloseTopmostHostOverlay() {
         var overlay = getTopmostHostOverlay();
         if (!overlay) return false;
-        if (overlay.classList.contains("sg-batch-overlay")) {
-            var cancelBtn = overlay.querySelector(".sg-btn-danger");
-            if (cancelBtn && !cancelBtn.disabled) {
-                cancelBtn.click();
-                return true;
-            }
-        }
         if (typeof overlay._sgCloseOverlay === "function") {
             overlay._sgCloseOverlay();
         } else {

@@ -82,6 +82,8 @@ export function parseFrameMessage(data) {
         case "SG_READY":
         case "SG_CLOSE_REQUEST":
         case "SG_CLEAR_ALL":
+        case "SG_BATCH_CANCEL":
+        case "SG_BATCH_SKIP":
             return { type: type };
 
         case "SG_REFRESH":

@@ -154,12 +154,12 @@ The small tab badge in the panel header shows the active host context.
 |---|---|
 | **Random** (whole category, may repeat) | Inserts a token into the **positive prompt** on the Forge side: `{sg:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
 | **Shuffle** (whole category, no repeats in a batch) | Inserts a token into the **positive prompt** on the Forge side: `{sgd:<category>}`. The category name is normalized to **lowercase** to match how styles are grouped. |
-| **Pick styles…** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. A **Random / Shuffle** toggle at the start of the mode bar chooses the wildcard kind (Random by default); switching keeps the ticked styles. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add as wildcard** (or **Add as shuffle wildcard**) inserts a **slice** token for exactly that selection; **Cancel** discards it. |
+| **Pick styles…** | Opens a **slice-selection mode** in the grid: tick individual styles with checkboxes. The **Random / Shuffle** toggle next to the title in the mode bar chooses the wildcard kind (Random by default); switching keeps the ticked styles. Search and the source filter keep working; **Select all** covers only the styles currently visible after filtering. **Add wildcard** inserts a **slice** token for exactly that selection; **Cancel** discards it. |
 | **Generate previews…** | Queues **thumbnail generation** for styles in that category (batch job in the host). Shown for every category except LoRA; does not report a missing-preview count. |
 
 ![Sidebar category menu — Random, Shuffle, Pick styles… and Generate previews…](docs/screenshots/category-context-wildcard-previews.png)
 
-![Slice-selection mode — mode bar with selection count and Select all / Clear all / Add as wildcard / Cancel; per-card checkboxes; search stays active](docs/screenshots/slice-selection-mode.png)
+![Slice-selection mode — mode bar with selection count and Select all / Clear / Add wildcard / Cancel; per-card checkboxes; search stays active](docs/screenshots/slice-selection-mode.png)
 
 **How `{sg:…}` wildcards work**
 

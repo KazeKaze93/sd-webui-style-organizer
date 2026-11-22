@@ -38,6 +38,13 @@ describe('buildSliceSpec', () => {
     expect(buildSliceSpec(CATEGORY, BODY, BODY)).toBe('')
   })
 
+  it('an empty selection also compacts to "" — the whole category, same as {sg:cat}', () => {
+    // Why the slice bar disables Add at 0 picked: this is not an empty slice.
+    expect(buildSliceSpec(CATEGORY, [], BODY)).toBe('')
+    expect(resolveSliceNames(CATEGORY, '', BODY)).toEqual(BODY)
+    expect(describeSpec(CATEGORY, '', BODY)).toEqual({ count: null, names: [] })
+  })
+
   it('returns the include form for two selected names', () => {
     expect(buildSliceSpec(CATEGORY, TWO_INCLUDE, BODY)).toBe('Tanned,Shortstack')
   })

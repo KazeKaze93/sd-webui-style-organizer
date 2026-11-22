@@ -58,6 +58,35 @@ import {
 import {
     applyRefresh,
 } from "./refresh.js";
+/**
+ * Fetch the catalog, fill the host-side style cache (applyStyleImmediate) and
+ * post SG_INIT to the frame. Called only through the per-frame styles-init gate.
+ *
+ * @returns {Promise<void>} settles when SG_INIT was posted or the fetch failed
+ */
+function sendStylesInit(tab, frame) {
+        return fetch("/style_grid/styles")
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                var allStyles = Array.isArray(data)
+                    ? data
+                    : Object.values(data.categories || {}).flat();
+                // Populate host-side style cache for applyStyleImmediate
+                if (!state[tab]) state[tab] = {};
+                if (!state[tab].categories) state[tab].categories = {};
+                allStyles.forEach(function (s) {
+                    pushStyleIntoCategories(state[tab].categories, s);
+                });
+                postToFrame(frame, {
+                    type: "SG_INIT",
+                    tab: tab,
+                    styles: allStyles,
+                });
+                state[tab].sgV2HostInitSent = true;
+            })
+            .catch(function () {});
+    }
+
 function installIframeMessageBridge(tab, frame) {
         window.addEventListener("message", function (e) {
             // Same-origin + this iframe's contentWindow only (two tabs each register a listener).
@@ -70,27 +99,8 @@ function installIframeMessageBridge(tab, frame) {
                 postToFrame(frame, buildThemeMessage(detectHostThemeMode()));
                 // A (re)loaded iframe starts windowed; the host frame may not be.
                 announceFullscreenState(state[tab].sgPanelResize, frame, postToFrame);
-                if (state[tab].sgV2HostInitSent) return;
-                fetch("/style_grid/styles")
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
-                        var allStyles = Array.isArray(data)
-                            ? data
-                            : Object.values(data.categories || {}).flat();
-                        // Populate host-side style cache for applyStyleImmediate
-                        if (!state[tab]) state[tab] = {};
-                        if (!state[tab].categories) state[tab].categories = {};
-                        allStyles.forEach(function (s) {
-                            pushStyleIntoCategories(state[tab].categories, s);
-                        });
-                        postToFrame(frame, {
-                            type: "SG_INIT",
-                            tab: tab,
-                            styles: allStyles,
-                        });
-                        state[tab].sgV2HostInitSent = true;
-                    })
-                    .catch(function () {});
+                // One SG_INIT per iframe document; also cancels the load fallback.
+                if (state[tab].sgStylesInitGate) state[tab].sgStylesInitGate.onReady();
             }
 
             if (msg.type === "SG_APPLY") {
@@ -365,4 +375,5 @@ function installIframeMessageBridge(tab, frame) {
 
 export {
     installIframeMessageBridge,
+    sendStylesInit,
 };

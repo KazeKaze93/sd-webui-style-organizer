@@ -3,6 +3,8 @@ import {
   sendToHost,
   WILDCARD_KIND_DECK,
   WILDCARD_KIND_DICE,
+  type BatchProgress,
+  type PreviewJobStatus,
   type Style,
   type Tab,
   type WildcardKind,
@@ -15,6 +17,13 @@ import {
   type CorruptDataInfo,
 } from '../lib/parseCorruptData'
 import { readApiResponse, styleGridPost } from '../lib/styleGridFetch'
+import {
+  BATCH_RESULT_MS,
+  isBatchFinal,
+  PREVIEW_DONE_MS,
+  type PreviewBatch,
+  type PreviewJobState,
+} from '../lib/previewProgress'
 import { isSourceId, sourceLeaf } from '../lib/styleIdentity'
 import type { ThemeMode } from '../lib/themeMode'
 
@@ -161,6 +170,10 @@ export function styleRowKey(s: Pick<Style, 'name' | 'source_file'>): string {
 
 const THUMB_VERSION_LS_PREFIX = 'sg_thumb_v_'
 const EMPTY_STYLES: readonly Style[] = []
+
+/** Pending "clear the ✓" timers of single preview jobs, by styleRowKey. */
+const previewDoneTimers = new Map<string, ReturnType<typeof setTimeout>>()
+let previewBatchSeq = 0
 
 function buildSelectedKeySet(styles: Style[]): ReadonlySet<string> {
   return new Set(styles.map((s) => styleRowKey(s)))
@@ -490,6 +503,14 @@ interface StylesStore {
   /** Record locally that a style's thumbnail now exists (or is gone). */
   markThumb: (key: string, present: boolean) => void
   bumpThumbVersion: (key: string, version: string) => void
+  /** Single preview jobs by styleRowKey: 'generating', then 'done' for PREVIEW_DONE_MS. */
+  previewJobs: ReadonlyMap<string, PreviewJobState>
+  /** Latest category batch report; a finished / cancelled one clears after BATCH_RESULT_MS. */
+  previewBatch: PreviewBatch | null
+  /** SG_THUMB_PROGRESS: 'error' drops the job at once (the host shows the error toast). */
+  applyPreviewProgress: (key: string, status: PreviewJobStatus) => void
+  /** SG_BATCH_PROGRESS. */
+  applyBatchProgress: (report: BatchProgress) => void
   /** Collapsed category names in the All/Categories views. */
   collapsedCategories: Set<string>
   themeMode: ThemeMode
@@ -707,6 +728,54 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set((s) => ({
       thumbVersions: { ...s.thumbVersions, [key]: version },
     }))
+  },
+
+  previewJobs: new Map(),
+  previewBatch: null,
+
+  applyPreviewProgress: (key, status) => {
+    const pending = previewDoneTimers.get(key)
+    if (pending !== undefined) {
+      clearTimeout(pending)
+      previewDoneTimers.delete(key)
+    }
+    const next = new Map(get().previewJobs)
+    if (status === 'error') {
+      if (!next.delete(key)) return
+    } else {
+      next.set(key, status)
+    }
+    set({ previewJobs: next })
+    if (status === 'done') {
+      previewDoneTimers.set(
+        key,
+        setTimeout(() => {
+          previewDoneTimers.delete(key)
+          if (get().previewJobs.get(key) !== 'done') return
+          const cleared = new Map(get().previewJobs)
+          cleared.delete(key)
+          set({ previewJobs: cleared })
+        }, PREVIEW_DONE_MS),
+      )
+    }
+  },
+
+  applyBatchProgress: (report) => {
+    const prev = get().previewBatch
+    // A new batch: nothing shown, the shown one is over, another category, or a fresh start.
+    const isNew =
+      !prev ||
+      isBatchFinal(prev) ||
+      prev.category !== report.category ||
+      (report.status === 'running' && report.processed === 0)
+    const seq = isNew ? ++previewBatchSeq : prev.seq
+    set({ previewBatch: { ...report, seq } })
+    if (isBatchFinal(report)) {
+      setTimeout(() => {
+        // Only this batch's result: a newer batch keeps its line.
+        if (get().previewBatch?.seq === seq) set({ previewBatch: null })
+      }, BATCH_RESULT_MS)
+    }
   },
 
   setStyles: (styles, tab) => {
@@ -1658,4 +1727,18 @@ export function useHasThumbnail(style: Pick<Style, 'name' | 'source_file'>): boo
 
 export function useThumbVersion(key: string): string {
   return useStylesStore((s) => s.thumbVersions[key] ?? '1')
+}
+
+/** This tile's single preview job, or null. */
+export function usePreviewJob(key: string): PreviewJobState | null {
+  return useStylesStore((s) => s.previewJobs.get(key) ?? null)
+}
+
+/** The batch for this category, or null (stable) for every other category. */
+export function useCategoryBatch(category: string): PreviewBatch | null {
+  return useStylesStore((s) => (s.previewBatch?.category === category ? s.previewBatch : null))
+}
+
+export function usePreviewBatch(): PreviewBatch | null {
+  return useStylesStore((s) => s.previewBatch)
 }

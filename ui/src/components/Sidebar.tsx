@@ -10,8 +10,10 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { BookMarked, Dna, Mouse, Star } from 'lucide-react'
-import { LORA_SOURCE, LORA_VIEW, useCategoryColor, useStylesStore } from '../store/stylesStore'
+import { BookMarked, Dna, Loader2, Mouse, Star } from 'lucide-react'
+import { sendToHost } from '../bridge'
+import { batchFooterText, batchFooterTitle } from '../lib/previewProgress'
+import { LORA_SOURCE, LORA_VIEW, useCategoryColor, usePreviewBatch, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { CategoryMenuItems } from './CategoryMenuItems'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
@@ -223,6 +225,8 @@ export const Sidebar = memo(function Sidebar() {
     onBlur: () => setHintName((cur) => (cur === name ? null : cur)),
   })
   const footerName = dragging || catMenu ? null : hintName
+  /** A category batch outranks the right-click hint in the footer line. */
+  const batch = usePreviewBatch()
 
   const cats = categories()
   const catsSig = cats.join('\0')
@@ -384,19 +388,51 @@ export const Sidebar = memo(function Sidebar() {
           </Reorder.Group>
         </div>
       </div>
-      {/* Reserved line: always h-6, empty unless a row with a menu is hovered or Tab-focused. */}
-      <div
-        aria-hidden="true"
-        data-sg-sidebar-hint="true"
-        className="shrink-0 h-6 border-t border-sg-border px-2 text-[11px] text-sg-muted flex items-center gap-1.5 min-w-0 whitespace-nowrap"
-      >
-        {footerName && (
-          <>
-            <Mouse size={12} className="shrink-0" aria-hidden />
-            <span className="min-w-0 truncate">{footerName}: right-click for options</span>
-          </>
-        )}
-      </div>
+      {/*
+        Reserved line, always h-6. A category batch shows here (with a Cancel the
+        keyboard reaches, so the line is not aria-hidden then); otherwise it is the
+        aria-hidden right-click hint, empty unless a row is hovered or Tab-focused.
+      */}
+      {batch ? (
+        <div
+          data-sg-sidebar-hint="true"
+          data-sg-sidebar-batch={batch.status}
+          className="shrink-0 h-6 border-t border-sg-border px-2 text-[11px] text-sg-wildcard-text flex items-center gap-1.5 min-w-0 whitespace-nowrap"
+        >
+          {batch.status === 'running' && (
+            <Loader2 size={12} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden />
+          )}
+          <span className="min-w-0 truncate" title={batchFooterTitle(batch)}>
+            {batchFooterText(batch)}
+          </span>
+          {batch.status === 'running' && (
+            <button
+              type="button"
+              data-sg-sidebar-batch-cancel="true"
+              aria-label="Cancel preview generation"
+              onClick={() => sendToHost({ type: 'SG_BATCH_CANCEL' })}
+              className="shrink-0 ml-auto px-1.5 h-5 rounded border border-sg-border text-sg-text
+                         hover:bg-sg-surface/60 transition-colors
+                         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      ) : (
+        <div
+          aria-hidden="true"
+          data-sg-sidebar-hint="true"
+          className="shrink-0 h-6 border-t border-sg-border px-2 text-[11px] text-sg-muted flex items-center gap-1.5 min-w-0 whitespace-nowrap"
+        >
+          {footerName && (
+            <>
+              <Mouse size={12} className="shrink-0" aria-hidden />
+              <span className="min-w-0 truncate">{footerName}: right-click for options</span>
+            </>
+          )}
+        </div>
+      )}
       <span id={hintId} className="sr-only">
         {ROW_MENU_DESCRIPTION}
       </span>

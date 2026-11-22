@@ -17,7 +17,7 @@ import { ViewModeToggle } from './components/ViewModeToggle'
 import { BackupRestoreDialog } from './components/BackupRestoreDialog'
 import { gridMinVisibleHeightPx } from './components/grid/constants'
 import { BottomPanel } from './components/BottomPanel'
-import { ThumbProgressModal } from './components/ThumbProgressModal'
+import { BatchAnnouncer } from './components/BatchAnnouncer'
 import { Toast } from './components/Toast'
 import { MenuItem, ViewportFixedMenu } from './components/ViewportFixedMenu'
 import {
@@ -313,6 +313,23 @@ export default function App() {
       if (msg.type === 'SG_WILDCARDS_ACTIVE') {
         useStylesStore.getState().setActiveWildcards(msg.categories)
       }
+      if (msg.type === 'SG_THUMB_PROGRESS') {
+        const jobKey = styleRowKey({ name: msg.styleId, source_file: msg.source_file })
+        useStylesStore.getState().applyPreviewProgress(jobKey, msg.status)
+      }
+      if (msg.type === 'SG_BATCH_PROGRESS') {
+        useStylesStore.getState().applyBatchProgress({
+          category: msg.category,
+          source: msg.source,
+          status: msg.status,
+          total: msg.total,
+          processed: msg.processed,
+          newCount: msg.newCount,
+          alreadyHad: msg.alreadyHad,
+          skipped: msg.skipped,
+          failed: msg.failed,
+        })
+      }
       if (msg.type === 'SG_THUMB_DONE') {
         // A generated or uploaded preview for this style now exists.
         const thumbKey = styleRowKey({ name: msg.styleId, source_file: msg.source_file })
@@ -568,7 +585,7 @@ export default function App() {
       <div className="min-h-0 flex flex-col" style={{ flex: '0 1 auto' }}>
         <BottomPanel />
       </div>
-      <ThumbProgressModal />
+      <BatchAnnouncer />
       {newStyleOpen && (
         <StyleEditorDialog
           mode="create"

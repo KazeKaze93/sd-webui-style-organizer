@@ -16,7 +16,6 @@ import {
 import { useShallow } from 'zustand/react/shallow'
 import type { Style } from '../bridge'
 import { setFocusedCell } from '../lib/gridFocus'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import {
   LORA_SOURCE,
   styleRowKey,
@@ -42,7 +41,6 @@ import {
 import { DeleteStyleDialog } from './DeleteStyleDialog'
 import { MoveToCategoryDialog } from './MoveToCategoryDialog'
 import { StyleEditorDialog } from './StyleEditorDialog'
-import { ThumbnailPreview } from './ThumbnailPreview'
 import { MenuItem, ViewportFixedMenu } from './ViewportFixedMenu'
 
 const FOCUS_RING =
@@ -204,9 +202,6 @@ export const StyleCard = memo(function StyleCard({
 
   const openMenuAt = (x: number, y: number) => {
     setRestoreFocusEl(cardRef.current)
-    // The menu backdrop appears under a still pointer, so no mouseleave reaches
-    // the card: close the preview (and any pending show) explicitly.
-    dismissAllHoverIntents()
     setMenuPos({ x, y })
   }
 
@@ -216,7 +211,8 @@ export const StyleCard = memo(function StyleCard({
         role={cellRow != null ? 'gridcell' : undefined}
         className={showActions ? 'group/tile relative' : undefined}
       >
-        <ThumbnailPreview style={style}>
+        {/* The card and, in the gallery, its ★ / ⋯ actions as siblings. */}
+        <div className="relative">
           <button
             ref={cardRef}
             type="button"
@@ -382,7 +378,6 @@ export const StyleCard = memo(function StyleCard({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation()
-                  dismissAllHoverIntents()
                   toggleFavorite(style)
                 }}
                 className={cn(
@@ -412,7 +407,7 @@ export const StyleCard = memo(function StyleCard({
               </button>
             </div>
           )}
-        </ThumbnailPreview>
+        </div>
       </div>
 
       {menuPos && (

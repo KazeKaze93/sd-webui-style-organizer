@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Style } from '../bridge'
 import { __resetGridFocusForTests } from '../lib/gridFocus'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests } from '../lib/layerStack'
 import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
 import { GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
@@ -85,7 +84,6 @@ describe('StyleCard in gallery', () => {
 
   afterEach(() => {
     act(() => {
-      dismissAllHoverIntents()
       root?.unmount()
     })
     root = null

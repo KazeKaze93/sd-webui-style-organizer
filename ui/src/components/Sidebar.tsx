@@ -78,7 +78,9 @@ const countClass = (active: boolean) =>
 /**
  * One draggable category row: the nav button (select; the drag starts from it)
  * and the ⋯ menu button side by side, never nested. ⋯ shows on row hover and
- * focus-within in the count's place, and never starts a drag or selects.
+ * on visible (keyboard) focus in the count's place, and never starts a drag or
+ * selects. Not :focus-within: a mouse click leaves the nav button focused, and
+ * ⋯ would then stay up after the pointer leaves.
  */
 function CategoryRow({
   cat,
@@ -151,7 +153,7 @@ function CategoryRow({
           <span
             className={cn(
               countClass(isActive),
-              menuOpen ? 'invisible' : 'group-hover:invisible group-focus-within:invisible',
+              menuOpen ? 'invisible' : 'group-hover:invisible group-has-[:focus-visible]:invisible',
             )}
             data-sg-category-count
           >
@@ -177,8 +179,8 @@ function CategoryRow({
           'absolute right-1.5 top-1/2 -translate-y-1/2 h-6 w-6 flex items-center justify-center rounded cursor-pointer transition-opacity',
           // Hidden by opacity, never display:none: the menu returns focus here on
           // close while the pointer is over its backdrop (row not hovered), and a
-          // display:none button cannot take focus. Focus then shows it again.
-          menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
+          // display:none button cannot take focus. Visible focus then shows it again.
+          menuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
           NAV_FOCUS_RING,
           isActive ? 'text-white hover:bg-white/15' : 'text-sg-muted hover:text-sg-text hover:bg-sg-border/60',
         )}

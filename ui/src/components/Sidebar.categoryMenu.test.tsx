@@ -93,7 +93,7 @@ describe('Sidebar category rows: ⋯ and the category menu', () => {
     __resetLayerStackForTests()
   })
 
-  it('⋯ sits next to the nav button (not nested) and shows on hover / focus-within in the count slot', () => {
+  it('⋯ sits next to the nav button (not nested) and shows on hover / visible focus in the count slot', () => {
     expect(nav('BODY').contains(dots('BODY'))).toBe(false)
     expect(dots('BODY').getAttribute('aria-label')).toBe('BODY options')
     expect(dots('BODY').getAttribute('aria-haspopup')).toBe('menu')
@@ -103,10 +103,13 @@ describe('Sidebar category rows: ⋯ and the category menu', () => {
     expect(dots('BODY').className).not.toMatch(/(^|\s)hidden(\s|$)/)
     expect(dots('BODY').className).toContain('opacity-0')
     expect(dots('BODY').className).toContain('group-hover:opacity-100')
-    expect(dots('BODY').className).toContain('group-focus-within:opacity-100')
+    expect(dots('BODY').className).toContain('group-has-[:focus-visible]:opacity-100')
+    // Mouse focus (a click on the nav button) must not keep ⋯ up.
+    expect(dots('BODY').className).not.toContain('group-focus-within')
     expect(count('BODY').textContent).toBe('2')
     expect(count('BODY').className).toContain('group-hover:invisible')
-    expect(count('BODY').className).toContain('group-focus-within:invisible')
+    expect(count('BODY').className).toContain('group-has-[:focus-visible]:invisible')
+    expect(count('BODY').className).not.toContain('group-focus-within')
   })
 
   it('fixed entries (All, Favorites, Recent, LoRA, Presets) have no ⋯', () => {

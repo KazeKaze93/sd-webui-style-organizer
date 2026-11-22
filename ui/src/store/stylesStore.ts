@@ -8,6 +8,7 @@ import {
   type WildcardKind,
   type WildcardRef,
 } from '../bridge'
+import { conflictPairKey } from '../lib/conflictPairs'
 import { wildcardKey } from '../lib/wildcardKey'
 import {
   parseCorruptData,
@@ -496,6 +497,12 @@ interface StylesStore {
   favoritesRecentHydrated: boolean
   /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
+  /**
+   * "Keep both" pairs (conflictPairKey). A pair drops out as soon as either
+   * style leaves the selection (detectConflicts); clearing the selection empties it.
+   */
+  dismissedConflictPairs: ReadonlySet<string>
+  dismissConflictPair: (aKey: string, bKey: string) => void
   /** User-defined category order for All Sources view. */
   categoryOrder: string[]
   /** Saved style presets from backend (`GET /style_grid/presets`). */
@@ -686,6 +693,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     set({ thumbKeys: next })
   },
   conflicts: [],
+  dismissedConflictPairs: new Set<string>(),
   categoryOrder: JSON.parse(
     localStorage.getItem('sg_v2_category_order') || '[]'
   ) as string[],
@@ -1163,6 +1171,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       selectedKeySet: new Set(),
       selectedCountByCategory: new Map(),
       conflicts: [],
+      dismissedConflictPairs: new Set<string>(),
       activePresetName: null,
       styleContributors: {},
     })
@@ -1173,6 +1182,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       selectedKeySet: new Set(),
       selectedCountByCategory: new Map(),
       conflicts: [],
+      dismissedConflictPairs: new Set<string>(),
       activeWildcards: [],
       activePresetName: null,
       styleContributors: {},
@@ -1265,8 +1275,27 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
         })
       }
     }
-    set({ conflicts })
+    // "Keep both" lasts only while both styles stay selected.
+    const { dismissedConflictPairs } = get()
+    let dismissed = dismissedConflictPairs
+    if (dismissedConflictPairs.size > 0) {
+      const selectedKeys = tokenMap.map((t) => t.key)
+      const stillSelected = new Set<string>()
+      for (let i = 0; i < selectedKeys.length; i++) {
+        for (let j = i + 1; j < selectedKeys.length; j++) {
+          const pairKey = conflictPairKey(selectedKeys[i], selectedKeys[j])
+          if (dismissedConflictPairs.has(pairKey)) stillSelected.add(pairKey)
+        }
+      }
+      if (stillSelected.size !== dismissedConflictPairs.size) dismissed = stillSelected
+    }
+    set({ conflicts, dismissedConflictPairs: dismissed })
   },
+  dismissConflictPair: (aKey, bKey) => set((s) => {
+    const key = conflictPairKey(aKey, bKey)
+    if (s.dismissedConflictPairs.has(key)) return {}
+    return { dismissedConflictPairs: new Set([...s.dismissedConflictPairs, key]) }
+  }),
   fetchPresets: async () => {
     const parse = (raw: unknown): Record<string, PresetRecord> =>
       raw && typeof raw === 'object' && !Array.isArray(raw)

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { styleRowKey, useStylesStore } from '../store/stylesStore'
 import { sendToHost, WILDCARD_KIND_DECK, type Style, type WildcardRef } from '../bridge'
+import { conflictStyleKeys, groupConflictPairs } from '../lib/conflictPairs'
+import { trayDisplayName as displayName } from '../lib/trayDisplayName'
 import { SHUFFLE_CHIP_TITLE } from '../lib/wildcardLabels'
 import { describeSpec } from '../lib/wildcardSlice'
 import { wildcardKey } from '../lib/wildcardKey'
@@ -18,11 +20,10 @@ const CHIP_BASE =
   'flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-colors select-none'
 
 const STYLE_CHIP_CLASS = `${CHIP_BASE} bg-sg-accent/20 border border-sg-accent/40 text-sg-text hover:bg-sg-accent/30 ${CHIP_FOCUS_RING}`
+/** A style in a visible (not "Keep both") conflict pair: amber border, same token as the conflicts trigger. */
+const STYLE_CHIP_CONFLICT_CLASS = `${CHIP_BASE} bg-sg-accent/20 border border-sg-warning-text/60 text-sg-text hover:bg-sg-accent/30 ${CHIP_FOCUS_RING}`
 
 const wildcardRefKey = (ref: WildcardRef) => wildcardKey(ref.category, ref.spec, ref.kind)
-
-const displayName = (name: string) =>
-  name.includes('_') ? name.split('_').slice(1).join(' ') : name
 
 type WildcardChipInfo = {
   label: string
@@ -42,7 +43,7 @@ export function SelectedBar() {
   const {
     selectedStyles, toggleStyle, setSelectedStyles,
     activeWildcards, setActiveWildcards, removeWildcard,
-    styles, activeSource,
+    styles, activeSource, conflicts, dismissedConflictPairs,
   } = useStylesStore(
     useShallow(s => ({
       selectedStyles: s.selectedStyles,
@@ -53,9 +54,15 @@ export function SelectedBar() {
       removeWildcard: s.removeWildcard,
       styles: s.styles,
       activeSource: s.activeSource,
+      conflicts: s.conflicts,
+      dismissedConflictPairs: s.dismissedConflictPairs,
     })),
   )
   const [saveOpen, setSaveOpen] = useState(false)
+  const conflictKeys = useMemo(
+    () => conflictStyleKeys(groupConflictPairs(conflicts, dismissedConflictPairs)),
+    [conflicts, dismissedConflictPairs],
+  )
 
   if (selectedStyles.length === 0 && activeWildcards.length === 0) return null
 
@@ -141,7 +148,7 @@ export function SelectedBar() {
             getLabel={(s) => displayName(s.name)}
             listLabel="selected styles"
             className="flex flex-wrap gap-2"
-            chipClassName={() => STYLE_CHIP_CLASS}
+            chipClassName={(s) => (conflictKeys.has(styleRowKey(s)) ? STYLE_CHIP_CONFLICT_CLASS : STYLE_CHIP_CLASS)}
             onRemove={(s) => toggleStyle(s)}
             onReorder={(next) => {
               setSelectedStyles(next)

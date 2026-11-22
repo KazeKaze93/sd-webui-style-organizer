@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, SearchX } from 'lucide-react'
+import { quoteQuery } from '../lib/quoteQuery'
 import { cn } from '../lib/utils'
 import { useStylesStore } from '../store/stylesStore'
+import { EmptyState } from './EmptyState'
 import { PresetCard } from './PresetCard'
 import { SaveSetDialog } from './SaveSetDialog'
 
@@ -38,6 +40,7 @@ function SaveSelectionTile({ onOpen }: { onOpen: () => void }) {
 export function PresetList() {
   const presets = useStylesStore((s) => s.presets)
   const search = useStylesStore((s) => s.search)
+  const setSearch = useStylesStore((s) => s.setSearch)
   const [saveOpen, setSaveOpen] = useState(false)
 
   const names = useMemo(() => {
@@ -55,9 +58,13 @@ export function PresetList() {
 
   if (hasPresets && names.length === 0) {
     return (
-      <div className="flex items-center justify-center h-32 text-sg-muted text-sm">
-        No sets match search
-      </div>
+      <EmptyState
+        kind="no-preset-matches"
+        tone="muted"
+        icon={SearchX}
+        title={`No sets match ${quoteQuery(search)}`}
+        actions={[{ label: 'Clear search', variant: 'secondary', onClick: () => setSearch('') }]}
+      />
     )
   }
 

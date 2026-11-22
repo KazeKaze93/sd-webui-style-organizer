@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
+import { Clock, Dna, LayoutGrid, SearchX, Star } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   sendToHost,
@@ -16,6 +17,9 @@ import {
   SLICE_MODE_SHUFFLE,
 } from '../lib/wildcardLabels'
 import { buildSliceSpec } from '../lib/wildcardSlice'
+import { useAppActions } from '../lib/appActions'
+import { sourceLabel } from '../lib/sourceLabel'
+import { quoteQuery } from '../lib/quoteQuery'
 import {
   LORA_SOURCE,
   LORA_VIEW,
@@ -24,6 +28,7 @@ import {
   styleRowKey,
   useStylesStore,
 } from '../store/stylesStore'
+import { EmptyState, type EmptyStateAction } from './EmptyState'
 import { StyleCard } from './StyleCard'
 import { PresetList } from './PresetList'
 import { SegmentedControl, type SegmentOption } from './SegmentedControl'
@@ -57,7 +62,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
     sliceMode, sliceSelection,
     exitSliceMode, toggleSliceSelection, setSliceKind,
     selectAllSlice, clearSliceSelection,
-    setSearch, setCategory, setActiveSource,
+    setSearch, setCategory, setActiveSource, stylesLoaded,
   } = useStylesStore(
     useShallow(s => {
       const cat = s.activeCategory
@@ -83,65 +88,107 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         setSearch: s.setSearch,
         setCategory: s.setCategory,
         setActiveSource: s.setActiveSource,
+        stylesLoaded: s.stylesLoaded,
       }
     })
   )
+  const appActions = useAppActions()
 
+  /**
+   * Empty grid area. Order: no CSV styles at all → empty Favorites / Recent /
+   * LoRA views → filters hide everything. Nothing before the first styles
+   * payload, so no empty state flashes while the panel loads.
+   */
   const renderEmptyState = (opts?: { sliceCategory?: string | null }) => {
+    if (!stylesLoaded) return null
     const sliceCat = opts?.sliceCategory ?? null
-    const hasSearch = search.trim().length > 0
-    const hasSource = Boolean(activeSource)
-    const hasCategory = Boolean(activeCategory) || Boolean(sliceCat)
-    const reasonParts: string[] = []
-    if (hasSearch) reasonParts.push(`search "${search.trim()}"`)
-    if (hasSource) reasonParts.push(`source "${activeSource}"`)
-    if (sliceCat) reasonParts.push(`slice category "${sliceCat}"`)
-    else if (activeCategory) reasonParts.push(`category "${activeCategory}"`)
-    const reason = reasonParts.length > 0
-      ? `No styles match ${reasonParts.join(', ')}.`
-      : 'No styles found.'
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 h-32 px-4 text-center">
-        <p className="text-sg-muted text-sm">{reason}</p>
-        {(hasSearch || hasSource || hasCategory) && (
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            {hasSearch && (
-              <button
-                type="button"
-                className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
-                           hover:bg-sg-surface/60 transition-colors"
-                onClick={() => setSearch('')}
-              >
-                Clear search
-              </button>
-            )}
-            {hasSource && (
-              <button
-                type="button"
-                className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
-                           hover:bg-sg-surface/60 transition-colors"
-                onClick={() => setActiveSource(null)}
-              >
-                All sources
-              </button>
-            )}
-            {hasCategory && (
-              <button
-                type="button"
-                className="text-xs px-2 py-1 rounded text-sg-muted hover:text-sg-text
-                           hover:bg-sg-surface/60 transition-colors"
-                onClick={() => {
-                  if (sliceCat) exitSliceMode()
-                  setCategory(null)
-                }}
-              >
-                All categories
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+    const view = sliceCat ? null : activeCategory
+
+    const hasCsvStyles = styles.some((s) => s.source_file !== LORA_SOURCE)
+    if (!hasCsvStyles && !sliceCat && view !== FAVORITES_VIEW && view !== RECENT_VIEW && view !== LORA_VIEW) {
+      const actions: EmptyStateAction[] = []
+      if (appActions) {
+        actions.push({ label: 'Import CSV…', variant: 'primary', onClick: appActions.openImportExport })
+        // Same rule as the header's New style button: hidden when it is disabled.
+        if (appActions.canCreateStyle) {
+          actions.push({ label: 'New style', variant: 'secondary', onClick: appActions.openNewStyle })
+        }
+      }
+      return (
+        <EmptyState
+          kind="no-styles"
+          tone="accent"
+          icon={LayoutGrid}
+          title="No styles yet"
+          hint="Import a CSV pack or create your first style."
+          actions={actions}
+        />
+      )
+    }
+    if (view === FAVORITES_VIEW && !styles.some((s) => favorites.has(styleRowKey(s)))) {
+      return (
+        <EmptyState
+          kind="no-favorites"
+          tone="accent"
+          icon={Star}
+          title="No favorites yet"
+          hint="Use ★ on a tile or “Add to favorites” in its menu. Favorites from every source show up here."
+        />
+      )
+    }
+    if (view === RECENT_VIEW) {
+      const keys = new Set(styles.map(styleRowKey))
+      if (!recentNames.some((k) => keys.has(k))) {
+        return (
+          <EmptyState
+            kind="no-recent"
+            tone="accent"
+            icon={Clock}
+            title="Nothing used yet"
+            hint="Styles you apply show up here."
+          />
+        )
+      }
+    }
+    if (view === LORA_VIEW && !styles.some((s) => s.source_file === LORA_SOURCE)) {
+      return (
+        <EmptyState
+          kind="no-loras"
+          tone="accent"
+          icon={Dna}
+          title="No LoRAs found"
+          hint="Put LoRA files in your WebUI LoRA folder, then reopen the panel."
+        />
+      )
+    }
+
+    // Filters hide everything. The LoRA view ignores the source filter.
+    const query = search.trim()
+    const sourceShown = activeSource && view !== LORA_VIEW ? sourceLabel(activeSource) : null
+    const scope = sliceCat ?? (
+      view === FAVORITES_VIEW ? 'Favorites'
+        : view === RECENT_VIEW ? 'Recent'
+          : view === LORA_VIEW ? 'LoRA'
+            : view
     )
+    const title =
+      (query ? `Nothing matches ${quoteQuery(query)}` : 'No styles') +
+      (sourceShown ? ` in ${sourceShown}` : '') +
+      (scope ? ` for ${scope}` : '')
+    const actions: EmptyStateAction[] = []
+    if (sourceShown) actions.push({ label: 'Search all sources', variant: 'primary', onClick: () => setActiveSource(null) })
+    if (query) actions.push({ label: 'Clear search', variant: 'secondary', onClick: () => setSearch('') })
+    if (scope) {
+      actions.push({
+        label: 'Show all categories',
+        variant: 'secondary',
+        onClick: () => {
+          if (sliceCat) exitSliceMode()
+          setCategory(null)
+        },
+      })
+    }
+    return <EmptyState kind="no-results" tone="muted" icon={SearchX} title={title} actions={actions} />
   }
 
   const filtered = useMemo(
@@ -351,7 +398,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
   // Slice mode is NOT virtualized (contract).
   if (sliceMode) {
     return (
-      <div className="space-y-2">
+      <div className="space-y-2 flex-1 flex flex-col">
         {renderSliceModeBar()}
         {visibleSliceStyles.length === 0 ? (
           renderEmptyState({ sliceCategory: sliceCategory })

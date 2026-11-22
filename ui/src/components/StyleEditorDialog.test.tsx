@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendToHost, type Style } from '../bridge'
 import { __resetGridFocusForTests } from '../lib/gridFocus'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer } from '../lib/layerStack'
 import {
   buildSaveRequest,
@@ -423,7 +422,6 @@ describe('Edit trigger in the card menu', () => {
   })
   afterEach(() => {
     act(() => {
-      dismissAllHoverIntents()
       root?.unmount()
     })
     host?.remove()

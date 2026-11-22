@@ -4,7 +4,6 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { sendToHost, type Style } from '../bridge'
 import { __resetGridFocusForTests } from '../lib/gridFocus'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests } from '../lib/layerStack'
 import { nextCopyName, sourceFileLeaf } from '../lib/styleActions'
 import { LORA_SOURCE, useStylesStore } from '../store/stylesStore'
@@ -110,7 +109,6 @@ describe('style card: delete and duplicate from the iframe', () => {
 
   afterEach(() => {
     act(() => {
-      dismissAllHoverIntents()
       root?.unmount()
     })
     root = null

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Import, History, MoreHorizontal, Plus, Globe,
-  Palette, Maximize2, Minimize2, X,
+  Palette, Maximize2, Minimize2, X, Eraser,
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { onHostMessage, sendToHost } from './bridge'
@@ -71,18 +71,19 @@ function clearSearchField(searchRoot: HTMLElement | null): boolean {
 const LEGACY_WINDOWED_SIZE_KEY = 'sg_windowed_size'
 
 /** Search is the primary tool: it grows (flex-1) but never collapses below this. */
-const SEARCH_MIN_WIDTH_PX = 140
+const SEARCH_MIN_WIDTH_PX = 110
 
 /**
  * Header breakpoint (iframe width == panel width: the iframe fills the host
  * panel). At or below it the "Style Grid" text becomes sr-only and the tab
- * badge is hidden, so the header stays one row down to the host's
- * PANEL_MIN_WIDTH (600px). Raised from 719: the Grid / Gallery toggle pushes
- * the widest case (LoRA view + globe + a 24ch source label) to ≈ 745px in
- * wide mode. Tailwind only emits literal utilities, so the classes spell it
- * out as `max-[759px]:`; keep them in step with this value.
+ * badge is hidden (and the gap before Close shrinks), so the header stays one
+ * row down to the host's PANEL_MIN_WIDTH (600px). Raised from 719 (Grid /
+ * Gallery toggle) and from 759 (header Clear): the widest case (LoRA view +
+ * globe + a 24ch source label) no longer fits in wide mode below 800px.
+ * Tailwind only emits literal utilities, so the classes spell it out as
+ * `max-[799px]:`; keep them in step with this value.
  */
-export const HEADER_NARROW_MAX_PX = 759
+export const HEADER_NARROW_MAX_PX = 799
 
 /** Gap between the More button and the top of its menu. */
 const MORE_MENU_OFFSET_PX = 4
@@ -261,7 +262,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    void useStylesStore.getState().hydrateFavoritesRecent()
+    void useStylesStore.getState().hydrateFavorites()
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_THEME') {
         applyThemeMode(msg.mode)
@@ -302,11 +303,10 @@ export default function App() {
         useStylesStore.getState().clearSelectionChrome()
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
-        const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
+        const { selectedStyles, detectConflicts } = useStylesStore.getState()
         const exists = selectedStyles.some(s => styleRowKey(s) === styleRowKey(msg.style))
         if (!exists) {
           useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
-          addToRecent(msg.style)
           detectConflicts()
         }
       }
@@ -398,11 +398,11 @@ export default function App() {
           data-sg-header-title="true"
         >
           <Palette size={16} aria-hidden />
-          <span className="max-[759px]:sr-only">Style Grid</span>
+          <span className="max-[799px]:sr-only">Style Grid</span>
         </div>
         <span
           className="shrink-0 text-xs text-sg-muted border border-sg-border/50
-                     px-1.5 py-0.5 rounded font-mono max-[759px]:hidden"
+                     px-1.5 py-0.5 rounded font-mono max-[799px]:hidden"
           data-sg-tab-badge="true"
         >
           {tab}
@@ -418,6 +418,15 @@ export default function App() {
         <TooltipProvider>
           <ViewModeToggle />
           <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            {/* Host clearAll(): empties the positive and negative prompt fields and
+                the selection. Always enabled: the prompts can hold text with
+                nothing selected here. */}
+            <ToolBtn
+              icon={Eraser}
+              label="Clear prompts and selection"
+              colorClassName="text-sg-danger-text"
+              onClick={() => sendToHost({ type: 'SG_CLEAR_ALL' })}
+            />
             {activeCategory === LORA_VIEW && (
               <ToolBtn
                 icon={Globe}
@@ -463,7 +472,7 @@ export default function App() {
               label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
               onClick={toggleFullscreen}
             />
-            <span className="ml-3 inline-flex">
+            <span className="ml-3 max-[799px]:ml-2 inline-flex" data-sg-close-wrap="true">
               <ToolBtn
                 icon={X}
                 label="Close Style Grid"
@@ -535,8 +544,9 @@ export default function App() {
         }}
       >
         {/* Sidebar */}
-        <div className="shrink-0 border-r border-sg-border p-2 min-h-0"
-          style={{ width: isFullscreen ? '210px' : '210px', overflowY: 'auto', overflowX: 'auto' }}>
+        {/* The sidebar scrolls its own list and keeps a footer line under it. */}
+        <div className="shrink-0 border-r border-sg-border min-h-0 flex flex-col"
+          style={{ width: '210px' }}>
           <Sidebar />
         </div>
 

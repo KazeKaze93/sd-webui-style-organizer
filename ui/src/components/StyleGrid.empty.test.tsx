@@ -16,7 +16,6 @@ vi.mock('../bridge', async () => {
 })
 
 const FAVORITES = '★ Favorites'
-const RECENT = '🕑 Recent'
 const CORE = 'webui/styles_nsfw_core.csv'
 const OTHER = 'webui/styles_other.csv'
 
@@ -61,7 +60,6 @@ describe('grid empty states', () => {
       activeCategory: null,
       activeSource: null,
       favorites: new Set(),
-      recentNames: [],
       sliceMode: null,
       sliceSelection: [],
       collapsedCategories: new Set(),
@@ -142,13 +140,6 @@ describe('grid empty states', () => {
     expect(hint()).toBe('Use ★ on a tile or “Add to favorites” in its menu. Favorites from every source show up here.')
     expect(empty()!.querySelector('[data-sg-empty-icon="accent"] svg.lucide-star')).not.toBeNull()
     expect(buttons()).toHaveLength(0)
-  })
-
-  it('case 2: Recent with nothing used', async () => {
-    await render({ activeCategory: RECENT })
-    expect(title()).toBe('Nothing used yet')
-    expect(hint()).toBe('Styles you apply show up here.')
-    expect(empty()!.querySelector('svg.lucide-clock')).not.toBeNull()
   })
 
   it('case 3: LoRA view with no LoRAs', async () => {

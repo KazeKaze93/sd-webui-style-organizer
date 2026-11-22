@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { useLayer } from '../lib/layerStack'
 import { useFocusTrap } from '../lib/useFocusTrap'
 import { cn } from '../lib/utils'
@@ -63,10 +62,6 @@ export function ModalShell({
     onClose()
   })
   useFocusTrap(dialogRef, open, { initialFocus })
-
-  useEffect(() => {
-    if (open) dismissAllHoverIntents()
-  }, [open])
 
   // Declared after useFocusTrap, so the initial focus is already placed.
   // Focus rings use :focus-visible, which browsers do not match for a

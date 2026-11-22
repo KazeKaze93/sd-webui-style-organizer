@@ -112,9 +112,17 @@ describe('PresetList', () => {
     expect(host!.textContent).toContain('Apply merges a set into your current selection.')
   })
 
-  it('no search matches: the old text and no Save tile', async () => {
+  it('no search matches: empty state with the query and Clear search, no Save tile', async () => {
     await render({ Alpha: preset() }, { search: 'nothing-like-this', selected: [TALL] })
-    expect(host!.textContent).toBe('No sets match search')
+    const empty = host!.querySelector<HTMLElement>('[data-sg-empty="no-preset-matches"]')!
+    expect(empty.getAttribute('role')).toBe('status')
+    expect(empty.querySelector('h2')!.textContent).toBe('No sets match “nothing-like-this”')
+    expect(empty.querySelector('[data-sg-empty-icon="muted"] svg.lucide-search-x')).not.toBeNull()
     expect(tile()).toBeNull()
+    const clear = [...empty.querySelectorAll<HTMLButtonElement>('button')]
+    expect(clear.map((b) => [b.textContent, b.getAttribute('data-sg-empty-action')])).toEqual([['Clear search', 'secondary']])
+    await act(async () => clear[0].click())
+    expect(useStylesStore.getState().search).toBe('')
+    expect(cards()).toHaveLength(1)
   })
 })

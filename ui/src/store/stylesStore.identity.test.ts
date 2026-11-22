@@ -48,8 +48,7 @@ function resetStore() {
     selectedStyles: [],
     conflicts: [],
     favorites: new Set(),
-    recentNames: [],
-    favoritesRecentHydrated: true,
+    favoritesHydrated: true,
     presets: {},
     presetsCorrupt: null,
     activePresetName: null,
@@ -130,7 +129,7 @@ describe('style identity (name, source_file)', () => {
     expect(selected.map((s) => s.prompt).sort()).toEqual(['core-only', 'ward-only'])
   })
 
-  it('setStyles leaves favorites/recent untouched and posts nothing', () => {
+  it('setStyles leaves favorites untouched and posts nothing', () => {
     const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ ok: true, items: [] }))
     vi.stubGlobal('fetch', fetchMock)
 
@@ -139,8 +138,7 @@ describe('style identity (name, source_file)', () => {
     const unlinked = 'BareLegacy'
     useStylesStore.setState({
       favorites: new Set([styleRowKey(a), unlinked]),
-      recentNames: [unlinked, styleRowKey(b)],
-      favoritesRecentHydrated: true,
+      favoritesHydrated: true,
     })
 
     useStylesStore.getState().setStyles([a, b], 'txt2img')
@@ -148,7 +146,6 @@ describe('style identity (name, source_file)', () => {
     expect([...useStylesStore.getState().favorites].sort()).toEqual(
       [styleRowKey(a), unlinked].sort(),
     )
-    expect(useStylesStore.getState().recentNames).toEqual([unlinked, styleRowKey(b)])
     expect(
       fetchMock.mock.calls.some((c) => String(c[0]).includes('/favorites/save')),
     ).toBe(false)
@@ -165,7 +162,7 @@ describe('style identity (name, source_file)', () => {
     const unlinked = 'BareLegacy'
     useStylesStore.setState({
       favorites: new Set([unlinked]),
-      favoritesRecentHydrated: true,
+      favoritesHydrated: true,
     })
     useStylesStore.getState().setStyles([a], 'txt2img')
     useStylesStore.getState().toggleFavorite(a)
@@ -192,14 +189,11 @@ describe('style identity (name, source_file)', () => {
           ambiguous: names,
         })
       }
-      if (url === '/style_grid/recent') {
-        return mockJsonResponse({ items: [], persisted: true, ambiguous: [] })
-      }
       return mockJsonResponse({ ok: false }, { ok: false })
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await useStylesStore.getState().hydrateFavoritesRecent()
+    await useStylesStore.getState().hydrateFavorites()
     await Promise.resolve()
     await Promise.resolve()
 
@@ -212,7 +206,7 @@ describe('style identity (name, source_file)', () => {
     expect(msg).toContain('(+7 more)')
     expect(names.filter((n) => msg.includes(n))).toHaveLength(5)
 
-    await useStylesStore.getState().hydrateFavoritesRecent()
+    await useStylesStore.getState().hydrateFavorites()
     await Promise.resolve()
     await Promise.resolve()
     expect(
@@ -226,12 +220,9 @@ describe('style identity (name, source_file)', () => {
       if (url === '/style_grid/favorites') {
         return mockJsonResponse({ items: ['X'], persisted: true, ambiguous: [] })
       }
-      if (url === '/style_grid/recent') {
-        return mockJsonResponse({ items: [], persisted: true, ambiguous: [] })
-      }
       return mockJsonResponse({ ok: false }, { ok: false })
     })
-    await useStylesStore.getState().hydrateFavoritesRecent()
+    await useStylesStore.getState().hydrateFavorites()
     await Promise.resolve()
     expect(toastSpy).not.toHaveBeenCalled()
     toastSpy.mockRestore()
@@ -257,14 +248,11 @@ describe('style identity (name, source_file)', () => {
         migrated = true
         return mockJsonResponse({ ok: true, migrated: true, items: ['Dup'] })
       }
-      if (url === '/style_grid/recent') {
-        return mockJsonResponse({ items: [], persisted: true, ambiguous: [] })
-      }
       return mockJsonResponse({ ok: false }, { ok: false })
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await useStylesStore.getState().hydrateFavoritesRecent()
+    await useStylesStore.getState().hydrateFavorites()
     await Promise.resolve()
     await Promise.resolve()
 

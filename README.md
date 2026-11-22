@@ -6,7 +6,7 @@ It supports:
 - category-based browsing
 - source-aware filtering
 - deduplicated All Sources view with source picker
-- favorites and recent styles
+- favorites
 - **LoRA cards** in a dedicated **🧬 LoRA** sidebar view (scanned from disk, read-only)
 - drag reorder of selected styles
 - presets, backup, import/export
@@ -87,7 +87,7 @@ Style Grid works in both generation tabs:
 - txt2img
 - img2img
 
-Behavior is the same in both modes (source filter, deduplication, favorites/recent, context menus, previews, presets).
+Behavior is the same in both modes (source filter, deduplication, favorites, context menus, previews, presets).
 The small tab badge in the panel header shows the active host context.
 
 ![Style Grid in img2img](docs/screenshots/img2img-support.png)
@@ -107,7 +107,7 @@ The small tab badge in the panel header shows the active host context.
 - Type in the search box to filter the grid in real time. Query tokens are **AND**-matched (whitespace-separated, case-insensitive): every token must appear in the haystack.
 - Grid search and autocomplete both use `matchesSearch`: style **name** (including underscore→space forms and display-name forms) plus **description**, with `Combos:` / `Conflicts:` reference lists stripped from the description so those lists do not pollute matches.
 - Autocomplete suggestions respect the active source filter (with All Sources, suggestions are deduped by name like the grid). Cap: top 8.
-- **Favorites**, **Recent**, and **Presets** views also respect search and the active source filter (they previously ignored them).
+- **Favorites** and **Presets** views also respect search and the active source filter (they previously ignored them).
 - Use arrow keys + Enter to pick a suggestion quickly, or click the item with mouse.
 
 ![Search with autocomplete suggestions](docs/screenshots/search-autocomplete.png)
@@ -127,15 +127,13 @@ The small tab badge in the panel header shows the active host context.
 - Click outside the picker to close it without applying.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
-### 4) Favorites, recent, and LoRA
-- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or, in the gallery, the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
-- **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
-- Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
+### 4) Favorites and LoRA
+- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or, in the gallery, the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites are stored by **name + CSV source**, so the same name from two files can be favorited independently.
+- Open **Favorites** in the left sidebar to filter the grid to that list (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
 
 ![LoRA sidebar view — cards grouped by folder, CivitAI titles on tiles](docs/screenshots/lora-view.png)
 
-![Recent — last applied styles](docs/screenshots/recent-styles.png)
 
 ![Favorites — styles saved via context menu](docs/screenshots/favorites-view.png)
 

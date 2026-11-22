@@ -69,7 +69,6 @@ describe('Sidebar category rows and the category menu', () => {
       activeSource: null,
       categoryOrder: [],
       favorites: new Set(),
-      recentNames: [],
       presets: {},
       fetchPresets: async () => {},
       setCategory,
@@ -90,6 +89,15 @@ describe('Sidebar category rows and the category menu', () => {
     host = null
     dragStart.mockRestore()
     __resetLayerStackForTests()
+  })
+
+  it('fixed entries are All, Favorites, LoRA and Presets (no Recent)', () => {
+    const list = rowEl('BODY').closest('[data-sg-category-row]')!.parentElement!.parentElement!
+    const fixedLabels = [...list.children]
+      .filter((el) => el.tagName === 'BUTTON')
+      .map((b) => (b.textContent ?? '').replace(/\d+$/, ''))
+    expect(fixedLabels).toEqual(['All', 'Favorites', 'LoRA', 'Presets'])
+    expect(host!.textContent).not.toContain('Recent')
   })
 
   it('rows render no ⋯ button; the count is always visible', () => {

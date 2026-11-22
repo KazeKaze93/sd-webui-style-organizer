@@ -47,8 +47,7 @@ function resetStore() {
     selectedStyles: [],
     conflicts: [],
     favorites: new Set(),
-    recentNames: [],
-    favoritesRecentHydrated: false,
+    favoritesHydrated: false,
     presets: {},
     presetsCorrupt: null,
     activePresetName: null,
@@ -113,7 +112,7 @@ describe('characterization: main Style Grid flows', () => {
       useStylesStore.getState().setSearch('pointy ears')
       useStylesStore.getState().setCategory('BODY')
 
-      const { styles, search, activeCategory, activeSource, favorites, recentNames } =
+      const { styles, search, activeCategory, activeSource, favorites } =
         useStylesStore.getState()
       const filtered = selectFilteredStyles(
         styles,
@@ -121,7 +120,6 @@ describe('characterization: main Style Grid flows', () => {
         activeCategory,
         activeSource,
         favorites,
-        recentNames,
       )
       expect(filtered.map((s) => s.name)).toEqual(['BODY_Pointy_Ears'])
     })
@@ -141,10 +139,30 @@ describe('characterization: main Style Grid flows', () => {
         st.activeCategory,
         st.activeSource,
         st.favorites,
-        st.recentNames,
       )
       expect(filtered).toHaveLength(1)
       expect(styleRowKey(filtered[0])).toBe(styleRowKey(a))
+    })
+  })
+
+  describe('no recent tracking', () => {
+    it('selecting styles, a whole category or a preset posts nothing to /recent', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(mockJsonResponse({ ok: true, items: [] }))
+      vi.stubGlobal('fetch', fetchMock)
+      const a = row('BODY_Ears', FILE_A)
+      const b = row('BODY_Tail', FILE_A)
+      useStylesStore.getState().setStyles([a, b], 'txt2img')
+      useStylesStore.getState().toggleStyle(a)
+      useStylesStore.getState().selectAllInCategory('BODY')
+      useStylesStore.setState({
+        selectedStyles: [],
+        presets: { Set: { styles: [{ name: 'BODY_Tail', source_file: FILE_A }], created: '2026-01-01' } },
+      })
+      useStylesStore.getState().loadPreset('Set')
+      await Promise.resolve()
+      expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes('/recent'))).toEqual([])
+      expect('recentNames' in useStylesStore.getState()).toBe(false)
+      expect('addToRecent' in useStylesStore.getState()).toBe(false)
     })
   })
 
@@ -206,14 +224,16 @@ describe('characterization: main Style Grid flows', () => {
     })
   })
 
-  describe('hydrateFavoritesRecent', () => {
-    it('migrates localStorage once when server files are absent, then reads server', async () => {
+  describe('hydrateFavorites', () => {
+    const recentCalls = (fetchMock: ReturnType<typeof vi.fn>) =>
+      fetchMock.mock.calls.filter((c) => String(c[0]).includes('/style_grid/recent'))
+
+    it('migrates localStorage once when the server file is absent, then reads server', async () => {
       const key = `${FILE_A}\0BODY_Ears`
       localStorage.setItem('sg_v2_favorites', JSON.stringify([key]))
       localStorage.setItem('sg_v2_recent', JSON.stringify([key]))
 
       let favoritesPersisted = false
-      let recentPersisted = false
       const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
         if (url === '/style_grid/favorites' && (!init || !init.method || init.method === 'GET')) {
@@ -222,55 +242,43 @@ describe('characterization: main Style Grid flows', () => {
             persisted: favoritesPersisted,
           })
         }
-        if (url === '/style_grid/recent' && (!init || !init.method || init.method === 'GET')) {
-          return mockJsonResponse({
-            items: recentPersisted ? [key] : [],
-            persisted: recentPersisted,
-          })
-        }
         if (url === '/style_grid/favorites/migrate') {
           favoritesPersisted = true
-          return mockJsonResponse({ ok: true, migrated: true, items: [key] })
-        }
-        if (url === '/style_grid/recent/migrate') {
-          recentPersisted = true
           return mockJsonResponse({ ok: true, migrated: true, items: [key] })
         }
         return mockJsonResponse({ ok: false }, { ok: false })
       })
       vi.stubGlobal('fetch', fetchMock)
 
-      await useStylesStore.getState().hydrateFavoritesRecent()
+      await useStylesStore.getState().hydrateFavorites()
       expect(useStylesStore.getState().favorites.has(key)).toBe(true)
-      expect(useStylesStore.getState().recentNames).toEqual([key])
-      expect(useStylesStore.getState().favoritesRecentHydrated).toBe(true)
+      expect(useStylesStore.getState().favoritesHydrated).toBe(true)
       expect(localStorage.getItem('sg_v2_favorites')).toBeNull()
-      expect(localStorage.getItem('sg_v2_recent')).toBeNull()
       expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites/migrate')).toBe(
         true,
       )
+      // Recent is no longer read, migrated or cleaned up.
+      expect(recentCalls(fetchMock)).toEqual([])
+      expect(localStorage.getItem('sg_v2_recent')).toBe(JSON.stringify([key]))
 
       // Subsequent hydrate: server already persisted — no second migrate.
       fetchMock.mockClear()
-      await useStylesStore.getState().hydrateFavoritesRecent()
+      await useStylesStore.getState().hydrateFavorites()
       expect(useStylesStore.getState().favorites.has(key)).toBe(true)
       expect(
         fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites/migrate'),
       ).toBe(false)
       expect(fetchMock.mock.calls.some((c) => String(c[0]) === '/style_grid/favorites')).toBe(true)
+      localStorage.removeItem('sg_v2_recent')
     })
 
-    it('keeps sg_v2_favorites / sg_v2_recent when server is unmigrated and migrate fails', async () => {
+    it('keeps sg_v2_favorites when the server is unmigrated and migrate fails', async () => {
       const key = `${FILE_A}\0BODY_Ears`
       localStorage.setItem('sg_v2_favorites', JSON.stringify([key]))
-      localStorage.setItem('sg_v2_recent', JSON.stringify([key]))
 
       const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input)
-        if (
-          (url === '/style_grid/favorites' || url === '/style_grid/recent') &&
-          (!init || !init.method || init.method === 'GET')
-        ) {
+        if (url === '/style_grid/favorites' && (!init || !init.method || init.method === 'GET')) {
           return mockJsonResponse({ items: [], persisted: false })
         }
         if (url.endsWith('/migrate')) {
@@ -280,33 +288,31 @@ describe('characterization: main Style Grid flows', () => {
       })
       vi.stubGlobal('fetch', fetchMock)
 
-      await useStylesStore.getState().hydrateFavoritesRecent()
+      await useStylesStore.getState().hydrateFavorites()
       expect(useStylesStore.getState().favorites.has(key)).toBe(true)
-      expect(useStylesStore.getState().recentNames).toEqual([key])
       expect(localStorage.getItem('sg_v2_favorites')).toBe(JSON.stringify([key]))
-      expect(localStorage.getItem('sg_v2_recent')).toBe(JSON.stringify([key]))
+      expect(recentCalls(fetchMock)).toEqual([])
     })
 
-    it('removes legacy keys when server already reports persisted', async () => {
+    it('removes the legacy key when the server already reports persisted', async () => {
       const key = `${FILE_A}\0BODY_Ears`
       localStorage.setItem('sg_v2_favorites', JSON.stringify([key]))
-      localStorage.setItem('sg_v2_recent', JSON.stringify([key]))
 
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input)
-        if (url === '/style_grid/favorites' || url === '/style_grid/recent') {
+        if (url === '/style_grid/favorites') {
           return mockJsonResponse({ items: [key], persisted: true })
         }
         return mockJsonResponse({ ok: false }, { ok: false })
       })
       vi.stubGlobal('fetch', fetchMock)
 
-      await useStylesStore.getState().hydrateFavoritesRecent()
+      await useStylesStore.getState().hydrateFavorites()
       expect(localStorage.getItem('sg_v2_favorites')).toBeNull()
-      expect(localStorage.getItem('sg_v2_recent')).toBeNull()
       expect(
         fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/migrate')),
       ).toBe(false)
+      expect(recentCalls(fetchMock)).toEqual([])
     })
   })
 

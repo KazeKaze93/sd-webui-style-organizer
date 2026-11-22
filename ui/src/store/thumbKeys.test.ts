@@ -83,7 +83,7 @@ describe('thumbnail presence', () => {
 
   it('a rename carries the thumbnail key to the new name', () => {
     const from: Style = { name: 'BODY_Tall', source_file: 'a.csv', prompt: '', negative_prompt: '', description: '', category: 'BODY' }
-    useStylesStore.setState({ thumbKeys: new Set([styleRowKey(from)]), selectedStyles: [], favorites: new Set(), recentNames: [], styleContributors: {}, thumbVersions: {} })
+    useStylesStore.setState({ thumbKeys: new Set([styleRowKey(from)]), selectedStyles: [], favorites: new Set(), styleContributors: {}, thumbVersions: {} })
     useStylesStore.getState().renameStyleIdentity(from, { name: 'POSE_Tall', category: 'POSE' })
     expect([...useStylesStore.getState().thumbKeys]).toEqual(['a.csv\0POSE_Tall'])
   })

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Clock, Dna, LayoutGrid, SearchX, Star } from 'lucide-react'
+import { Dna, LayoutGrid, SearchX, Star } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   sendToHost,
@@ -37,10 +37,8 @@ import { CategoryMenuItems } from './CategoryMenuItems'
 import { autoFillGridClass, VirtualStyleGrid } from './grid'
 
 const FAVORITES_VIEW = '★ Favorites'
-const RECENT_VIEW = '🕑 Recent'
-/** Stable stubs so Favorites/Recent store churn does not invalidate All/category memos. */
+/** Stable stub so Favorites store churn does not invalidate All/category memos. */
 const EMPTY_FAVORITES = new Set<string>()
-const EMPTY_RECENT: string[] = []
 const SLICE_KIND_OPTIONS: ReadonlyArray<SegmentOption<WildcardKind>> = [
   { value: WILDCARD_KIND_DICE, label: SLICE_MODE_RANDOM },
   { value: WILDCARD_KIND_DECK, label: SLICE_MODE_SHUFFLE },
@@ -48,15 +46,14 @@ const SLICE_KIND_OPTIONS: ReadonlyArray<SegmentOption<WildcardKind>> = [
 
 /**
  * Profile (P toggle N=5000): StyleGrid 18 hits; `selectFilteredStyles` 2.9% —
- * toggle → addToRecent rebuilds recentNames and was subscribed always, so the
- * catalog filter memo re-ran even though selection does not change the list.
- * Subscribe to favorites/recent only in those views; memoize group arrays.
+ * the catalog filter memo must not re-run when selection changes the store.
+ * Subscribe to favorites only in that view; memoize group arrays.
  */
 export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowed?: boolean }) {
   const [loraCatMenu, setLoraCatMenu] = useState<{ x: number; y: number; cat: string } | null>(null)
   const {
     styles, search, activeCategory, activeSource,
-    favorites, recentNames,
+    favorites,
     collapsedCategories, toggleCollapse, viewMode,
     selectAllInCategory,
     sliceMode, sliceSelection,
@@ -71,9 +68,8 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         search: s.search,
         activeCategory: cat,
         activeSource: s.activeSource,
-        // P: selectFilteredStyles on toggle — avoid recent/favorites deps off those views
+        // P: selectFilteredStyles on toggle — avoid the favorites dep off that view
         favorites: cat === FAVORITES_VIEW ? s.favorites : EMPTY_FAVORITES,
-        recentNames: cat === RECENT_VIEW ? s.recentNames : EMPTY_RECENT,
         collapsedCategories: s.collapsedCategories,
         viewMode: s.viewMode,
         toggleCollapse: s.toggleCollapse,
@@ -95,7 +91,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
   const appActions = useAppActions()
 
   /**
-   * Empty grid area. Order: no CSV styles at all → empty Favorites / Recent /
+   * Empty grid area. Order: no CSV styles at all → empty Favorites /
    * LoRA views → filters hide everything. Nothing before the first styles
    * payload, so no empty state flashes while the panel loads.
    */
@@ -105,7 +101,7 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
     const view = sliceCat ? null : activeCategory
 
     const hasCsvStyles = styles.some((s) => s.source_file !== LORA_SOURCE)
-    if (!hasCsvStyles && !sliceCat && view !== FAVORITES_VIEW && view !== RECENT_VIEW && view !== LORA_VIEW) {
+    if (!hasCsvStyles && !sliceCat && view !== FAVORITES_VIEW && view !== LORA_VIEW) {
       const actions: EmptyStateAction[] = []
       if (appActions) {
         actions.push({ label: 'Import CSV…', variant: 'primary', onClick: appActions.openImportExport })
@@ -136,20 +132,6 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
         />
       )
     }
-    if (view === RECENT_VIEW) {
-      const keys = new Set(styles.map(styleRowKey))
-      if (!recentNames.some((k) => keys.has(k))) {
-        return (
-          <EmptyState
-            kind="no-recent"
-            tone="accent"
-            icon={Clock}
-            title="Nothing used yet"
-            hint="Styles you apply show up here."
-          />
-        )
-      }
-    }
     if (view === LORA_VIEW && !styles.some((s) => s.source_file === LORA_SOURCE)) {
       return (
         <EmptyState
@@ -167,7 +149,6 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
     const sourceShown = activeSource && view !== LORA_VIEW ? sourceLabel(activeSource) : null
     const scope = sliceCat ?? (
       view === FAVORITES_VIEW ? 'Favorites'
-        : view === RECENT_VIEW ? 'Recent'
           : view === LORA_VIEW ? 'LoRA'
             : view
     )
@@ -192,16 +173,16 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
   }
 
   const filtered = useMemo(
-    () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites, recentNames),
-    [styles, search, activeCategory, activeSource, favorites, recentNames]
+    () => selectFilteredStyles(styles, search, activeCategory, activeSource, favorites),
+    [styles, search, activeCategory, activeSource, favorites]
   )
 
   const sliceCategory = sliceMode?.category ?? null
 
   /** Search/source-filtered styles without the sidebar category filter — slice mode may target another category. */
   const sliceModeFiltered = useMemo(
-    () => selectFilteredStyles(styles, search, null, activeSource, favorites, recentNames),
-    [styles, search, activeSource, favorites, recentNames]
+    () => selectFilteredStyles(styles, search, null, activeSource, favorites),
+    [styles, search, activeSource, favorites]
   )
 
   /** Currently visible (search/filter-applied) cards for the slice category.
@@ -247,7 +228,6 @@ export const StyleGrid = memo(function StyleGrid({ windowed = false }: { windowe
   const isFlatCategory = Boolean(
     activeCategory &&
       activeCategory !== FAVORITES_VIEW &&
-      activeCategory !== RECENT_VIEW &&
       activeCategory !== LORA_VIEW,
   )
 

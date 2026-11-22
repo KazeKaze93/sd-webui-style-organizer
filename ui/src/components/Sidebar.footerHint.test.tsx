@@ -55,7 +55,6 @@ describe('sidebar footer hint line', () => {
       activeSource: null,
       categoryOrder: [],
       favorites: new Set(),
-      recentNames: [],
       presets: {},
       fetchPresets: async () => {},
     } as unknown as Partial<ReturnType<typeof useStylesStore.getState>>)
@@ -128,7 +127,7 @@ describe('sidebar footer hint line', () => {
     expect(footer().textContent).toBe('BODY: right-click for options')
   })
 
-  it.each(['All', 'Favorites', 'Recent', 'Presets'])('the fixed entry %s never sets it', async (label) => {
+  it.each(['All', 'Favorites', 'Presets'])('the fixed entry %s never sets it', async (label) => {
     await enter(fixed(label))
     expect(footer().textContent).toBe('')
     expect(fixed(label).hasAttribute('aria-describedby')).toBe(false)

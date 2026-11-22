@@ -26,7 +26,7 @@ export type { ThemeMode }
  * sidebar view instead. */
 export const LORA_SOURCE = '__style_grid_lora__'
 
-/** Sidebar special-view id for the LoRA section, parallel to Favorites/Recent. */
+/** Sidebar special-view id for the LoRA section, parallel to Favorites. */
 export const LORA_VIEW = '🧬 LoRA'
 
 /** How the virtualized grid draws styles: text tiles, or square preview tiles. */
@@ -444,9 +444,9 @@ export function resolveSourceInList(
 
 /**
  * Values of `activeCategory` that are sidebar “special” views (not real CSV categories).
- * Matches Favorites / Recent; use the same checks in grid layout as those.
+ * Matches Favorites; use the same checks in grid layout as those.
  */
-export type ActiveSpecialView = '★ Favorites' | '🕑 Recent' | 'presets'
+export type ActiveSpecialView = '★ Favorites' | 'presets'
 
 /** Central UI state for style filtering, selection, and host-side actions. */
 interface StylesStore {
@@ -496,10 +496,8 @@ interface StylesStore {
   viewMode: ViewMode
   /** Favorite style row keys (styleRowKey) persisted in data/favorites.json. */
   favorites: Set<string>
-  /** Most recently applied style row keys (styleRowKey, max 10) in data/recent.json. */
-  recentNames: string[]
   /** True after the first server hydrate (migrate-once + load) finishes. */
-  favoritesRecentHydrated: boolean
+  favoritesHydrated: boolean
   /** Detected conflicts among current selected styles. */
   conflicts: Conflict[]
   /**
@@ -539,7 +537,7 @@ interface StylesStore {
   setSelectedStyles: (styles: Style[]) => void
   /**
    * A style was renamed or re-categorised on the server (Move to category).
-   * Carry the iframe's own references — selection, favorites, recent, preset
+   * Carry the iframe's own references — selection, favorites, preset
    * contributors, thumbnail version — to the new identity. Nothing is posted:
    * the server already migrated favorites.json and recent.json.
    */
@@ -571,13 +569,12 @@ interface StylesStore {
   setCategoryOrder: (order: string[]) => void
   toggleFavorite: (style: StyleIdentity) => void
   isFavorite: (style: StyleIdentity) => boolean
-  addToRecent: (style: StyleIdentity) => void
   /**
-   * Load favorites/recent from the server. When the server file is absent and
-   * legacy `sg_v2_*` localStorage keys have data, push them once (migrate),
+   * Load favorites from the server. When the server file is absent and the
+   * legacy `sg_v2_favorites` localStorage key has data, push it once (migrate),
    * then treat the server as source of truth.
    */
-  hydrateFavoritesRecent: () => Promise<void>
+  hydrateFavorites: () => Promise<void>
   fetchPresets: () => Promise<void>
   savePreset: (
     name: string,
@@ -615,7 +612,6 @@ export function selectFilteredStyles(
   activeCategory: string | null,
   activeSource: string | null,
   favorites: Set<string>,
-  recentNames: string[],
 ): Style[] {
   const bySource = (s: Style) => !activeSource || s.source_file === activeSource
 
@@ -623,13 +619,6 @@ export function selectFilteredStyles(
     return styles.filter(
       (s) => favorites.has(styleRowKey(s)) && bySource(s) && matchesSearchKey(styleRowKey(s), search),
     )
-  }
-
-  if (activeCategory === '🕑 Recent') {
-    return recentNames
-      .map((key) => styles.find((s) => styleRowKey(s) === key && bySource(s)))
-      .filter(Boolean)
-      .filter((s) => matchesSearchKey(styleRowKey(s as Style), search)) as Style[]
   }
 
   if (activeCategory === LORA_VIEW) {
@@ -707,8 +696,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   themeMode: 'dark',
   viewMode: loadViewMode(),
   favorites: new Set(),
-  recentNames: [],
-  favoritesRecentHydrated: false,
+  favoritesHydrated: false,
   presets: {},
   presetsCorrupt: null,
   activePresetName: null,
@@ -840,7 +828,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       ...selectionDerived(nextSelected),
     })
     toAdd.forEach((style) => {
-      get().addToRecent(style)
       sendToHost({
         type: 'SG_APPLY',
         styleId: style.name,
@@ -865,24 +852,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     }
   },
   isFavorite: (style) => get().favorites.has(styleRowKey(style)),
-  addToRecent: (style) => {
-    const key = styleRowKey(style)
-    const prev = get().recentNames
-    // Already at head — keep the same array ref (Sidebar Recent badge skips no-op).
-    if (prev[0] === key) return
-    const recent = [key, ...prev.filter((n) => n !== key)].slice(0, 10)
-    set({ recentNames: recent })
-    try {
-      void styleGridPost('/style_grid/recent/save', { items: recent }).catch(() => {})
-    } catch {
-      // fetch unavailable (unit tests / offline)
-    }
-  },
-  hydrateFavoritesRecent: async () => {
+  hydrateFavorites: async () => {
     /**
      * Only remove migration-source LS keys after the server confirms persistence
      * (`persisted: true` on GET, or a successful migrate POST). Never wipe
-     * `sg_v2_favorites` / `sg_v2_recent` while they are still the only copy.
+     * `sg_v2_favorites` while it is still the only copy.
      */
     const removeLegacyKey = (lsKey: string, canRemove: boolean) => {
       if (!canRemove) return
@@ -896,57 +870,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const parseAmbiguous = (body: { ambiguous?: unknown } | null): string[] => {
       if (!Array.isArray(body?.ambiguous)) return []
       return body.ambiguous.filter((x): x is string => typeof x === 'string')
-    }
-
-    const hydrateRecent = async (): Promise<{
-      items: string[]
-      canRemoveLegacy: boolean
-    }> => {
-      try {
-        const r = await fetch('/style_grid/recent')
-        if (!r.ok) {
-          return { items: loadStringArrayFromLs('sg_v2_recent'), canRemoveLegacy: false }
-        }
-        const body = (await r.json().catch(() => null)) as {
-          items?: unknown
-          persisted?: unknown
-        } | null
-        const serverItems = Array.isArray(body?.items)
-          ? body.items.filter((x): x is string => typeof x === 'string' && x.length > 0)
-          : []
-        const persisted = body?.persisted === true
-        if (persisted) {
-          return { items: serverItems, canRemoveLegacy: true }
-        }
-
-        const legacy = loadStringArrayFromLs('sg_v2_recent')
-        if (legacy.length === 0) {
-          return { items: [], canRemoveLegacy: true }
-        }
-
-        const mig = await styleGridPost('/style_grid/recent/migrate', { items: legacy })
-        if (!mig.ok) {
-          return { items: legacy, canRemoveLegacy: false }
-        }
-        const migBody = (await mig.json().catch(() => null)) as {
-          items?: unknown
-          migrated?: unknown
-        } | null
-        if (Array.isArray(migBody?.items)) {
-          return {
-            items: migBody.items.filter(
-              (x): x is string => typeof x === 'string' && x.length > 0,
-            ),
-            canRemoveLegacy: true,
-          }
-        }
-        if (migBody?.migrated === true) {
-          return { items: legacy, canRemoveLegacy: true }
-        }
-        return { items: legacy, canRemoveLegacy: false }
-      } catch {
-        return { items: loadStringArrayFromLs('sg_v2_recent'), canRemoveLegacy: false }
-      }
     }
 
     const hydrateFavorites = async (): Promise<{
@@ -1038,13 +961,11 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       }
     }
 
-    const [fav, recent] = await Promise.all([hydrateFavorites(), hydrateRecent()])
+    const fav = await hydrateFavorites()
     removeLegacyKey('sg_v2_favorites', fav.canRemoveLegacy)
-    removeLegacyKey('sg_v2_recent', recent.canRemoveLegacy)
     set({
       favorites: new Set(fav.items),
-      recentNames: recent.items.slice(0, 10),
-      favoritesRecentHydrated: true,
+      favoritesHydrated: true,
     })
 
     const ambiguousNames = [...new Set(fav.ambiguous)].sort()
@@ -1097,7 +1018,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
           [key]: new Set([...existing, 'manual']),
         },
       })
-      get().addToRecent(style)
       sendToHost({
         type: 'SG_APPLY',
         styleId: style.name,
@@ -1131,9 +1051,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     const favorites = s.favorites.has(oldKey)
       ? new Set([...s.favorites].map(swap))
       : s.favorites
-    const recentNames = s.recentNames.includes(oldKey)
-      ? [...new Set(s.recentNames.map(swap))]
-      : s.recentNames
     const styleContributors =
       oldKey !== newKey && s.styleContributors[oldKey]
         ? (() => {
@@ -1157,7 +1074,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       selectedStyles: nextSelected,
       ...selectionDerived(nextSelected),
       favorites,
-      recentNames,
       styleContributors,
       thumbVersions,
       thumbKeys,
@@ -1515,7 +1431,7 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   loadPreset: (name) => {
     const preset = get().presets[name]
     if (!preset) return
-    const { styles, showToast, detectConflicts, addToRecent } = get()
+    const { styles, showToast, detectConflicts } = get()
 
     const members = resolvePresetMembers(preset.styles ?? [], styles)
     const found = members.filter((m): m is Extract<ResolvedPresetMember, { status: 'found' }> =>
@@ -1533,7 +1449,6 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       if (selectedKeys.has(rowKey)) continue
       selectedKeys.add(rowKey)
       selected.push(m.style)
-      addToRecent(m.style)
       sendToHost({
         type: 'SG_APPLY',
         styleId: m.style.name,

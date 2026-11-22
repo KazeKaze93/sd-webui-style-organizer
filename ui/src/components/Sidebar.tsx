@@ -10,7 +10,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { BookMarked, Clock, Dna, Mouse, Star } from 'lucide-react'
+import { BookMarked, Dna, Mouse, Star } from 'lucide-react'
 import { LORA_SOURCE, LORA_VIEW, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { CategoryMenuItems } from './CategoryMenuItems'
@@ -19,7 +19,6 @@ import { isTabFocus } from '../lib/focusSource'
 import { cn } from '../lib/utils'
 
 const FAVORITES_ID = '★ Favorites'
-const RECENT_ID = '🕑 Recent'
 
 const NAV_FOCUS_RING =
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sg-accent focus-visible:ring-offset-1 focus-visible:ring-offset-sg-bg'
@@ -186,7 +185,7 @@ function CategoryRow({
  */
 export const Sidebar = memo(function Sidebar() {
   const {
-    activeCategory, setCategory, categories, favoritesSize, recentCount,
+    activeCategory, setCategory, categories, favoritesSize,
     setCategoryOrder, presetsCount, styles, activeSource,
   } = useStylesStore(
     useShallow(s => ({
@@ -194,7 +193,6 @@ export const Sidebar = memo(function Sidebar() {
       setCategory: s.setCategory,
       categories: s.categories,
       favoritesSize: s.favorites.size,
-      recentCount: s.recentNames.length,
       setCategoryOrder: s.setCategoryOrder,
       presetsCount: Object.keys(s.presets).length,
       styles: s.styles,
@@ -263,7 +261,6 @@ export const Sidebar = memo(function Sidebar() {
 
   const specialCategories = [
     { id: FAVORITES_ID, label: 'Favorites', Icon: Star, count: favoritesSize },
-    { id: RECENT_ID, label: 'Recent', Icon: Clock, count: recentCount },
     { id: LORA_VIEW, label: 'LoRA', Icon: Dna, count: categoryCounts.get(LORA_VIEW) ?? 0 },
   ]
 
@@ -298,7 +295,7 @@ export const Sidebar = memo(function Sidebar() {
             </span>
           </button>
           {specialCategories.map(({ id, label, Icon, count }) => {
-            const alwaysShow = id === FAVORITES_ID || id === RECENT_ID
+            const alwaysShow = id === FAVORITES_ID
             if (!alwaysShow && count === 0) return null
             const isActive = activeCategory === id
             // LoRA is the one fixed entry with a right-click menu, so it sets the footer too.

@@ -262,7 +262,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    void useStylesStore.getState().hydrateFavoritesRecent()
+    void useStylesStore.getState().hydrateFavorites()
     const unsub = onHostMessage((msg) => {
       if (msg.type === 'SG_THEME') {
         applyThemeMode(msg.mode)
@@ -303,11 +303,10 @@ export default function App() {
         useStylesStore.getState().clearSelectionChrome()
       }
       if (msg.type === 'SG_STYLE_APPLIED') {
-        const { selectedStyles, addToRecent, detectConflicts } = useStylesStore.getState()
+        const { selectedStyles, detectConflicts } = useStylesStore.getState()
         const exists = selectedStyles.some(s => styleRowKey(s) === styleRowKey(msg.style))
         if (!exists) {
           useStylesStore.getState().setSelectedStyles([...selectedStyles, msg.style])
-          addToRecent(msg.style)
           detectConflicts()
         }
       }

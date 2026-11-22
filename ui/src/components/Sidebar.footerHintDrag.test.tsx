@@ -88,7 +88,6 @@ describe('sidebar footer hint while dragging', () => {
       activeSource: null,
       categoryOrder: [],
       favorites: new Set(),
-      recentNames: [],
       presets: {},
       fetchPresets: async () => {},
       setCategoryOrder: () => {},

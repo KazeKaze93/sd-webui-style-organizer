@@ -151,7 +151,6 @@ describe('MoveToCategoryDialog', () => {
       styles,
       selectedStyles: [],
       favorites: new Set(),
-      recentNames: [],
       styleContributors: {},
       thumbVersions: {},
       toasts: [],
@@ -352,7 +351,7 @@ describe('MoveToCategoryDialog', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('after a rename the iframe keeps the style selected, in favorites, recent and preset contributors', async () => {
+  it('after a rename the iframe keeps the style selected, in favorites and preset contributors', async () => {
     await renderDialog()
     const oldKey = styleRowKey(subject)
     const newKey = `${A}\0POSE_Tall_Amazon`
@@ -360,7 +359,6 @@ describe('MoveToCategoryDialog', () => {
     useStylesStore.setState({
       selectedStyles: [other, subject],
       favorites: new Set([oldKey]),
-      recentNames: [styleRowKey(other), oldKey],
       styleContributors: { [oldKey]: new Set(['My set']) },
       thumbVersions: { [oldKey]: '42' },
     })
@@ -376,10 +374,9 @@ describe('MoveToCategoryDialog', () => {
     expect(s.selectedKeySet.has(newKey)).toBe(true)
     expect(s.selectedKeySet.has(oldKey)).toBe(false)
     expect([...s.favorites]).toEqual([newKey])
-    expect(s.recentNames).toEqual([styleRowKey(other), newKey])
     expect(Object.keys(s.styleContributors)).toEqual([newKey])
     expect(s.thumbVersions[newKey]).toBe('42')
-    // The server migrated favorites/recent itself: nothing is posted from here.
+    // The server migrated favorites itself: nothing is posted from here.
     expect(calls.map((c) => c.url)).toEqual(['/style_grid/style/rename'])
   })
 })

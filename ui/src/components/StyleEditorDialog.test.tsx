@@ -439,7 +439,7 @@ describe('Edit trigger in the card menu', () => {
       )
     })
     const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-      (i) => i.textContent?.trim() === 'Edit',
+      (i) => i.textContent?.trim() === 'Edit…',
     )!
     await act(async () => item.click())
     return item

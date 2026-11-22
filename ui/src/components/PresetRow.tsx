@@ -9,6 +9,7 @@ import { ModalShell } from './ModalShell'
 import {
   resolvePresetMembers,
   styleDisplayName,
+  styleRowKey,
   useStylesStore,
   type PresetRecord,
   type ResolvedPresetMember,
@@ -24,7 +25,7 @@ type Props = {
 
 export function PresetRow({ name, preset }: Props) {
   const styles = useStylesStore((s) => s.styles)
-  const selectedStyles = useStylesStore((s) => s.selectedStyles)
+  const selectedKeySet = useStylesStore((s) => s.selectedKeySet)
   const activeWildcards = useStylesStore((s) => s.activeWildcards)
   const loadPreset = useStylesStore((s) => s.loadPreset)
   const unapplyPreset = useStylesStore((s) => s.unapplyPreset)
@@ -57,8 +58,9 @@ export function PresetRow({ name, preset }: Props) {
   const activeWcKeys = new Set(
     activeWildcards.map((w) => wildcardKey(w.category, w.spec, w.kind)),
   )
+  // A style is (pack, name): the same name from another pack is a different style.
   const isActive = foundMembers.length > 0 &&
-    foundMembers.every((m) => selectedStyles.some((s) => s.name === m.style.name)) &&
+    foundMembers.every((m) => selectedKeySet.has(styleRowKey(m.style))) &&
     [...presetWcKeys].every((k) => activeWcKeys.has(k))
 
   useEffect(() => {

@@ -147,6 +147,7 @@ The small tab badge in the panel header shows the active host context.
 
 - **Right-click** a **category row** in the **left sidebar** (the colored category list), or press the **ContextMenu** key / **Shift+F10** on it, to open the category menu. **Escape** closes it and returns focus to where it was opened.
 - Right-clicking **LoRA** opens the same menu without **Generate previews…**.
+- Hovering a category row (or **LoRA**) shows its style count and the hint *Right-click a category or style for options*.
 - Right-clicking a **category header** inside the main grid (the sticky `▼ CATEGORY (count)` row) **no longer opens a menu** — that duplicate entry point was removed. A normal **left-click** on the header still collapses/expands the section; **Select All** on that row is unchanged.
 
 **Menu actions**
@@ -205,7 +206,7 @@ A **shuffle wildcard** draws styles **without repeats across batches**. `{sgd:ca
 
 **Where to open it**
 
-- **Right-click** a **style card** in the grid (card title hint: *Right-click for options*). *(Left-click still applies the normal select / source-picker rules.)*
+- **Right-click** a **style card** in the grid. *(Left-click still applies the normal select / source-picker rules.)*
 
 **On the tile (not menu items)**
 
@@ -233,7 +234,7 @@ Click **outside** the menu to close it (moving the pointer off the menu does **n
 
 ![Style card context menu](docs/screenshots/style-card-context-menu.png)
 
-### 7) Thumbnail previews and the hover popup
+### 7) Thumbnail previews
 
 **Generating a preview**
 
@@ -248,19 +249,7 @@ Thumbnail images are loaded via `GET /style_grid/thumbnail?name=…&source=…` 
 
 **What the card shows**
 
-- The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — you see it when you **hover**.
-
-**Hover popup (preview window)**
-
-- **Pause ~300 ms** on a card to open the popup (reduces flicker when moving the mouse quickly).
-- **Top:** the thumbnail image (if the file exists and loads). If the image is missing or fails to load, you still get the **text** below.
-- **Title:** the style display name.
-- **Prompt:** first **120 characters** of the style’s **`prompt`** column, with `...` if longer.
-- **Negative:** first **60 characters** of **`negative_prompt`**, prefixed with **−** and shown in a muted red tone.
-
-The popup is **fixed** near the card and flips **above** or **below** depending on available space.
-
-![Hover popup — thumbnail, prompt snippet, negative line](docs/screenshots/thumbnail-hover-preview.png)
+- The **grid card** is a compact label (name and category color accent). The **generated image is not shown inside the tile** — switch to **Gallery** to see it.
 
 ---
 
@@ -276,7 +265,7 @@ The popup is **fixed** near the card and flips **above** or **below** depending 
 
 **What this means:** not a separate “toolbar” window — it is the **top header row** of the Style Grid panel: **Style Grid** title, `txt2img`/`img2img` tag, **source** dropdown, **search**, then a row of **small icon buttons on the right** (`ToolBtn` with lucide icons + tooltips). Hover an icon for its label. **Presets** are in the **left sidebar**, not here. There is no Random button.
 
-**Grid / Gallery** (the two-segment switch right of the search box): **Gallery** shows each style's preview as a square tile with its name below; **Grid** stays the text-only tiles. The hover popup (preview image, prompt, negative prompt) works in both, and the choice is remembered in this browser.
+**Grid / Gallery** (the two-segment switch right of the search box): **Gallery** shows each style's preview as a square tile with its name below; **Grid** stays the text-only tiles. The choice is remembered in this browser.
 
 ![Top bar — icon buttons (right of search)](docs/screenshots/top-bar-icons.png)
 

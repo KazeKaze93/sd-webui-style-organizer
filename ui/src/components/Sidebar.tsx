@@ -103,7 +103,7 @@ function RowHint({ title, blocked, children }: { title: string; blocked: boolean
         <p className="text-xs font-medium text-sg-text">{title}</p>
         <p className="inline-flex items-center gap-1 text-[11px] text-sg-muted">
           <Mouse size={12} aria-hidden />
-          Right-click for wildcard options
+          Right-click a category or style for options
         </p>
       </TooltipContent>
     </Tooltip>

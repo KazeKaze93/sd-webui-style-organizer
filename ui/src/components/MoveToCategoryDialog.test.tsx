@@ -11,7 +11,6 @@ import {
   planMove,
 } from '../lib/categoryMove'
 import { __resetGridFocusForTests } from '../lib/gridFocus'
-import { dismissAllHoverIntents } from '../lib/hoverIntent'
 import { __resetLayerStackForTests, closeTopLayer, hasOpenLayer } from '../lib/layerStack'
 import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
 import { MoveToCategoryDialog } from './MoveToCategoryDialog'
@@ -401,7 +400,6 @@ describe('card menu: Move to category', () => {
   })
   afterEach(() => {
     act(() => {
-      dismissAllHoverIntents()
       root?.unmount()
     })
     host?.remove()

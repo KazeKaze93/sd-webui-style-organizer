@@ -86,14 +86,14 @@ describe('sidebar category hint tooltip', () => {
     __resetLayerStackForTests()
   })
 
-  it('hover shows it only after the tile-preview delay, with the count and the right-click line', async () => {
+  it('hover shows it only after the hint delay, with the count and the right-click line', async () => {
     await hover(nav('BODY'), Math.floor(HOVER_POPUP_SHOW_DELAY_MS / 3))
     expect(hint()).toBeNull()
     await act(async () => {
       await wait(HOVER_POPUP_SHOW_DELAY_MS)
     })
     expect(hint()).not.toBeNull()
-    expect(hintLines()).toEqual(['BODY · 2 styles', 'Right-click for wildcard options'])
+    expect(hintLines()).toEqual(['BODY · 2 styles', 'Right-click a category or style for options'])
     expect(hint()!.getAttribute('data-align')).toBe('start')
     expect(hint()!.querySelector('svg.lucide-mouse')!.getAttribute('width')).toBe('12')
     expect(hint()!.className).toContain('bg-sg-popover')
@@ -145,6 +145,6 @@ describe('sidebar category hint tooltip', () => {
 
   it('LoRA has the hint, with LoRA wording', async () => {
     await hover(fixed('LoRA'))
-    expect(hintLines()).toEqual(['LoRA · 1 LoRA', 'Right-click for wildcard options'])
+    expect(hintLines()).toEqual(['LoRA · 1 LoRA', 'Right-click a category or style for options'])
   })
 })

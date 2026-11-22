@@ -110,23 +110,24 @@ describe('one-row header', () => {
     'Compact mode',
     'Collapse all',
     'Expand all',
-    'Clear all selected styles',
     'Backup / Restore',
     'Import/Export',
   ])('has no "%s" button', (label) => {
     expect(headerLabels()).not.toContain(label)
   })
 
-  it('order: search → View toggle → globe (LoRA only) → + → ⋯ → Fullscreen → Close', async () => {
+  it('order: search → View toggle → Clear → globe (LoRA only) → + → ⋯ → Fullscreen → Close', async () => {
     const before = (a: Element, b: Element) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING)
     const search = header().querySelector('input')!
     const toggle = header().querySelector('[role="radiogroup"]')!
+    const clear = headerButton('Clear prompts and selection')
     const plus = headerButton('Select a specific CSV source before creating a style')
     expect(header().querySelector('button[aria-label^="Fetch LoRA"]')).toBeNull()
     for (const [a, b] of [
       [search, toggle],
-      [toggle, plus],
+      [toggle, clear],
+      [clear, plus],
       [plus, headerButton('More')],
       [headerButton('More'), headerButton('Fullscreen')],
       [headerButton('Fullscreen'), headerButton('Close Style Grid')],
@@ -137,8 +138,41 @@ describe('one-row header', () => {
     await act(async () => useStylesStore.setState({ activeCategory: LORA_VIEW }))
     const globe = header().querySelector('button[aria-label^="Fetch LoRA"]')!
     expect(globe).not.toBeNull()
-    expect(before(header().querySelector('[role="radiogroup"]')!, globe)).toBe(true)
+    expect(before(header().querySelector('[role="radiogroup"]')!, headerButton('Clear prompts and selection'))).toBe(true)
+    expect(before(headerButton('Clear prompts and selection'), globe)).toBe(true)
     expect(before(globe, headerButton('Select a specific CSV source before creating a style'))).toBe(true)
+  })
+
+  describe('Clear prompts and selection', () => {
+    const clearCalls = () => sendToHostMock.mock.calls.filter(([m]) => m.type === 'SG_CLEAR_ALL')
+
+    it('is always enabled and posts SG_CLEAR_ALL with an empty selection', async () => {
+      await act(async () => useStylesStore.setState({ selectedStyles: [], selectedKeySet: new Set(), activeWildcards: [] }))
+      const clear = headerButton('Clear prompts and selection')
+      expect(clear.disabled).toBe(false)
+      expect(clear.querySelector('svg.lucide-eraser')).not.toBeNull()
+      // Red, as before the header redesign; hover still goes to text-sg-text.
+      expect(clear.className.split(/\s+/)).toEqual(expect.arrayContaining(['text-sg-danger-text', 'hover:text-sg-text']))
+      expect(clear.className).not.toContain('text-sg-muted')
+      await act(async () => clear.click())
+      expect(clearCalls()).toEqual([[{ type: 'SG_CLEAR_ALL' }]])
+    })
+
+    it('posts SG_CLEAR_ALL with a selection and with wildcards', async () => {
+      const style = { name: 'BODY_Tall', source_file: 'webui/a.csv', prompt: 'tall', negative_prompt: '', description: '', category: 'BODY' }
+      await act(async () =>
+        useStylesStore.setState({
+          selectedStyles: [style],
+          selectedKeySet: new Set(['webui/a.csv\0BODY_Tall']),
+          activeWildcards: [{ category: 'pose', spec: '' }],
+        }),
+      )
+      const clear = headerButton('Clear prompts and selection')
+      expect(clear.disabled).toBe(false)
+      await act(async () => clear.click())
+      expect(clearCalls()).toEqual([[{ type: 'SG_CLEAR_ALL' }]])
+      await act(async () => useStylesStore.setState({ selectedStyles: [], selectedKeySet: new Set(), activeWildcards: [] }))
+    })
   })
 
   it('buttons run New style, More, Fullscreen, Close, in that order', () => {
@@ -195,8 +229,11 @@ describe('one-row header', () => {
     expect(title.getAttribute('title')).toBe('Style Grid — img2img')
   })
 
-  it('below HEADER_NARROW_MAX_PX the title text is sr-only and the tab badge is hidden', () => {
-    expect(HEADER_NARROW_MAX_PX).toBe(759)
+  it('below HEADER_NARROW_MAX_PX the title text is sr-only, the tab badge is hidden and Close moves closer', () => {
+    expect(HEADER_NARROW_MAX_PX).toBe(799)
+    const closeWrap = header().querySelector('[data-sg-close-wrap]')!
+    expect(closeWrap.className.split(/\s+/)).toEqual(expect.arrayContaining(['ml-3', 'max-[799px]:ml-2']))
+    expect(closeWrap.querySelector('button[aria-label="Close Style Grid"]')).not.toBeNull()
     const variant = `max-[${HEADER_NARROW_MAX_PX}px]:`
     const titleText = header().querySelector('[data-sg-header-title] span')!
     expect(titleText.textContent).toBe('Style Grid')

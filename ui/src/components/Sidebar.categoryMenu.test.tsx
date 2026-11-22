@@ -22,7 +22,7 @@ const row = (name: string, category: string, source_file = 'webui/a.csv'): Style
   category,
 })
 
-describe('Sidebar category rows: ⋯ and the category menu', () => {
+describe('Sidebar category rows and the category menu', () => {
   let root: Root | null = null
   let host: HTMLDivElement | null = null
   let setCategory: ReturnType<typeof vi.fn>
@@ -31,7 +31,6 @@ describe('Sidebar category rows: ⋯ and the category menu', () => {
 
   const rowEl = (cat: string) => host!.querySelector<HTMLElement>(`[data-sg-category-row="${cat}"]`)!
   const nav = (cat: string) => rowEl(cat).querySelector<HTMLButtonElement>('button:not([data-sg-category-options])')!
-  const dots = (cat: string) => rowEl(cat).querySelector<HTMLButtonElement>('[data-sg-category-options]')!
   const count = (cat: string) => rowEl(cat).querySelector<HTMLElement>('[data-sg-category-count]')!
   const menu = () => document.querySelector<HTMLElement>('[role="menu"]')
   /** The menu's direct children as kinds, in order. */
@@ -93,62 +92,18 @@ describe('Sidebar category rows: ⋯ and the category menu', () => {
     __resetLayerStackForTests()
   })
 
-  it('⋯ sits next to the nav button (not nested) and shows on hover / visible focus in the count slot', () => {
-    expect(nav('BODY').contains(dots('BODY'))).toBe(false)
-    expect(dots('BODY').getAttribute('aria-label')).toBe('BODY options')
-    expect(dots('BODY').getAttribute('aria-haspopup')).toBe('menu')
-    expect(dots('BODY').getAttribute('aria-expanded')).toBe('false')
-    expect(rowEl('BODY').className).toContain('group')
-    // Hidden by opacity, never display:none, so the menu can return focus to it.
-    expect(dots('BODY').className).not.toMatch(/(^|\s)hidden(\s|$)/)
-    expect(dots('BODY').className).toContain('opacity-0')
-    expect(dots('BODY').className).toContain('group-hover:opacity-100')
-    expect(dots('BODY').className).toContain('group-has-[:focus-visible]:opacity-100')
-    // Mouse focus (a click on the nav button) must not keep ⋯ up.
-    expect(dots('BODY').className).not.toContain('group-focus-within')
+  it('rows render no ⋯ button; the count is always visible', () => {
+    expect(host!.querySelectorAll('[data-sg-category-options]')).toHaveLength(0)
+    expect(host!.querySelector('button[aria-label$=" options"]')).toBeNull()
+    for (const cat of ['BODY', 'POSE']) {
+      expect(rowEl(cat).querySelectorAll('button')).toHaveLength(1)
+      expect(count(cat).className).not.toMatch(/invisible|group-hover|focus-visible/)
+    }
     expect(count('BODY').textContent).toBe('2')
-    expect(count('BODY').className).toContain('group-hover:invisible')
-    expect(count('BODY').className).toContain('group-has-[:focus-visible]:invisible')
-    expect(count('BODY').className).not.toContain('group-focus-within')
-  })
-
-  it('fixed entries (All, Favorites, Recent, LoRA, Presets) have no ⋯', () => {
-    expect(host!.querySelectorAll('[data-sg-category-options]').length).toBe(2) // BODY, POSE
     expect([...host!.querySelectorAll('[data-sg-category-row]')].map((r) => r.getAttribute('data-sg-category-row'))).toEqual(['BODY', 'POSE'])
   })
 
-  it('clicking ⋯ opens the menu under the button with exactly the planned items', async () => {
-    stubRect(dots('BODY'), 150, 80)
-    await fire(dots('BODY'), new MouseEvent('click', { bubbles: true, cancelable: true }))
-    expect(menu()).not.toBeNull()
-    expect(menu()!.style.left).toBe('150px')
-    expect(menu()!.style.top).toBe('84px')
-    expect(menuShape()).toEqual([
-      'heading:Wildcard from BODY',
-      'item:Random / whole category, may repeat',
-      'item:Shuffle / whole category, no repeats in a batch',
-      'item:Pick styles… / choose Random or Shuffle in the bar',
-      'divider',
-      'item:Generate previews…',
-    ])
-    expect(dots('BODY').getAttribute('aria-expanded')).toBe('true')
-    // While open, ⋯ stays visible and the count stays hidden.
-    expect(dots('BODY').className).not.toContain('opacity-0')
-    expect(count('BODY').className).toContain('invisible')
-  })
-
-  it('clicking ⋯ neither selects the category nor reorders', async () => {
-    await fire(dots('BODY'), pointer('pointerdown'))
-    await fire(dots('BODY'), pointer('pointerup'))
-    await fire(dots('BODY'), new MouseEvent('click', { bubbles: true, cancelable: true }))
-    expect(menu()).not.toBeNull()
-    expect(setCategory).not.toHaveBeenCalled()
-    expect(setCategoryOrder).not.toHaveBeenCalled()
-  })
-
-  it('pressing ⋯ never starts a drag; pressing the nav button does', async () => {
-    await fire(dots('BODY'), pointer('pointerdown'))
-    expect(dragStart).not.toHaveBeenCalled()
+  it('pressing the nav button starts the drag', async () => {
     await fire(nav('BODY'), pointer('pointerdown'))
     expect(dragStart).toHaveBeenCalledOnce()
   })
@@ -168,8 +123,15 @@ describe('Sidebar category rows: ⋯ and the category menu', () => {
     await fire(nav('POSE'), contextMenu({ button: 2, clientX: 60, clientY: 70 }))
     expect(menu()!.style.left).toBe('60px')
     expect(menu()!.style.top).toBe('70px')
-    expect(menuShape()[0]).toBe('heading:Wildcard from POSE')
-    expect(menuShape()).toHaveLength(6)
+    expect(menuShape()).toEqual([
+      'heading:Wildcard from POSE',
+      'item:Random / whole category, may repeat',
+      'item:Shuffle / whole category, no repeats in a batch',
+      'item:Pick styles… / choose Random or Shuffle in the bar',
+      'divider',
+      'item:Generate previews…',
+    ])
+    expect(rowEl('POSE').getAttribute('data-sg-menu-open')).toBe('true')
     expect(setCategory).not.toHaveBeenCalled()
   })
 
@@ -187,21 +149,14 @@ describe('Sidebar category rows: ⋯ and the category menu', () => {
     expect(menu()!.style.top).toBe('124px')
   })
 
-  it('Escape closes the menu and returns focus to the opener', async () => {
-    dots('BODY').focus()
-    await fire(dots('BODY'), new MouseEvent('click', { bubbles: true, cancelable: true }))
+  it('Escape closes the menu and returns focus to the nav button', async () => {
+    nav('POSE').focus()
+    await fire(nav('POSE'), contextMenu({ button: 0 }))
     expect(menu()).not.toBeNull()
     act(() => {
       expect(closeTopLayer()).toBe(true)
     })
     expect(menu()).toBeNull()
-    expect(document.activeElement).toBe(dots('BODY'))
-
-    nav('POSE').focus()
-    await fire(nav('POSE'), contextMenu({ button: 0 }))
-    act(() => {
-      closeTopLayer()
-    })
     expect(document.activeElement).toBe(nav('POSE'))
   })
 

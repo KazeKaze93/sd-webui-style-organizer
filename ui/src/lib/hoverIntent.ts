@@ -6,6 +6,12 @@
  * The show timer re-checks `canShow()` when it fires: a popup must not appear
  * for a target the pointer has already left.
  */
+/**
+ * Hover delay of the tile preview popup, shared by other hover hints (the
+ * sidebar category tooltip) so they open at the same pace.
+ */
+export const HOVER_POPUP_SHOW_DELAY_MS = 300
+
 export type HoverIntentOptions = {
   showDelayMs: number
   hideDelayMs: number

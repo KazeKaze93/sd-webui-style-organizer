@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   startTransition,
   useEffect,
@@ -7,13 +8,17 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type ReactElement,
 } from 'react'
 import { Reorder, useDragControls } from 'framer-motion'
-import { BookMarked, Clock, Dna, Star } from 'lucide-react'
+import { BookMarked, Clock, Dna, Mouse, Star } from 'lucide-react'
 import { LORA_SOURCE, LORA_VIEW, useCategoryColor, useStylesStore } from '../store/stylesStore'
 import { useShallow } from 'zustand/react/shallow'
 import { CategoryMenuItems } from './CategoryMenuItems'
 import { ViewportFixedMenu } from './ViewportFixedMenu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip'
+import { HOVER_POPUP_SHOW_DELAY_MS } from '../lib/hoverIntent'
+import { useGatedTooltip } from '../lib/useGatedTooltip'
 import { cn } from '../lib/utils'
 
 const FAVORITES_ID = '★ Favorites'
@@ -75,6 +80,36 @@ function CategoryName({ category, active }: { category: string; active: boolean 
 const countClass = (active: boolean) =>
   cn('text-xs shrink-0', active ? '' : 'opacity-60')
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * Hover / Tab-focus hint on a sidebar row with a context menu: its count and
+ * that a right-click opens the menu. Never on programmatic focus (useGatedTooltip).
+ */
+function RowHint({ title, blocked, children }: { title: string; blocked: boolean; children: ReactElement }) {
+  const tip = useGatedTooltip(blocked)
+  return (
+    <Tooltip open={tip.open} onOpenChange={tip.onOpenChange}>
+      <TooltipTrigger asChild {...tip.triggerProps}>
+        {children}
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="start"
+        sideOffset={8}
+        className="flex-col items-start gap-0.5"
+        data-sg-category-hint="true"
+      >
+        <p className="text-xs font-medium text-sg-text">{title}</p>
+        <p className="inline-flex items-center gap-1 text-[11px] text-sg-muted">
+          <Mouse size={12} aria-hidden />
+          Right-click for wildcard options
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 /**
  * One draggable category row: the nav button selects the category and starts
  * the drag. Its menu opens with a right-click (at the cursor) or the
@@ -102,6 +137,8 @@ function CategoryRow({
   const controls = useDragControls()
   /** A drag ends with a click on the nav button: that click must not toggle the category. */
   const draggedRef = useRef(false)
+  /** No hint while the row is being dragged. */
+  const [dragging, setDragging] = useState(false)
   return (
     <Reorder.Item
       value={cat}
@@ -119,10 +156,15 @@ function CategoryRow({
       data-sg-menu-open={menuOpen ? 'true' : undefined}
       onDragStart={() => {
         draggedRef.current = true
+        setDragging(true)
         onDragStart()
       }}
-      onDragEnd={onDragEnd}
+      onDragEnd={() => {
+        setDragging(false)
+        onDragEnd()
+      }}
     >
+      <RowHint title={`${cat} · ${plural(count, 'style', 'styles')}`} blocked={menuOpen || dragging}>
       <button
         type="button"
         onPointerDown={(e: ReactPointerEvent<HTMLButtonElement>) => {
@@ -154,6 +196,7 @@ function CategoryRow({
           </span>
         </span>
       </button>
+      </RowHint>
     </Reorder.Item>
   )
 }
@@ -235,6 +278,7 @@ export const Sidebar = memo(function Sidebar() {
   const countFor = (cat: string | null) => categoryCounts.get(cat) ?? 0
 
   return (
+    <TooltipProvider delayDuration={HOVER_POPUP_SHOW_DELAY_MS}>
     <div className="w-44 shrink-0 flex flex-col gap-1 pr-2">
       <button
         type="button"
@@ -260,9 +304,8 @@ export const Sidebar = memo(function Sidebar() {
       const alwaysShow = id === FAVORITES_ID || id === RECENT_ID
       if (!alwaysShow && count === 0) return null
       const isActive = activeCategory === id
-      return (
+      const navButton = (
         <button
-          key={id}
           type="button"
           onClick={() => startTransition(() => setCategory(activeCategory === id ? null : id))}
           aria-current={isActive ? 'true' : undefined}
@@ -286,6 +329,14 @@ export const Sidebar = memo(function Sidebar() {
           </span>
           <span className={countClass(isActive)}>{count}</span>
         </button>
+      )
+      // LoRA is the one fixed entry with a right-click menu, so it gets the hint too.
+      return id === LORA_VIEW ? (
+        <RowHint key={id} title={`LoRA · ${plural(count, 'LoRA', 'LoRAs')}`} blocked={catMenu?.cat === 'LoRA'}>
+          {navButton}
+        </RowHint>
+      ) : (
+        <Fragment key={id}>{navButton}</Fragment>
       )
     })}
       <button
@@ -350,5 +401,6 @@ export const Sidebar = memo(function Sidebar() {
         </ViewportFixedMenu>
       )}
     </div>
+    </TooltipProvider>
   )
 })

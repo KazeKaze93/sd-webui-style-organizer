@@ -9,8 +9,6 @@ export const MENU_GENERATE_PREVIEWS = 'Generate previews…'
 export const SLICE_MODE_GROUP_LABEL = 'Wildcard mode'
 export const SLICE_MODE_RANDOM = 'Random'
 export const SLICE_MODE_SHUFFLE = 'Shuffle'
-export const SLICE_BAR_TITLE_SHUFFLE = 'Shuffle slice: '
-export const SLICE_ADD_SHUFFLE = 'Add as shuffle wildcard'
 export const SLICE_ADD_SHUFFLE_ARIA = 'Add selection as shuffle wildcard slice'
 export const SHUFFLE_CHIP_TITLE =
   'Shuffle: each style is used once before any repeats (within one batch)'

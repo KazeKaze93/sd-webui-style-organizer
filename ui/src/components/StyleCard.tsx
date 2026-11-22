@@ -82,7 +82,7 @@ interface Props {
   cellRow?: number
   cellCol?: number
   tabIndex?: number
-  /** Star and ⋯ buttons on hover; off for slice-mode tiles. */
+  /** Star and ⋯ buttons on hover, gallery tiles only; off for slice-mode tiles. */
   hoverActions?: boolean
 }
 
@@ -163,6 +163,8 @@ export const StyleCard = memo(function StyleCard({
 
   const borderColor = useCategoryColor(style.category || 'OTHER')
   const gallery = viewMode === 'gallery'
+  /** ★ / ⋯ on hover: gallery tiles only. Grid tiles keep the plain look (right-click for the menu). */
+  const showActions = hoverActions && gallery
   const thumbVersion = useThumbVersion(key)
   const thumbSrc = thumbnailUrl(style, activeSource, thumbVersion)
   /** URL whose image failed to load; a new thumb version gives a new URL, so it retries. */
@@ -212,7 +214,7 @@ export const StyleCard = memo(function StyleCard({
     <>
       <div
         role={cellRow != null ? 'gridcell' : undefined}
-        className={hoverActions ? 'group/tile relative' : undefined}
+        className={showActions ? 'group/tile relative' : undefined}
       >
         <ThumbnailPreview style={style}>
           <button
@@ -303,7 +305,7 @@ export const StyleCard = memo(function StyleCard({
                       fill="currentColor"
                       className={cn(
                         'absolute top-1.5 right-1.5 text-sg-warning-text',
-                        hoverActions && (menuPos ? 'opacity-0' : TILE_HOVER_HIDE),
+                        showActions && (menuPos ? 'opacity-0' : TILE_HOVER_HIDE),
                       )}
                       aria-hidden="true"
                     />
@@ -337,7 +339,7 @@ export const StyleCard = memo(function StyleCard({
                 fill="currentColor"
                 className={cn(
                   'absolute top-1.5 right-1.5 text-sg-warning-text',
-                  hoverActions && (menuPos ? 'opacity-0' : TILE_HOVER_HIDE),
+                  showActions && (menuPos ? 'opacity-0' : TILE_HOVER_HIDE),
                 )}
                 aria-hidden="true"
               />
@@ -351,7 +353,7 @@ export const StyleCard = memo(function StyleCard({
               />
             )}
           </button>
-          {hoverActions && (
+          {showActions && (
             <div
               data-sg-tile-actions="true"
               className={cn(

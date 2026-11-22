@@ -116,7 +116,7 @@ The small tab badge in the panel header shows the active host context.
 - Card click toggles selection and applies/unapplies style.
 - Selected styles are tracked in the bottom selected bar.
 - Reorder selected styles by dragging chips in the selected bar.
-- Hovering a card (grid or gallery) shows two small buttons: **★** adds or removes the style from favorites, and **⋯** opens the style menu (see §6). Neither one selects the card.
+- In the gallery, hovering a card shows two small buttons: **★** adds or removes the style from favorites, and **⋯** opens the style menu (see §6). Neither one selects the card.
 
 ![Apply styles from cards — selection and bottom bar](docs/screenshots/apply-and-reorder.png)
 
@@ -128,7 +128,7 @@ The small tab badge in the panel header shows the active host context.
 - If you pick a **specific source** in the dropdown, you always see that file’s styles only — duplicates from other files are not shown together, so the picker is not used.
 
 ### 4) Favorites, recent, and LoRA
-- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
+- **Favorites:** right‑click a style card → **Add to favorites** / **Remove from favorites** (or, in the gallery, the **★** that appears on hover). Favorited tiles show a small **star** in the top-right corner. Favorites and Recent are stored by **name + CSV source**, so the same name from two files can be favorited independently.
 - **Recent** lists the last styles you applied (up to 10), grouped by category like the main grid.
 - Open **Favorites** or **Recent** in the left sidebar to filter the grid to those lists (search + source filter apply here too).
 - **🧬 LoRA** appears in the sidebar when at least one LoRA was scanned. Cards are synthetic styles (not CSV rows), grouped by sub-folder under your LoRA roots. See **LoRA support** below.
@@ -145,9 +145,8 @@ The small tab badge in the panel header shows the active host context.
 
 **Where to open it**
 
-- In the **left sidebar** (the colored category list), hover a **category row** or move focus to it with **Tab**: a **⋯** button replaces the row's count. Click it (or press **Enter** / **Space** on it) to open the category menu.
-- **Right-click** the row, or press the **ContextMenu** key / **Shift+F10** on it, to open the same menu. **Escape** closes it and returns focus to where it was opened.
-- The fixed entries (All, Favorites, Recent, LoRA, Presets) have no ⋯. Right-clicking **LoRA** opens the same menu without **Generate previews…**.
+- **Right-click** a **category row** in the **left sidebar** (the colored category list), or press the **ContextMenu** key / **Shift+F10** on it, to open the category menu. **Escape** closes it and returns focus to where it was opened.
+- Right-clicking **LoRA** opens the same menu without **Generate previews…**.
 - Right-clicking a **category header** inside the main grid (the sticky `▼ CATEGORY (count)` row) **no longer opens a menu** — that duplicate entry point was removed. A normal **left-click** on the header still collapses/expands the section; **Select All** on that row is unchanged.
 
 **Menu actions**

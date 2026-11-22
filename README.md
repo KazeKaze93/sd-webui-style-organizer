@@ -71,7 +71,7 @@ git clone <this-repository-url> sd-webui-style-organizer
 3. Pick a source (`All Sources` or a specific CSV).
 4. Search or browse categories.
 5. Click a style card to apply/unapply.
-6. Use the **top bar** icon buttons (right of the search box): **⋯ More** holds Import / Export and Backup & restore; **Clear** is in the selection tray. Presets live in the **left sidebar**. The **Presets** view shows each saved set as a card with its styles and wildcards (missing styles marked), an **Apply** / **Applied · Remove** button and a **⋯** menu for Rename… and Delete…; the last tile saves the current selection as a new set.
+6. Use the **top bar** icon buttons (right of the search box): **Clear prompts and selection** (eraser) empties the positive and negative prompts and the selection, **⋯ More** holds Import / Export and Backup & restore; the selection tray keeps its own **Clear** too. Presets live in the **left sidebar**. The **Presets** view shows each saved set as a card with its styles and wildcards (missing styles marked), an **Apply** / **Applied · Remove** button and a **⋯** menu for Rename… and Delete…; the last tile saves the current selection as a new set.
 
 ## Theme
 

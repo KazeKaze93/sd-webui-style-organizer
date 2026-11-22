@@ -55,7 +55,6 @@ function resetDerivedStore() {
     thumbVersions: {},
     conflicts: [],
     favorites: new Set(),
-    recentNames: [],
     presets: {},
     presetsCorrupt: null,
     activePresetName: null,
@@ -300,34 +299,6 @@ describe('derived: searchTextByKey / matchesSearchKey', () => {
     const mapAfter = useStylesStore.getState().searchTextByKey
     expect(mapAfter).not.toBe(mapBefore)
     expect(mapAfter.size).toBe(2)
-  })
-})
-
-describe('derived: addToRecent coalesce', () => {
-  beforeEach(() => {
-    resetDerivedStore()
-  })
-
-  it('keeps recentNames ref when head key is already the style', () => {
-    const a = row('BODY_Ears', FILE_A)
-    const b = row('HAIR_Long', FILE_B, { category: 'HAIR' })
-    useStylesStore.getState().setStyles([a, b], 'txt2img')
-
-    useStylesStore.getState().toggleStyle(a)
-    const afterFirst = useStylesStore.getState().recentNames
-    expect(afterFirst[0]).toBe(styleRowKey(a))
-
-    useStylesStore.getState().toggleStyle(a) // deselect — must not touch recent
-    expect(useStylesStore.getState().recentNames).toBe(afterFirst)
-
-    useStylesStore.getState().toggleStyle(a) // re-select — already head → no-op
-    expect(useStylesStore.getState().recentNames).toBe(afterFirst)
-
-    useStylesStore.getState().toggleStyle(b)
-    const afterB = useStylesStore.getState().recentNames
-    expect(afterB).not.toBe(afterFirst)
-    expect(afterB[0]).toBe(styleRowKey(b))
-    expect(afterB[1]).toBe(styleRowKey(a))
   })
 })
 

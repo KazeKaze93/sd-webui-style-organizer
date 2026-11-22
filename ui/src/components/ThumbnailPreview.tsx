@@ -2,11 +2,11 @@ import { createPortal } from 'react-dom'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import type { Style } from '../bridge'
 import { styleRowKey, useStylesStore, useThumbVersion } from '../store/stylesStore'
-import { createHoverIntent, type HoverIntent } from '../lib/hoverIntent'
+import { createHoverIntent, HOVER_POPUP_SHOW_DELAY_MS, type HoverIntent } from '../lib/hoverIntent'
 import { thumbnailUrl } from '../lib/thumbnailUrl'
 
 /** Delay before the preview opens: avoids flicker during fast cursor travel. */
-const PREVIEW_SHOW_DELAY_MS = 300
+const PREVIEW_SHOW_DELAY_MS = HOVER_POPUP_SHOW_DELAY_MS
 /** Grace period to move the pointer from the card onto the preview. */
 const PREVIEW_HIDE_DELAY_MS = 100
 

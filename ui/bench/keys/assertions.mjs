@@ -209,18 +209,19 @@ async function assertArrowTraversal(page, frame) {
   await sleep(40)
   const down = await describeActive(frame)
 
-  const moved =
-    (right.title && right.title !== before.title) ||
-    (down.title && down.title !== before.title) ||
-    right.kind !== before.kind ||
-    down.kind !== before.kind
+  // Grid position first (cards have no unique visible title), then title, then kind.
+  const changed = (a, b) =>
+    (a.cellId && b.cellId ? a.cellId !== b.cellId : false) ||
+    (a.title && a.title !== b.title) ||
+    a.kind !== b.kind
+  const moved = changed(right, before) || changed(down, before)
 
   if (!moved) {
     return result(
       'arrows-traverse',
       name,
       false,
-      `ArrowRight/Down did not move focus (stuck at ${before.kind}:${before.title || before.tag})`,
+      `ArrowRight/Down did not move focus (stuck at ${before.kind}:${before.cellId || before.title || before.tag})`,
     )
   }
 
@@ -281,7 +282,7 @@ async function assertArrowTraversal(page, frame) {
     'arrows-traverse',
     name,
     true,
-    `moved ${before.kind}→${right.kind}/${down.kind}; header+collapsed ok (${collapsed.category})`,
+    `moved ${before.kind}@${before.cellId}→${right.kind}@${right.cellId}/${down.kind}@${down.cellId}; header+collapsed ok (${collapsed.category})`,
   )
 }
 
@@ -422,8 +423,10 @@ async function assertFocusAfterKeyboardScroll(page, frame) {
       `activeElement left grid after PageDown×3 (kind=${after.kind} tag=${after.tag})`,
     )
   }
-  // Prefer same card title when still mounted; still PASS if any grid cell keeps focus.
-  const same = before.title && after.title && before.title === after.title
+  // Prefer the same cell (position, then title) when still mounted; still PASS if any grid cell keeps focus.
+  const same =
+    (before.cellId && after.cellId && before.cellId === after.cellId) ||
+    (before.title && after.title && before.title === after.title)
   return result(
     'focus-after-scroll',
     name,

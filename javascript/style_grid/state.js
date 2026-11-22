@@ -24,6 +24,8 @@ function createTabState() {
             sgFrameWrapper: null,
             sgPanelResize: null,
             sgV2HostInitSent: false,
+            /** Per-frame SG_INIT gate (handlers/styles-init.js), set by initSGFrame. */
+            sgStylesInitGate: null,
         };
     }
 

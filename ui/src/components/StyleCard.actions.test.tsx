@@ -126,7 +126,7 @@ describe('style card: delete and duplicate from the iframe', () => {
     it('menu Delete opens a confirmation naming the style and its real file; focus starts on Cancel', async () => {
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
-      await choose('Delete')
+      await choose('Delete…')
 
       const d = dialog()!
       expect(document.getElementById(d.getAttribute('aria-labelledby')!)!.textContent).toBe('Delete style?')
@@ -143,7 +143,7 @@ describe('style card: delete and duplicate from the iframe', () => {
     it('confirm: POST /style/delete, then DELETE /thumbnail, then a quiet SG_REFRESH; write token on both', async () => {
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
-      await choose('Delete')
+      await choose('Delete…')
       await act(async () => {
         dialogButton('Delete').click()
       })
@@ -173,7 +173,7 @@ describe('style card: delete and duplicate from the iframe', () => {
     it('Cancel sends nothing', async () => {
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
-      await choose('Delete')
+      await choose('Delete…')
       await act(async () => {
         dialogButton('Cancel').click()
       })
@@ -186,7 +186,7 @@ describe('style card: delete and duplicate from the iframe', () => {
       respond = () => ({ status: 404, body: { ok: false, error: 'Style not found' } })
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
-      await choose('Delete')
+      await choose('Delete…')
       await act(async () => {
         dialogButton('Delete').click()
       })
@@ -205,7 +205,7 @@ describe('style card: delete and duplicate from the iframe', () => {
       }))
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
-      await choose('Delete')
+      await choose('Delete…')
       await act(async () => {
         dialogButton('Delete').click()
       })
@@ -222,7 +222,7 @@ describe('style card: delete and duplicate from the iframe', () => {
           : { status: 200, body: { ok: true } }
       await renderCard(row('BODY_Tall_Amazon'))
       await openMenu()
-      await choose('Delete')
+      await choose('Delete…')
       await act(async () => {
         dialogButton('Delete').click()
       })
@@ -304,9 +304,9 @@ describe('style card: delete and duplicate from the iframe', () => {
     it('read-only style: Delete and Duplicate are dimmed, explain themselves and send nothing', async () => {
       await renderCard(row('BODY_Sample', { read_only: true }))
       await openMenu()
-      expect(menuItem('Delete')!.className).toContain('cursor-not-allowed')
+      expect(menuItem('Delete…')!.className).toContain('cursor-not-allowed')
       expect(menuItem('Duplicate')!.className).toContain('cursor-not-allowed')
-      await choose('Delete')
+      await choose('Delete…')
       expect(dialog()).toBeNull()
 
       await openMenu()
@@ -323,7 +323,7 @@ describe('style card: delete and duplicate from the iframe', () => {
       await renderCard(row('lora_thing', { source_file: LORA_SOURCE }))
       await openMenu()
       expect(menuItems().length).toBeGreaterThan(0)
-      expect(menuItem('Delete')).toBeUndefined()
+      expect(menuItem('Delete…')).toBeUndefined()
       expect(menuItem('Duplicate')).toBeUndefined()
     })
   })

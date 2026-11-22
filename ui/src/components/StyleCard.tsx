@@ -7,6 +7,7 @@ import {
   ImageMinus,
   ImageOff,
   ImagePlus,
+  Loader2,
   MoreHorizontal,
   Pencil,
   Sparkles,
@@ -23,6 +24,7 @@ import {
   useIsSelected,
   useStyleDuplicates,
   useHasThumbnail,
+  usePreviewJob,
   useStylesStore,
   useThumbVersion,
   type ViewMode,
@@ -164,6 +166,9 @@ export const StyleCard = memo(function StyleCard({
   /** ★ / ⋯ on hover: gallery tiles only. Grid tiles keep the plain look (right-click for the menu). */
   const showActions = hoverActions && gallery
   const thumbVersion = useThumbVersion(key)
+  /** Single preview generation for this tile (SG_THUMB_PROGRESS): a status, not an action. */
+  const previewJob = usePreviewJob(key)
+  const generating = previewJob === 'generating'
   const thumbSrc = thumbnailUrl(style, activeSource, thumbVersion)
   /** URL whose image failed to load; a new thumb version gives a new URL, so it retries. */
   const [failedThumbSrc, setFailedThumbSrc] = useState<string | null>(null)
@@ -222,6 +227,7 @@ export const StyleCard = memo(function StyleCard({
             tabIndex={tabIndex}
             aria-pressed={isSelected}
             aria-label={accessibleName}
+            aria-busy={generating || undefined}
             onFocus={() => {
               if (cellRow != null && cellCol != null) {
                 setFocusedCell({ row: cellRow, col: cellCol })
@@ -312,6 +318,17 @@ export const StyleCard = memo(function StyleCard({
                       className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-sg-accent"
                     />
                   )}
+                  {generating && (
+                    <div
+                      aria-hidden="true"
+                      data-sg-preview-generating="true"
+                      className="absolute inset-0 flex flex-col items-center justify-center gap-1
+                                 bg-sg-bg/60 text-sg-wildcard-text"
+                    >
+                      <Loader2 size={20} className="animate-spin motion-reduce:animate-none" />
+                      <span className="text-xs font-medium">Generating</span>
+                    </div>
+                  )}
                 </div>
                 <div
                   className="shrink-0 px-2 py-1.5 text-xs font-medium text-sg-text text-left line-clamp-2 break-words"
@@ -329,7 +346,22 @@ export const StyleCard = memo(function StyleCard({
               </div>
             )}
 
-            {!gallery && fav && (
+            {!gallery && previewJob && (
+              <span
+                aria-hidden="true"
+                data-sg-preview-status={previewJob}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex text-sg-wildcard-text"
+              >
+                {generating ? (
+                  <Loader2 size={12} className="animate-spin motion-reduce:animate-none" />
+                ) : (
+                  <Check size={12} />
+                )}
+              </span>
+            )}
+
+            {/* The status above takes the favorite indicator's place while it shows. */}
+            {!gallery && fav && !previewJob && (
               <Star
                 size={12}
                 fill="currentColor"
@@ -521,6 +553,8 @@ export const StyleCard = memo(function StyleCard({
               <div className="h-px my-1 bg-sg-border" role="separator" />
               <MenuItem
                 className={`flex items-center gap-2 ${previewReadOnlyClass}`}
+                // One generation per tile at a time.
+                disabled={generating}
                 onSelect={() => {
                   if (style.read_only) {
                     setMenuPos(null)

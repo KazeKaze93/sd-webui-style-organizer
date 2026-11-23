@@ -339,6 +339,22 @@ describe('VirtualStyleGrid expands truncated tile names', () => {
     expect(overlays()).toHaveLength(0)
   })
 
+  it('rows rebuilt with the same styles (a favorite toggle) keep it; a filter that drops a style hides it', async () => {
+    await renderGrid()
+    await hover(tile('Long Zero'))
+    expect(overlays()).toHaveLength(1)
+    const key = styleRowKey(STYLES[0])
+    await act(async () => {
+      useStylesStore.setState({ favorites: new Set([key]) })
+    })
+    // The page rebuilds the groups and rows on a favorite toggle: same styles, new arrays.
+    await renderGrid({ styles: [...STYLES] })
+    expect(overlay().textContent).toBe('Long Zero')
+    expect(overlay().querySelector('.text-sg-warning-text')).not.toBeNull()
+    await renderGrid({ styles: STYLES.filter((s) => s !== STYLES[STYLES.length - 1]) })
+    expect(overlays()).toHaveLength(0)
+  })
+
   it('a context menu hides it (capture phase, the card stops the event)', async () => {
     await renderGrid()
     await hover(tile('Long Zero'))

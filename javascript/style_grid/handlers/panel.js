@@ -28,10 +28,17 @@ import {
     syncWildcards,
 } from "./wildcards.js";
 import { postToFrame } from "../post-message.js";
+import {
+    createSharedStylesFetch,
+    onCatalogChanged,
+} from "./catalog-poll.js";
 
 var LORA_SOURCE_SENTINEL = "__style_grid_lora__";
 
 let _pollInterval = null;
+
+/** The polling loop's catalog request: one per detected change, shared by both tabs. */
+var fetchCatalogForChange = createSharedStylesFetch(apiGet);
 
 function loadStyles(tabName) {
         const dataEl = qs("#style_grid_data_" + tabName + " textarea");
@@ -81,10 +88,16 @@ function syncPanelHostState(tabName) {
         loadThumbnailList(tabName);
     }
 
+/**
+ * Reload host state for a tab from the catalog. opts.stylesRequest: a catalog
+ * request already in flight (the polling loop shares one); without it the
+ * panel makes its own, as the Refresh button path does.
+ */
 function refreshPanel(tabName, opts) {
         opts = opts || {};
         var quietVanishedToast = !!opts.quietVanishedToast;
-        apiGet("/style_grid/styles").then(function (data) {
+        var stylesRequest = opts.stylesRequest || apiGet("/style_grid/styles");
+        stylesRequest.then(function (data) {
             if (data && Object.prototype.hasOwnProperty.call(data, "presets")) {
                 state[tabName].presets = data.presets || {};
             }
@@ -214,40 +227,47 @@ function refreshPanel(tabName, opts) {
         });
     }
 
+/** A tab's catalog after a CSV change: host categories, then SG_STYLES_UPDATE to its iframe. */
+function applyCatalogUpdate(t, data) {
+        var styles = [];
+        if (Array.isArray(data)) {
+            styles = data;
+        } else if (data.categories) {
+            styles = Object.values(data.categories).flat();
+        } else if (data.styles) {
+            styles = data.styles;
+        }
+        state[t].categories = {};
+        styles.forEach(function (s) {
+            var cat = s.category || "OTHER";
+            if (!state[t].categories[cat]) state[t].categories[cat] = [];
+            state[t].categories[cat].push(s);
+        });
+        var frame = state[t] && state[t].sgFrame;
+        if (frame && frame.contentWindow) {
+            // Full list for v2: dedupe by name only in iframe when "All sources" (selectFilteredStyles).
+            var v2styles = Object.values(state[t].categories).flat();
+            postToFrame(frame, {
+                type: "SG_STYLES_UPDATE",
+                styles: v2styles
+            });
+        }
+    }
+
 function startPolling() {
         if (_pollInterval) return;
         _pollInterval = setInterval(function () {
             apiGet("/style_grid/check_update").then(function (r) {
                 if (r && r.changed) {
-                    ["txt2img", "img2img"].forEach(function (t) {
+                    // One catalog request per change, shared by refreshPanel and the
+                    // SG_STYLES_UPDATE of both tabs.
+                    onCatalogChanged(["txt2img", "img2img"], {
+                        fetchStyles: fetchCatalogForChange,
                         // Gate on v2 host handshake, not legacy .sg-overlay — otherwise apply-restore
                         // never runs on CSV changes while SG_STYLES_UPDATE still refreshes the iframe list.
-                        if (state[t].sgV2HostInitSent) refreshPanel(t);
-                        apiGet("/style_grid/styles").then(function (data) {
-                            var styles = [];
-                            if (Array.isArray(data)) {
-                                styles = data;
-                            } else if (data.categories) {
-                                styles = Object.values(data.categories).flat();
-                            } else if (data.styles) {
-                                styles = data.styles;
-                            }
-                            state[t].categories = {};
-                            styles.forEach(function (s) {
-                                var cat = s.category || "OTHER";
-                                if (!state[t].categories[cat]) state[t].categories[cat] = [];
-                                state[t].categories[cat].push(s);
-                            });
-                            var frame = state[t] && state[t].sgFrame;
-                            if (frame && frame.contentWindow) {
-                                // Full list for v2: dedupe by name only in iframe when "All sources" (selectFilteredStyles).
-                                var v2styles = Object.values(state[t].categories).flat();
-                                postToFrame(frame, {
-                                    type: "SG_STYLES_UPDATE",
-                                    styles: v2styles
-                                });
-                            }
-                        });
+                        isInitSent: function (t) { return !!state[t].sgV2HostInitSent; },
+                        refresh: refreshPanel,
+                        update: applyCatalogUpdate,
                     });
                 }
             }).catch(function () {});

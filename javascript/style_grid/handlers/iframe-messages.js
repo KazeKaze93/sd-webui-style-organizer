@@ -64,6 +64,12 @@ import {
 import {
     applyRefresh,
 } from "./refresh.js";
+import {
+    refreshTabCatalog,
+} from "./catalog-poll.js";
+import {
+    apiGet,
+} from "../api.js";
 /**
  * Fetch the catalog, fill the host-side style cache (applyStyleImmediate) and
  * post SG_INIT to the frame. Called only through the per-frame styles-init gate.
@@ -162,20 +168,19 @@ function installIframeMessageBridge(tab, frame) {
                 setHostPageScrollLock(anySGFrameVisible());
             }
 
-            // Shared by SG_REFRESH and SG_STYLE_RENAMED: host state first, then the iframe catalog.
-            // opts go to refreshPanel (quietVanishedToast).
+            // Shared by SG_REFRESH and SG_STYLE_RENAMED: one catalog request for the host
+            // state (refreshPanel, opts: quietVanishedToast) and the iframe catalog.
             function refreshHostAndFrame(refreshTab, opts) {
-                refreshPanel(refreshTab, opts);
-                fetch("/style_grid/check_update")
-                    .then(function () { return fetch("/style_grid/styles"); })
-                    .then(function (r) { return r.json(); })
-                    .then(function (data) {
+                refreshTabCatalog(refreshTab, opts, {
+                    get: apiGet,
+                    refresh: refreshPanel,
+                    update: function (updateTab, data) {
                         var allStyles = Array.isArray(data) ? data : Object.values(data.categories || {}).flat();
-                        state[refreshTab].categories = {};
+                        state[updateTab].categories = {};
                         allStyles.forEach(function (s) {
                             var cat = s.category || "OTHER";
-                            if (!state[refreshTab].categories[cat]) state[refreshTab].categories[cat] = [];
-                            state[refreshTab].categories[cat].push(s);
+                            if (!state[updateTab].categories[cat]) state[updateTab].categories[cat] = [];
+                            state[updateTab].categories[cat].push(s);
                         });
                         if (frame.contentWindow) {
                             postToFrame(frame, {
@@ -183,7 +188,8 @@ function installIframeMessageBridge(tab, frame) {
                                 styles: allStyles
                             });
                         }
-                    });
+                    },
+                });
             }
 
             if (msg.type === "SG_REFRESH") {

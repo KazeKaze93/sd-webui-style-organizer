@@ -51,8 +51,10 @@ describe('iframe-messages.js wiring', () => {
     expect(IFRAME_MESSAGES_SRC).toMatch(
       /msg\.type === "SG_REFRESH"\) \{\s*applyRefresh\(tab, msg, \{ refresh: refreshHostAndFrame \}\);/,
     )
+    // refreshTabCatalog (catalog-poll.js) passes opts on to refreshPanel with the
+    // shared catalog request; covered in hostCatalogPoll.test.ts.
     expect(IFRAME_MESSAGES_SRC).toMatch(
-      /function refreshHostAndFrame\(refreshTab, opts\) \{\s*refreshPanel\(refreshTab, opts\);/,
+      /function refreshHostAndFrame\(refreshTab, opts\) \{\s*refreshTabCatalog\(refreshTab, opts, \{\s*get: apiGet,\s*refresh: refreshPanel,/,
     )
   })
 })

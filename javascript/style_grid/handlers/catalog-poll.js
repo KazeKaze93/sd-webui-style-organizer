@@ -58,7 +58,43 @@ function onCatalogChanged(tabs, deps) {
     return request;
 }
 
+/**
+ * The Refresh button and SG_STYLE_RENAMED for one tab: check_update, then one
+ * catalog request shared by refreshPanel (host state) and the iframe's
+ * SG_STYLES_UPDATE. They used to make a request each. A failed check_update
+ * does not stop the catalog request: GET /style_grid/styles re-checks the
+ * files itself.
+ *
+ * @param {string} tab
+ * @param {object|undefined} opts refreshPanel options (quietVanishedToast)
+ * @param {{
+ *   get: function(string): Promise<*>,
+ *   refresh: function(string, object): void,
+ *   update: function(string, *): void,
+ *   onUpdateError?: function(*): void,
+ * }} deps get: e.g. api.js apiGet; onUpdateError is for tests only, as in
+ *   onCatalogChanged
+ * @returns {Promise<*>} the catalog request
+ */
+function refreshTabCatalog(tab, opts, deps) {
+    var getStyles = function () {
+        return deps.get("/style_grid/styles");
+    };
+    var request = deps.get("/style_grid/check_update").then(getStyles, getStyles);
+    var refreshOpts = {};
+    Object.keys(opts || {}).forEach(function (key) {
+        refreshOpts[key] = opts[key];
+    });
+    refreshOpts.stylesRequest = request;
+    deps.refresh(tab, refreshOpts);
+    request.then(function (data) {
+        deps.update(tab, data);
+    }, deps.onUpdateError);
+    return request;
+}
+
 export {
     createSharedStylesFetch,
     onCatalogChanged,
+    refreshTabCatalog,
 };

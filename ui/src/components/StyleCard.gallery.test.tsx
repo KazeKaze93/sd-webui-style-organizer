@@ -6,7 +6,7 @@ import type { Style } from '../bridge'
 import { __resetGridFocusForTests } from '../lib/gridFocus'
 import { __resetLayerStackForTests } from '../lib/layerStack'
 import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
-import { GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
+import { CARD_HEIGHT_NORMAL_PX, CARD_HEIGHT_WINDOWED_PX, GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
 import { StyleCard } from './StyleCard'
 
 vi.mock('../bridge', async () => {
@@ -106,6 +106,25 @@ describe('StyleCard in gallery', () => {
     expect(b.getAttribute('aria-label')).toBe('Tall Amazon')
     expect(b.style.height).toBe(`${CARD_H}px`)
     expect(card().querySelector('[data-sg-gallery-label]')!.textContent).toBe('Tall Amazon')
+  })
+
+  it('gallery card and name block heights do not follow the grid tile height', async () => {
+    const s = style({ name: 'BODY_A very long style name that wraps onto more than two lines in the gallery' })
+    setStore([s], [s])
+    for (const windowed of [true, false]) {
+      await act(async () => {
+        root!.render(
+          <StyleCard style={s} viewMode="gallery" windowed={windowed} galleryCardHeightPx={CARD_H} cellRow={0} cellCol={0} tabIndex={0} />,
+        )
+      })
+      expect(card().style.height).toBe(`${CARD_H}px`)
+      expect(card().style.height).not.toBe(`${windowed ? CARD_HEIGHT_WINDOWED_PX : CARD_HEIGHT_NORMAL_PX}px`)
+      const label = card().querySelector<HTMLElement>('[data-sg-gallery-label]')!
+      expect(GALLERY_LABEL_HEIGHT_PX).toBe(44)
+      expect(label.style.height).toBe('44px')
+      expect(label.className).toBe('shrink-0 px-2 py-1.5 text-xs font-medium text-sg-text text-left line-clamp-2 break-words')
+      expect(card().querySelector('[data-sg-grid-label]')).toBeNull()
+    }
   })
 
   it('renders <img> when the style key is in thumbKeys', async () => {

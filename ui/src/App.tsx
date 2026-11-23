@@ -368,28 +368,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    let attempts = 0
-    const focusFirstCell = () => {
-      if (cancelled) return
-      const cell = document.querySelector<HTMLElement>('[data-sg-card]')
-      if (cell) {
-        cell.focus()
-        return
-      }
-      attempts += 1
-      if (attempts < 30) {
-        window.setTimeout(focusFirstCell, 50)
-      }
-    }
-    const raf = requestAnimationFrame(focusFirstCell)
-    return () => {
-      cancelled = true
-      cancelAnimationFrame(raf)
-    }
-  }, [])
-
   // The host owns the panel frame. Ask; isFullscreen changes only when the
   // host answers with SG_FULLSCREEN_STATE (see the host message effect).
   const toggleFullscreen = () => {

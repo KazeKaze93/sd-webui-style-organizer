@@ -6,7 +6,7 @@ import type { Style } from '../bridge'
 import { __resetGridFocusForTests, getFocusedCell, setFocusedCell } from '../lib/gridFocus'
 import { __resetLayerStackForTests, closeTopLayer } from '../lib/layerStack'
 import { LORA_SOURCE, styleRowKey, useStylesStore } from '../store/stylesStore'
-import { GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
+import { CARD_HEIGHT_NORMAL_PX, CARD_HEIGHT_WINDOWED_PX, GALLERY_LABEL_HEIGHT_PX } from './grid/constants'
 import { GridScroller } from './grid/GridScroller'
 import { StyleCard } from './StyleCard'
 import { StyleGrid } from './StyleGrid'
@@ -395,6 +395,27 @@ describe('grid tile: no hover icons', () => {
     expect(menu()).not.toBeNull()
     expect(menu()!.style.left).toBe('30px')
     expect(menuTexts()).toContain('Remove from favorites')
+  })
+
+  it('a long name stays on one line (truncated), with no title attribute; the accessible name keeps it all', async () => {
+    const name = 'A very long style name that does not fit Supercalifragilisticexpialidociousending'
+    const s = style({ name: `BODY_${name}` })
+    setStore([s], { selectedStyles: [s], selectedKeySet: new Set([styleRowKey(s)]) })
+    for (const windowed of [true, false]) {
+      await act(async () => {
+        root!.render(<StyleCard style={s} viewMode="grid" windowed={windowed} cellRow={0} cellCol={0} tabIndex={0} />)
+      })
+      const label = card().querySelector<HTMLElement>('[data-sg-grid-label]')!
+      expect(label.textContent).toBe(name)
+      expect(label.className).toBe(`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`)
+      expect(label.className).not.toContain('line-clamp-2')
+      expect(card().className).toContain(windowed ? 'p-2' : 'p-3')
+      expect(card().className).not.toContain('items-center')
+      expect(card().style.height).toBe(`${(windowed ? CARD_HEIGHT_WINDOWED_PX : CARD_HEIGHT_NORMAL_PX)}px`)
+      expect(card().getAttribute('aria-label')).toBe(name)
+      expect(host!.querySelector('[title]')).toBeNull()
+      expect(card().querySelector('.rounded-full.bg-sg-accent')!.className).toContain('right-2')
+    }
   })
 })
 

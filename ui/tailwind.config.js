@@ -1,6 +1,7 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // Tests are not scanned: words in test names would become utilities in the built CSS.
+  content: ['./index.html', './src/**/*.{ts,tsx}', '!./src/**/*.test.{ts,tsx}'],
   theme: {
     extend: {
       colors: {

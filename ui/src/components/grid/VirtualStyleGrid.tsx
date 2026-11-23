@@ -484,10 +484,24 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
   // (gallery labels wrap already; slice mode is not virtualized).
   const expandEnabled = viewMode !== 'gallery' && !renderCard
 
+  // Rows are rebuilt on any store change (a favorite toggle too). Only a change in
+  // which styles sit in which rows counts as a new layout.
+  const rowsLayoutKey = useMemo(
+    () =>
+      rows
+        .map((row) =>
+          row.kind === 'cards'
+            ? row.styles.map(styleRowKey).join('\u0001')
+            : `\u0002${row.category}\u0002${row.collapsed ? 1 : 0}`,
+        )
+        .join('\u0003'),
+    [rows],
+  )
+
   // A new layout (category, search, resize, fullscreen, density, view) drops the expansion.
   useEffect(() => {
     clearTileExpand()
-  }, [rows, columns, widthPx, windowed, viewMode])
+  }, [rowsLayoutKey, columns, widthPx, windowed, viewMode])
 
   useEffect(() => {
     const onWindowBlur = () => clearTileExpand()

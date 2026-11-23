@@ -1,7 +1,9 @@
+import { ROW_GAP_NORMAL_PX, cardRowHeightPx } from '../../src/components/grid/constants.ts'
+
 /**
  * Grid layout invariants (bench-only).
  *
- * Mirrors ui/src/components/grid/constants.ts — keep in sync when metrics change.
+ * Metrics come from ui/src/components/grid/constants.ts (Node strips the types).
  *
  * For every density × (top | after 3 screens):
  *   (1) card height <= CARD_ROW_HEIGHT - ROW_GAP + 0.5
@@ -23,12 +25,12 @@ export const SCROLL_SCREENS = 3
  */
 export const DENSITY_METRICS = Object.freeze({
   normal: Object.freeze({
-    cardRowHeight: 42, // CARD_ROW_HEIGHT_WINDOWED_PX = 34 + 8
-    rowGap: 8, // ROW_GAP_NORMAL_PX
+    cardRowHeight: cardRowHeightPx(true),
+    rowGap: ROW_GAP_NORMAL_PX,
   }),
   fullscreen: Object.freeze({
-    cardRowHeight: 54, // CARD_ROW_HEIGHT_NORMAL_PX = 46 + 8
-    rowGap: 8,
+    cardRowHeight: cardRowHeightPx(false),
+    rowGap: ROW_GAP_NORMAL_PX,
   }),
 })
 

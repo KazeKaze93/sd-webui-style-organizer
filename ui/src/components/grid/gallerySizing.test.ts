@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CARD_HEIGHT_NORMAL_PX,
+  CARD_HEIGHT_WINDOWED_PX,
   GALLERY_LABEL_HEIGHT_PX,
+  ROW_GAP_NORMAL_PX,
   autoFillGridClass,
   cardRowHeightPx,
   galleryCardHeightPx,
@@ -60,5 +63,11 @@ describe('gallery sizing', () => {
     expect([gridMinVisibleHeightPx(true), gridMinVisibleHeightPx(false)]).toEqual([124, 148])
     expect(autoFillGridClass(true)).toBe('grid content-start grid-cols-[repeat(auto-fill,minmax(110px,1fr))] gap-2')
     expect(autoFillGridClass(false)).toBe('grid content-start grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2')
+  })
+
+  it('card row height = card height + row gap, for both panel sizes', () => {
+    expect([CARD_HEIGHT_WINDOWED_PX, CARD_HEIGHT_NORMAL_PX]).toEqual([34, 46])
+    expect(cardRowHeightPx(true)).toBe(CARD_HEIGHT_WINDOWED_PX + ROW_GAP_NORMAL_PX)
+    expect(cardRowHeightPx(false)).toBe(CARD_HEIGHT_NORMAL_PX + ROW_GAP_NORMAL_PX)
   })
 })

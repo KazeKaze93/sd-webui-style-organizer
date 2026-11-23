@@ -40,6 +40,7 @@ import {
   GALLERY_LABEL_HEIGHT_PX,
   ROW_GAP_NORMAL_PX,
 } from './grid/constants'
+import { GridTileFace } from './grid/GridTileFace'
 import { DeleteStyleDialog } from './DeleteStyleDialog'
 import { MoveToCategoryDialog } from './MoveToCategoryDialog'
 import { StyleEditorDialog } from './StyleEditorDialog'
@@ -264,6 +265,7 @@ export const StyleCard = memo(function StyleCard({
               ${gallery ? 'p-0 flex flex-col' : windowed ? 'p-2' : 'p-3'}
               select-none transition-colors w-full text-left
               transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]
+              ${gallery ? '' : 'data-[sg-expanded=true]:!scale-100'}
               motion-reduce:transition-none motion-reduce:transform-none
               ${FOCUS_RING}
               ${isSelected
@@ -271,16 +273,16 @@ export const StyleCard = memo(function StyleCard({
                 : 'border-sg-border bg-sg-surface hover:border-sg-accent/50'}
             `}
           >
-            {/* Category accent — separate strip avoids asymmetric border-radius bleed onto the name */}
-            {!isSelected && (
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px]"
-                style={{ backgroundColor: borderColor }}
-              />
-            )}
             {gallery ? (
               <>
+                {/* Category accent — separate strip avoids asymmetric border-radius bleed onto the name */}
+                {!isSelected && (
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-y-0 left-0 z-10 w-[3px]"
+                    style={{ backgroundColor: borderColor }}
+                  />
+                )}
                 <div className="relative min-h-0 flex-1 overflow-hidden" data-sg-gallery-thumb="true">
                   {showThumb ? (
                     <img
@@ -339,45 +341,13 @@ export const StyleCard = memo(function StyleCard({
                 </div>
               </>
             ) : (
-              <div
-                className={`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`}
-              >
-                {displayName}
-              </div>
-            )}
-
-            {!gallery && previewJob && (
-              <span
-                aria-hidden="true"
-                data-sg-preview-status={previewJob}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 flex text-sg-wildcard-text"
-              >
-                {generating ? (
-                  <Loader2 size={12} className="animate-spin motion-reduce:animate-none" />
-                ) : (
-                  <Check size={12} />
-                )}
-              </span>
-            )}
-
-            {/* The status above takes the favorite indicator's place while it shows. */}
-            {!gallery && fav && !previewJob && (
-              <Star
-                size={12}
-                fill="currentColor"
-                className={cn(
-                  'absolute top-1.5 right-1.5 text-sg-warning-text',
-                  showActions && (menuPos ? 'opacity-0' : TILE_HOVER_HIDE),
-                )}
-                aria-hidden="true"
-              />
-            )}
-
-            {/* Selected indicator */}
-            {!gallery && isSelected && (
-              <div
-                aria-hidden="true"
-                className="absolute bottom-2 right-2 h-1.5 w-1.5 rounded-full bg-sg-accent"
+              <GridTileFace
+                displayName={displayName}
+                windowed={windowed}
+                isSelected={isSelected}
+                fav={fav}
+                previewJob={previewJob}
+                categoryColor={borderColor}
               />
             )}
           </button>

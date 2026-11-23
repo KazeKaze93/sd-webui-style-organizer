@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createSharedStylesFetch,
   onCatalogChanged,
+  refreshTabCatalog,
 } from '../../../javascript/style_grid/handlers/catalog-poll.js'
 
 type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void; reject: (e: unknown) => void }
@@ -122,6 +123,61 @@ describe('onCatalogChanged', () => {
     await flush()
     expect(get).toHaveBeenCalledTimes(2)
     expect(update).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('refreshTabCatalog (Refresh button, SG_STYLE_RENAMED)', () => {
+  const setup = (fail: { check?: boolean; styles?: boolean } = {}) => {
+    const get = vi.fn(async (url: string) => {
+      if (url === '/style_grid/check_update' && fail.check) throw new Error('check failed')
+      if (url === '/style_grid/styles' && fail.styles) throw new Error('offline')
+      return url === '/style_grid/styles' ? CATALOG : { changed: false }
+    })
+    const refresh = vi.fn()
+    const update = vi.fn()
+    const onUpdateError = vi.fn()
+    return { get, refresh, update, onUpdateError, deps: { get, refresh, update, onUpdateError } }
+  }
+
+  it('check_update, then one catalog request shared by refreshPanel and the iframe update', async () => {
+    const { get, refresh, update, deps } = setup()
+    const request = refreshTabCatalog('img2img', { quietVanishedToast: true }, deps)
+    await request
+    await flush()
+    expect(get.mock.calls.map(([url]) => url)).toEqual(['/style_grid/check_update', '/style_grid/styles'])
+    expect(refresh).toHaveBeenCalledTimes(1)
+    expect(refresh).toHaveBeenCalledWith('img2img', { quietVanishedToast: true, stylesRequest: request })
+    expect(update).toHaveBeenCalledWith('img2img', CATALOG)
+  })
+
+  it('opts are copied, not changed; no opts still pass the request', () => {
+    const { refresh, deps } = setup()
+    const opts = { quietVanishedToast: false }
+    refreshTabCatalog('txt2img', opts, deps)
+    refreshTabCatalog('txt2img', undefined, deps)
+    expect(opts).toEqual({ quietVanishedToast: false })
+    expect(Object.keys(refresh.mock.calls[1][1] as object)).toEqual(['stylesRequest'])
+  })
+
+  it('a failed check_update still requests the catalog', async () => {
+    const { get, update, deps } = setup({ check: true })
+    await refreshTabCatalog('txt2img', {}, deps)
+    await flush()
+    expect(get.mock.calls.map(([url]) => url)).toEqual(['/style_grid/check_update', '/style_grid/styles'])
+    expect(update).toHaveBeenCalledWith('txt2img', CATALOG)
+  })
+
+  it('a failed catalog request reaches both error paths once', async () => {
+    const { get, refresh, update, onUpdateError, deps } = setup({ styles: true })
+    const request = refreshTabCatalog('txt2img', {}, deps)
+    const refreshError = vi.fn()
+    ;(refresh.mock.calls[0][1] as { stylesRequest: Promise<unknown> }).stylesRequest.catch(refreshError)
+    await request.catch(() => undefined)
+    await flush()
+    expect(get.mock.calls.filter(([url]) => url === '/style_grid/styles')).toHaveLength(1)
+    expect(refreshError).toHaveBeenCalledTimes(1)
+    expect(onUpdateError).toHaveBeenCalledTimes(1)
+    expect(update).not.toHaveBeenCalled()
   })
 })
 

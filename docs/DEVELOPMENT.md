@@ -77,7 +77,7 @@ The floating panel iframe loads **`GET /style_grid/ui`** (registered in `stylegr
 
 **`shadcn`:** listed under `ui` **devDependencies**. The app only `@import "shadcn/tailwind.css"` at build time; the package is the CLI (and its MCP/express subtree), not a runtime dependency.
 
-**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`, **`matchesSearch`**, **`matchesNameSearch`**). Favorites / Recent / **🧬 LoRA** (`LORA_VIEW`) are special branches; the **Presets** sidebar entry short-circuits to **`PresetList`** (not a `selectFilteredStyles` branch). Normal category views **exclude** `source_file === LORA_SOURCE`. **`StyleGrid`** and **`Sidebar`** use Zustand **`useShallow`**. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`**.
+**V2 store / grid:** filtering for the style grid is implemented as an exported pure function **`selectFilteredStyles(...)`** in `ui/src/store/stylesStore.ts` (shared helpers include `dedupeStylesByNameForAllSources`, **`matchesSearch`**, **`matchesNameSearch`**). Favorites / **🧬 LoRA** (`LORA_VIEW`) are special branches; the **Presets** sidebar entry short-circuits to **`PresetList`** (not a `selectFilteredStyles` branch). Normal category views **exclude** `source_file === LORA_SOURCE`. **`StyleGrid`** and **`Sidebar`** use Zustand **`useShallow`**. **`StyleGrid`** wraps **`selectFilteredStyles`** in **`useMemo`**.
 
 **LoRA:** `get_cached_styles()` returns CSV cache + `get_cached_lora_styles()`. Optional roots: gitignored `config/lora_roots.json`. Title fetch is iframe-only (`App.tsx` → `POST /style_grid/lora/fetch_titles`); poll status every 1.5s while running. After titles land, reopen the panel so `/styles` reloads with `display_name`.
 ## Message Bridge (Host <-> Frame)
@@ -199,6 +199,8 @@ git config core.hooksPath .githooks
 ```
 
 `pre-push` runs an EOL guard (`git ls-files --eol` must not show `i/crlf` / `w/crlf`; no CR bytes in committed `ui/dist`), root lint, pytest (min count), UI typecheck/lint/vitest, then rebuilds the UI and requires `git diff --exit-code -- ui/dist` (committed bundle matches a clean build). A failing gate aborts the push.
+
+**README screenshots:** `cd ui && node bench/screenshots/capture.mjs` builds the bench preview, drives the real panel with Playwright against a neutral demo library (`ui/bench/screenshots/dataset.mjs`, every `/style_grid/*` request answered by the script) and writes `docs/screenshots/*.png`. See `docs/screenshots/README.md`.
 
 Gaps worth knowing: host `javascript/style_grid.mjs` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 

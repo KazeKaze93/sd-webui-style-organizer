@@ -33,11 +33,12 @@ npx tsc --noEmit -p tsconfig.test.json
 ## Key Files
 
 - `src/App.tsx`: top-level layout and toolbar actions (including **🌐** LoRA title fetch when `activeCategory === LORA_VIEW`).
-- `src/store/stylesStore.ts`: Zustand state; **`LORA_SOURCE`** / **`LORA_VIEW`**; exported **`selectFilteredStyles`**, **`matchesSearch`**, **`matchesNameSearch`** (token AND search; description strips `Combos:`/`Conflicts:`; Favorites/Recent/presets honor search + source).
+- `src/store/stylesStore.ts`: Zustand state; **`LORA_SOURCE`** / **`LORA_VIEW`**; exported **`selectFilteredStyles`**, **`matchesSearch`**, **`matchesNameSearch`** (token AND search; description strips `Combos:`/`Conflicts:`; Favorites/presets honor search + source).
 - `src/bridge.ts`: typed SG_* postMessage contract; **`SG_APPLY` / `SG_THUMB_DONE` / preview messages require `source_file` or `source`**; optional **`Style.display_name`**.
-- `src/components/StyleGrid.tsx`: main grid; **`useShallow`** + **`useMemo(selectFilteredStyles(...))`**; LoRA view groups by category like Favorites/Recent; Favorites/Recent keyed by **`styleRowKey`**.
-- `src/components/Sidebar.tsx`: categories + special views (Favorites, Recent, **🧬 LoRA** when at least one LoRA was scanned).
-- `src/components/StyleCard.tsx` / `ThumbnailPreview.tsx`: prefer `display_name` for labels; LoRA cards hide edit/preview/delete menu actions; thumbnail cache-bust matches **name+source** on `SG_THUMB_DONE`.
+- `src/components/StyleGrid.tsx`: main grid; **`useShallow`** + **`useMemo(selectFilteredStyles(...))`**; LoRA view groups by category like Favorites; Favorites keyed by **`styleRowKey`**.
+- `src/components/grid/`: the virtualized grid (`VirtualStyleGrid.tsx`, fixed row height from `constants.ts`); `GridTileFace.tsx` is the tile's look, shared by `StyleCard` and `ExpandedTileOverlay.tsx`, which shows a truncated name whole on hover or keyboard focus (`lib/tileExpand.ts`, `lib/tileLabelMetrics.ts`, `lib/isFocusVisible.ts`).
+- `src/components/Sidebar.tsx`: categories + special views (Favorites, **🧬 LoRA** when at least one LoRA was scanned, Presets).
+- `src/components/StyleCard.tsx`: prefers `display_name` for labels; LoRA cards hide edit/preview/delete menu actions; thumbnail cache-bust matches **name+source** on `SG_THUMB_DONE`.
 - `src/components/*`: other UI (sidebar, modals, etc.).
 
 ## Integration Flow

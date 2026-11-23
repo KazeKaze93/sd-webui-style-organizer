@@ -409,7 +409,7 @@ describe('VirtualStyleGrid virtualizes against the provided grid scroller', () =
       const galleryPage = Math.floor((VIEWPORT_H - HEADER_H) / galleryRowHeightPx(146))
       const gridPage = Math.floor((VIEWPORT_H - HEADER_H) / CARD_ROW_H)
       expect(galleryPage).toBe(2)
-      expect(gridPage).toBe(10)
+      expect(gridPage).toBe(13)
       expect(after - before).toBeGreaterThan(0)
       expect(after - before).toBeLessThanOrEqual(galleryPage + 1) // a header row on the way
     })

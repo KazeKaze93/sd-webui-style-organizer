@@ -397,8 +397,8 @@ describe('grid tile: no hover icons', () => {
     expect(menuTexts()).toContain('Remove from favorites')
   })
 
-  it('a long name wraps to two lines at most, with no title attribute; the accessible name keeps it all', async () => {
-    const name = 'A very long style name that needs two lines Supercalifragilisticexpialidociousending'
+  it('a long name stays on one line (truncated), with no title attribute; the accessible name keeps it all', async () => {
+    const name = 'A very long style name that does not fit Supercalifragilisticexpialidociousending'
     const s = style({ name: `BODY_${name}` })
     setStore([s], { selectedStyles: [s], selectedKeySet: new Set([styleRowKey(s)]) })
     for (const windowed of [true, false]) {
@@ -407,14 +407,10 @@ describe('grid tile: no hover icons', () => {
       })
       const label = card().querySelector<HTMLElement>('[data-sg-grid-label]')!
       expect(label.textContent).toBe(name)
-      expect(label.className).toContain('line-clamp-2')
-      expect(label.className).toContain('break-words')
-      // Room on the right for the selected dot, the star and the preview status.
-      expect(label.className).toContain('pr-4')
-      expect(label.className).not.toContain('truncate')
-      expect(label.className).toContain(windowed ? 'leading-[14px]' : 'leading-4')
-      // Single-line names sit in the middle of the tile.
-      expect(card().className).toContain('items-center')
+      expect(label.className).toBe(`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`)
+      expect(label.className).not.toContain('line-clamp-2')
+      expect(card().className).toContain(windowed ? 'p-2' : 'p-3')
+      expect(card().className).not.toContain('items-center')
       expect(card().style.height).toBe(`${(windowed ? CARD_HEIGHT_WINDOWED_PX : CARD_HEIGHT_NORMAL_PX)}px`)
       expect(card().getAttribute('aria-label')).toBe(name)
       expect(host!.querySelector('[title]')).toBeNull()

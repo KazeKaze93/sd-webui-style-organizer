@@ -261,7 +261,7 @@ export const StyleCard = memo(function StyleCard({
             }}
             className={`
               relative overflow-hidden cursor-pointer rounded-lg border
-              ${gallery ? 'p-0 flex flex-col' : windowed ? 'p-2 flex items-center' : 'p-3 flex items-center'}
+              ${gallery ? 'p-0 flex flex-col' : windowed ? 'p-2' : 'p-3'}
               select-none transition-colors w-full text-left
               transition-transform duration-150 hover:scale-[1.02] active:scale-[0.98]
               motion-reduce:transition-none motion-reduce:transform-none
@@ -339,9 +339,8 @@ export const StyleCard = memo(function StyleCard({
                 </div>
               </>
             ) : (
-              // Two lines at most; pr-4 keeps the name clear of the dot, star and status on the right.
               <div
-                className={`${windowed ? 'text-xs leading-[14px]' : 'text-sm leading-4'} min-w-0 flex-1 line-clamp-2 break-words pr-4 font-medium text-sg-text`}
+                className={`${windowed ? 'text-xs' : 'text-sm'} min-w-0 truncate pr-4 font-medium text-sg-text`}
                 data-sg-grid-label="true"
               >
                 {displayName}

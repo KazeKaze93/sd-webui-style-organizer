@@ -6,9 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [5.5.0] - 2026-11-23
+
+### Added
+
+- **Gallery view:** a Grid / Gallery switch in the header. Gallery tiles show each style's preview with its name; selecting, favorites, the style menu and arrow keys work as in the grid. The choice is remembered in this browser.
+- **Long names on grid tiles:** tiles stay one line high. Hovering a tile whose name is cut off, or reaching it with Tab or the arrow keys, shows the whole name on top of its neighbours without moving the grid; a name wider than the grid wraps. Clicks still go to the tile underneath. The gallery and the slice mode do not expand tiles.
+- **Style dialogs inside the panel:** New style, Edit (including a new name), Duplicate, Move to category and Delete open in the panel. A renamed style keeps its thumbnail, favorite and preset entries.
+- **Presets as cards:** the Presets view shows each set with its styles and wildcards (missing styles are marked), an **Apply** or **Applied · Remove** button and a ⋯ menu with Rename… and Delete…. The last tile saves the current selection as a new set.
+- **Conflicts popover:** the amber **N conflicts** chip in the selection tray lists each pair of selected styles whose negative prompt removes the other's tags, with **Remove** for either style or **Keep both**.
+- **Preview progress in the panel:** a category batch (**Generate previews…**) shows its progress in the category header and in the line at the bottom of the sidebar, with **Skip** and **Cancel**, then the result. A single preview shows a spinner on its tile. The separate progress window is gone.
+- **Empty views explain themselves:** no styles, no favorites, no LoRAs, or nothing matching the search, source or category, each with the next step (Import CSV…, Clear search, Show all categories…).
+- **Panel window:** resize it from any edge; its size and position are remembered.
+
+### Changed
+
+- **One-row header:** source, search, Grid / Gallery, **Clear prompts and selection**, New style, ⋯ More (Import / Export…, Backup & restore…), Fullscreen and Close. Compact mode and Expand / Collapse all are gone; each category still collapses on its own.
+- **Category menu:** right-click a category in the sidebar (or press Shift+F10 on it) for Random, Shuffle, Pick styles… and Generate previews…. The line at the bottom of the sidebar shows the hint. Category headers in the grid no longer open a menu.
+- **Slice bar:** "Wildcard from CATEGORY", a Random / Shuffle switch that keeps the picked styles, the picked count, then Select all, Clear, Cancel and Add wildcard.
+- **Selection tray:** drag chips to reorder them; the tray has a height limit and its own Clear.
+- **Style menu:** the style's name and pack on top, shorter item labels. In the gallery, ★ and ⋯ appear on a tile when you hover it.
+- **Opening the panel** no longer puts keyboard focus on the first card, which showed a focus ring on the first open. Arrow keys work after one Tab or a click into the grid.
+
+### Removed
+
+- **Recent** view and the preview popup on hover. `recent.json` is still included in backups and exports.
+
 ### Fixed
 
+- **Style Grid routes missing on reForge ("Not Found"):** write-route protection no longer adds an HTTP middleware while the server is running; on reForge that could leave every `/style_grid` route unregistered. The same checks now run on each write route.
 - **Console SyntaxError on every Gradio page load:** removed legacy `javascript/sg_prompt_utils.js`, which used an ESM `import` while Forge injects top-level `*.js` as classic scripts (`Cannot use import statement outside a module`). Prompt helpers still load through `style_grid.mjs` → `main.js` → `prompt-utils-bridge.js`.
+- **Previews of same-named styles:** generating a preview for a name that exists in several packs took the prompt of the last pack and saved the image there. It now uses the pack of the style you chose. Previews made under the wrong pack stay on disk; generate them again.
+- **Presets with same-named styles:** a preset counts as applied only when the styles of its own packs are selected, and its members resolve to the exact pack when the name is shared.
+- **Fewer library downloads:** the style library is loaded once per panel (was twice), once per change of a CSV file (was up to four times with both tabs) and once per Refresh or style rename (was twice).
+- **Cancel during a preview batch** now ends the batch as cancelled, also in the short pause between styles.
+- **Sticky category header** no longer covers the top of the first row of cards.
+
+Compatibility: AUTOMATIC1111 1.1.0+, Forge, reForge; style packs, presets and favorites are unchanged. The Recent list is no longer shown.
 
 ## [5.4.2] - 2026-10-28
 

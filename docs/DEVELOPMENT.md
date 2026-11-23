@@ -204,6 +204,19 @@ git config core.hooksPath .githooks
 
 Gaps worth knowing: host `javascript/style_grid.mjs` iframe lifecycle and most React UI flows are still manual QA (no e2e). Slice helpers are covered by unit + Python/Vitest parity; keep `resolveSliceNames` aligned with `select_slice` when the grammar changes.
 
+## Minimum host version (why A1111 1.1.0)
+
+The host layer is `javascript/style_grid.mjs`; sibling modules under `javascript/style_grid/` are imported by that entry (only top-level `javascript/*.mjs` / `*.js` are injected by the WebUI). It needs a WebUI that loads extension `*.mjs` as ES modules (`<script type="module">`); hosts that only inject `*.js` as classic scripts do not run it.
+
+A1111 added `.mjs` as `type="module"` in commit [`b90cad7f`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/b90cad7f3136bbe04efeee2a00e95d0cc6ce1a4a) (2023-02-23), merged to master as [`e15c4f31`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/e15c4f31e3ec0d2d979832dede0f9b34f4631c7a) via [PR #8042](https://github.com/AUTOMATIC1111/stable-diffusion-webui/pull/8042) (2023-03-11). Loader loop (then in `modules/ui.py`, later moved to `modules/ui_gradio_extensions.py`):
+
+```python
+for script in scripts.list_scripts("javascript", ".mjs"):
+    head += f'<script type="module" src="{webpath(script.path)}"></script>\n'
+```
+
+There is no git tag `v1.0.0`; the pre-release tag `v1.0.0-pre` (2023-01-24) does not include this loader. The first tagged A1111 release that does is `v1.1.0` ([`72cd27a1`](https://github.com/AUTOMATIC1111/stable-diffusion-webui/commit/72cd27a13587c9579942577e9e3880778be195f6), 2023-05-01). Forge ([`lllyasviel/stable-diffusion-webui-forge`](https://github.com/lllyasviel/stable-diffusion-webui-forge), created 2024-01-14) was based on A1111 ~1.7.0-era master and already contained the same `.mjs` path at its first commit [`7ad2a5c1`](https://github.com/lllyasviel/stable-diffusion-webui-forge/commit/7ad2a5c19521d3d6d2035c6fbf8402ed527f05ec). reForge keeps the same `modules/ui_gradio_extensions.py` loader.
+
 ## Practical Notes
 
 - Keep **`selectFilteredStyles`** (grid) and host-side style payload behavior aligned. If host dedups too early, source-aware UI features (like source picker on dedup cards) cannot work correctly.

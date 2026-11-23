@@ -6,7 +6,9 @@ import {
   useMemo,
   useRef,
   useState,
+  type FocusEvent as ReactFocusEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
 import {
@@ -15,12 +17,23 @@ import {
   type Range,
 } from '@tanstack/react-virtual'
 import type { Style } from '../../bridge'
-import type { ViewMode } from '../../store/stylesStore'
+import { styleRowKey, type ViewMode } from '../../store/stylesStore'
 import {
   getFocusedCell,
   setFocusedCell,
   useFocusedCell,
 } from '../../lib/gridFocus'
+import { isFocusVisible } from '../../lib/isFocusVisible'
+import { measureTileLabel } from '../../lib/tileLabelMetrics'
+import {
+  clearTileExpand,
+  clearTileFocus,
+  clearTileHover,
+  getHoverTile,
+  setTileFocus,
+  setTileHover,
+  type TileExpandEntry,
+} from '../../lib/tileExpand'
 import {
   cellCount,
   nextCell,
@@ -38,6 +51,7 @@ import {
 } from './buildGridRows'
 import { CardsRow } from './CardsRow'
 import { CategoryHeaderRow } from './CategoryHeaderRow'
+import { ExpandedTileOverlay } from './ExpandedTileOverlay'
 import {
   cardRowHeightPx,
   columnsForWidth,
@@ -106,6 +120,10 @@ function clampFocusedCell(
   const count = cellCount(rows[cell.row])
   if (count <= 0) return firstFocusableCell(rows)
   return { row: cell.row, col: Math.max(0, Math.min(cell.col, count - 1)) }
+}
+
+function cardFromTarget(target: EventTarget | null): HTMLElement | null {
+  return target instanceof Element ? target.closest<HTMLElement>('[data-sg-card]') : null
 }
 
 /** Sticky overlay chrome — shared object; height and paddingBottom are added per render. */
@@ -462,6 +480,100 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
     return map
   }, [rows])
 
+  // Expanded names of truncated tiles: grid mode with our own StyleCards only
+  // (gallery labels wrap already; slice mode is not virtualized).
+  const expandEnabled = viewMode !== 'gallery' && !renderCard
+
+  // A new layout (category, search, resize, fullscreen, density, view) drops the expansion.
+  useEffect(() => {
+    clearTileExpand()
+  }, [rows, columns, widthPx, windowed, viewMode])
+
+  useEffect(() => {
+    const onWindowBlur = () => clearTileExpand()
+    window.addEventListener('blur', onWindowBlur)
+    return () => {
+      window.removeEventListener('blur', onWindowBlur)
+      clearTileExpand()
+    }
+  }, [])
+
+  // Scrolling drops a hover expansion; a keyboard one scrolls with its tile.
+  useEffect(() => {
+    if (!scroller) return
+    const onScroll = () => clearTileHover()
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    scroller.addEventListener('wheel', onScroll, { passive: true })
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      scroller.removeEventListener('wheel', onScroll)
+    }
+  }, [scroller])
+
+  /** Measures a card now (on show); null when its name fits or the cell is not a card. */
+  const tileExpandEntry = useCallback((tile: HTMLElement, ring: boolean): TileExpandEntry | null => {
+    const rowAttr = tile.getAttribute('data-cell-row')
+    const colAttr = tile.getAttribute('data-cell-col')
+    if (rowAttr == null || colAttr == null) return null
+    const row = Number(rowAttr)
+    const col = Number(colAttr)
+    const gridRow = rowsRef.current[row]
+    if (!gridRow || gridRow.kind !== 'cards') return null
+    const style = gridRow.styles[col]
+    if (!style) return null
+    const metrics = measureTileLabel(tile)
+    if (!metrics || !metrics.truncated) return null
+    return {
+      row,
+      col,
+      styleKey: styleRowKey(style),
+      textWidth: metrics.textWidth,
+      chrome: metrics.chrome,
+      ring,
+      tile,
+    }
+  }, [])
+
+  const onGridPointerOver = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!expandEnabled || e.pointerType === 'touch') return
+      const card = cardFromTarget(e.target)
+      if (!card || card === getHoverTile() || !e.currentTarget.contains(card)) return
+      const ring = document.activeElement === card && isFocusVisible(card)
+      setTileHover(card, tileExpandEntry(card, ring))
+    },
+    [expandEnabled, tileExpandEntry],
+  )
+
+  const onGridPointerOut = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const hovered = getHoverTile()
+    if (!hovered || cardFromTarget(e.relatedTarget) === hovered) return
+    clearTileHover()
+  }, [])
+
+  const onGridFocusCapture = useCallback(
+    (e: ReactFocusEvent<HTMLDivElement>) => {
+      if (!expandEnabled) return
+      const card = cardFromTarget(e.target)
+      if (!card || card !== e.target) return
+      // Keyboard focus only (Tab or arrows), not focus after a mouse click.
+      setTileFocus(isFocusVisible(card) ? tileExpandEntry(card, true) : null)
+    },
+    [expandEnabled, tileExpandEntry],
+  )
+
+  const onGridBlurCapture = useCallback((e: ReactFocusEvent<HTMLDivElement>) => {
+    clearTileFocus(e.target)
+  }, [])
+
+  const getRowTop = useCallback(
+    (index: number): number | undefined => {
+      const item: { start: number } | undefined = virtualizer.measurementsCache[index]
+      return item ? item.start - scrollMargin : undefined
+    },
+    [virtualizer, scrollMargin],
+  )
+
   // No scroller provider (production only; dev and tests threw in useGridScroller):
   // render nothing rather than virtualize against a wrong element.
   if (scrollerMissing) return null
@@ -475,6 +587,12 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
       aria-rowcount={rows.length}
       data-sg-item-count={itemCount}
       onKeyDown={onGridKeyDown}
+      onPointerOver={onGridPointerOver}
+      onPointerOut={onGridPointerOut}
+      onFocusCapture={onGridFocusCapture}
+      onBlurCapture={onGridBlurCapture}
+      // StyleCard stops the contextmenu event: hide in the capture phase.
+      onContextMenuCapture={clearTileExpand}
     >
       <div
         style={{
@@ -552,6 +670,17 @@ export const VirtualStyleGrid = memo(function VirtualStyleGrid({
             </div>
           )
         })}
+        {expandEnabled && (
+          <ExpandedTileOverlay
+            rows={rows}
+            columns={columns}
+            widthPx={widthPx}
+            gapPx={gapPx}
+            windowed={windowed}
+            totalSize={virtualizer.getTotalSize()}
+            getRowTop={getRowTop}
+          />
+        )}
       </div>
       {children}
     </div>

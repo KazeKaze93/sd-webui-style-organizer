@@ -12,12 +12,11 @@ export const ROW_GAP_NORMAL_PX = GRID_GAP_NORMAL_PX
 export const VIRTUALIZER_TEST_INITIAL_RECT = { width: 800, height: 600 } as const
 
 /**
- * StyleCard chrome height (border-box), excluding inter-row gap.
- * Measured in bench (N=500): windowed `p-2`+`text-xs` = 34; panel fullscreen
- * `p-3`+`text-sm` = 46.
+ * StyleCard chrome height (border-box), excluding inter-row gap. The name wraps to two lines:
+ * windowed `p-2` + 2 × 14 px `text-xs` lines + border = 46; fullscreen `p-3` + 2 × 16 px `text-sm` lines + border = 58.
  */
-export const CARD_HEIGHT_NORMAL_PX = 46
-export const CARD_HEIGHT_WINDOWED_PX = 34
+export const CARD_HEIGHT_NORMAL_PX = 58
+export const CARD_HEIGHT_WINDOWED_PX = 46
 
 /**
  * Virtualizer card-row size = card height + ROW_GAP.

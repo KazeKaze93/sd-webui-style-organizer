@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Style Grid screenshots: Forge mock</title>
+    <!--
+      A stand-in for the Forge / reForge img2img tab, for README screenshots
+      only. The page is drawn by hand; the panel is the real built iframe, and
+      the small host script below answers its messages the way
+      javascript/style_grid/** does (init with the tab, apply, fullscreen,
+      close), with a neutral demo library.
+    -->
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; }
+      body { background: #0b0f19; color: #d1d5db; font: 14px/1.4 "Source Sans Pro", "Segoe UI", Arial, sans-serif; }
+      .top { display: flex; gap: 14px; padding: 10px 14px; align-items: flex-end; }
+      .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #9ca3af; }
+      .sel { background: #1f2937; border: 1px solid #374151; border-radius: 6px; height: 32px; min-width: 260px;
+        display: flex; align-items: center; padding: 0 10px; color: #e5e7eb; font-size: 13px; }
+      .tabs { display: flex; gap: 2px; padding: 0 14px; border-bottom: 1px solid #374151; }
+      .tab { padding: 8px 14px; color: #9ca3af; font-size: 13.5px; }
+      .tab.on { color: #fff; border: 1px solid #374151; border-bottom-color: #0b0f19; border-radius: 6px 6px 0 0; margin-bottom: -1px; background: #0b0f19; }
+      .main { display: grid; grid-template-columns: 1fr 360px; gap: 14px; padding: 14px; }
+      .prompt { background: #1f2937; border: 1px solid #374151; border-radius: 8px; padding: 8px 10px; min-height: 64px; margin-bottom: 10px; color: #e5e7eb; white-space: pre-wrap; }
+      .prompt .ph { color: #6b7280; font-size: 12px; display: block; }
+      .gen { background: #ea580c; border-radius: 8px; height: 110px; display: grid; place-items: center; color: #fff; font-size: 20px; font-weight: 600; }
+      .sub { display: flex; gap: 2px; margin: 4px 0 8px; }
+      .sub span { padding: 6px 12px; font-size: 13px; color: #9ca3af; }
+      .sub span.on { color: #fff; border-bottom: 2px solid #ea580c; }
+      .image { height: 360px; border-radius: 8px; border: 1px dashed #4b5563;
+        background: repeating-conic-gradient(#1f2937 0% 25%, #111827 0% 50%) 0 0 / 24px 24px; display: grid; place-items: center; color: #6b7280; }
+      .out { background: #111827; border: 1px solid #374151; border-radius: 8px; height: 360px; }
+      .sg-trigger { display: inline-flex; align-items: center; gap: 6px; background: #1f2937; border: 1px solid #374151;
+        border-radius: 6px; height: 32px; padding: 0 12px; color: #e5e7eb; font-size: 13px; cursor: pointer; }
+      #sg-overlay { position: fixed; top: 46px; right: 16px; width: 960px; height: 600px; border-radius: 12px; overflow: hidden;
+        display: none; z-index: 10; box-shadow: 0 25px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06); background: #111; }
+      #sg-overlay.full { inset: 0; width: auto; height: auto; border-radius: 0; }
+      #sg-overlay iframe { width: 100%; height: 100%; border: 0; display: block; }
+    </style>
+  </head>
+  <body>
+    <div class="top">
+      <div class="field">Stable Diffusion checkpoint<div class="sel">demo_model.safetensors</div></div>
+      <div class="field">VAE / Text Encoder<div class="sel" style="min-width:180px">Automatic</div></div>
+      <div class="field">Sampling method<div class="sel" style="min-width:140px">Euler a</div></div>
+    </div>
+    <div class="tabs">
+      <span class="tab">Txt2img</span><span class="tab on">Img2img</span><span class="tab">Extras</span>
+      <span class="tab">PNG Info</span><span class="tab">Settings</span><span class="tab">Extensions</span>
+    </div>
+    <div class="main">
+      <div>
+        <div class="prompt"><span class="ph">Prompt</span><span id="prompt"></span></div>
+        <div class="prompt"><span class="ph">Negative prompt</span><span id="neg"></span></div>
+        <div class="sub"><span class="on">img2img</span><span>Sketch</span><span>Inpaint</span><span>Inpaint sketch</span><span>Batch</span>
+          <span style="margin-left:auto"><span class="sg-trigger" id="browse">▦ Style Grid</span></span></div>
+        <div class="image">Drop image here</div>
+      </div>
+      <div><div class="gen">Generate</div><div class="out" style="margin-top:14px"></div></div>
+    </div>
+
+    <div id="sg-overlay"><iframe id="panel" title="Style Grid"></iframe></div>
+
+    <script>
+      ;(() => {
+        const cfg = window.__SG_MOCK__ || { styles: [], tab: 'img2img' }
+        const panel = document.getElementById('panel')
+        const overlay = document.getElementById('sg-overlay')
+        const promptEl = document.getElementById('prompt')
+        const negEl = document.getElementById('neg')
+        promptEl.textContent = cfg.text || ''
+        negEl.textContent = cfg.negativeText || ''
+        const tags = (s) => s.split(',').map((t) => t.trim()).filter(Boolean)
+        const merge = (base, add) => {
+          const out = tags(base)
+          for (const t of tags(add)) if (!out.some((x) => x.toLowerCase() === t.toLowerCase())) out.push(t)
+          return out.join(', ')
+        }
+        const strip = (base, remove) => {
+          const gone = new Set(tags(remove).map((t) => t.toLowerCase()))
+          return tags(base).filter((t) => !gone.has(t.toLowerCase())).join(', ')
+        }
+        const post = (msg) => panel.contentWindow && panel.contentWindow.postMessage(msg, location.origin)
+        const open = () => {
+          if (!panel.getAttribute('src')) panel.src = '/?theme=dark'
+          overlay.style.display = 'block'
+          panel.focus()
+        }
+        document.getElementById('browse').addEventListener('click', open)
+        window.addEventListener('message', (e) => {
+          if (e.source !== panel.contentWindow || e.origin !== location.origin) return
+          const msg = e.data || {}
+          if (msg.type === 'SG_READY') {
+            post({ type: 'SG_INIT', tab: cfg.tab || 'img2img', styles: cfg.styles })
+            post({ type: 'SG_THEME', mode: 'dark' })
+          } else if (msg.type === 'SG_APPLY') {
+            promptEl.textContent = merge(promptEl.textContent, msg.prompt || '')
+            negEl.textContent = merge(negEl.textContent, msg.neg || '')
+          } else if (msg.type === 'SG_UNAPPLY') {
+            const s = cfg.styles.find((x) => x.name === msg.styleId)
+            if (s) {
+              promptEl.textContent = strip(promptEl.textContent, s.prompt)
+              negEl.textContent = strip(negEl.textContent, s.negative_prompt)
+            }
+          } else if (msg.type === 'SG_SET_FULLSCREEN') {
+            overlay.classList.toggle('full', !!msg.fullscreen)
+            post({ type: 'SG_FULLSCREEN_STATE', fullscreen: !!msg.fullscreen })
+          } else if (msg.type === 'SG_CLOSE_REQUEST') {
+            overlay.style.display = 'none'
+          }
+        })
+        window.__SG_MOCK_READY__ = true
+        if (cfg.openPanel) open()
+      })()
+    </script>
+  </body>
+</html>

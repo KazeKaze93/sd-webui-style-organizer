@@ -1,32 +1,42 @@
 # Screenshots for `README.md`
 
-Images in this folder are referenced from the root **`README.md`**. After UI changes, replace files here and keep the **same filename** so links stay valid.
+The pictures are taken from the real panel, built from `ui/`, on a local test
+page. The style library is a neutral demo set (photography and art terms, a
+few LoRA cards), previews are placeholder gradients, and the WebUI page around
+the panel in `img2img-support.png` is a hand-drawn stand-in: only the panel is
+the real code. Dark theme, device scale 1.
 
-## When to refresh (current UI)
+## Regenerate
 
-Favorited tiles show a **star** in the top-right; toggle favorites from the **style card context menu**. Selected tiles show a **check** badge. Re-shoot when the chrome in the table no longer matches the live panel.
+```powershell
+cd ui
+node bench/screenshots/capture.mjs
+```
 
-| Priority | File | What to capture |
-|----------|------|-----------------|
-| 1 | `browse-and-filter.png` | Main grid + sidebar + source dropdown. |
-| 2 | `apply-and-reorder.png` | Selected styles + bottom bar with chips. |
-| 3 | `favorites-in-category.png` | A normal category view with at least one favorited tile (star visible). |
-| 4 | `favorites-view.png` | **Favorites** selected in the sidebar; grid of favorited styles. |
-| 5 | `recent-styles.png` | **Recent** in the sidebar. |
-| 6 | `img2img-support.png` | Style Grid open on **img2img** tab (if layout differs from txt2img). |
-| 7 | `search-autocomplete.png` | Search with autocomplete dropdown open. |
-| 8 | `thumbnail-hover-preview.png` | Hover popup with thumb + prompt snippet (CSV thumbs are name+source; generate/upload require `source`). |
-| 9 | `fullscreen-mode.png` | Fullscreen toggle result — edge‑to‑edge panel. |
-| 10 | `lora-view.png` | **🧬 LoRA** selected in the sidebar; grid grouped by LoRA sub-folder with `display_name` titles (and Fetch LoRA titles control in the top bar when in this view). |
-| 11 | `lora-fetch-titles.png` | Hover tooltip on the **Fetch LoRA titles from CivitAI** toolbar button (LoRA view only). |
-| 12 | `slice-selection-mode.png` | Slice mode bar + per-card checkboxes. |
-| 13 | `wildcard-slice-chips.png` | Wildcard chips including a slice chip label. |
+The script builds the bench preview, serves it, answers every `/style_grid/*`
+request from `ui/bench/screenshots/dataset.mjs`, and writes the PNGs here.
+`--only name1,name2` retakes some shots; `--no-build` reuses the last build.
+The script, the dataset and the two mock host pages are the same files in the
+ComfyUI repo (`sd-comfyui-style-organizer`); the platform is the repo they run
+in.
 
-`style-card-context-menu.png`, `category-context-wildcard-previews.png`, `top-bar-icons.png` — re-shoot only when those UIs change. Orphan/`cards-star-alignment.png` is not referenced by `README.md`.
+Keep the file names: `README.md` links them.
 
-- **TODO — Silent mode button removed:** `top-bar-icons.png` still shows the removed **Silent mode** (👁) button and must be re-shot. Re-shoot `top-bar-icons.png` first, then any full-panel shot that still includes that control (`browse-and-filter.png`, `apply-and-reorder.png`, `search-autocomplete.png`, `favorites-*.png`, `recent-styles.png`, `lora-*.png`, `fullscreen-mode.png`, `img2img-support.png`, `slice-selection-mode.png`, `wildcard-slice-chips.png`). (User will re-shoot manually — do not invent new PNGs here.)
-- **TODO — post UI batch (toolbar / card / menu):** after the ToolBtn top bar (no Random; presets in sidebar; Compact active; Expand/Collapse dynamic; Fullscreen/Close ToolBtn; click-to-open conflicts popover), StyleCard updates (favorite star on tile, selected check badge, **Remove preview** menu item, lucide menus, no mouseLeave dismiss), and related chrome, re-shoot at least `top-bar-icons.png`, `style-card-context-menu.png`, and any full-panel shot that still shows the old toolbar or card chrome. Do not invent new screenshot filenames until the PNGs exist.
-
----
-
-**For maintainers:** ask the user to attach new PNGs when README text no longer matches what’s on screen; save under the names above and run `cd ui && npm run build` after code changes (not required for image-only updates).
+| File | What it shows |
+|------|---------------|
+| `img2img-support.png` | The panel over the img2img tab, two styles selected |
+| `browse-and-filter.png` | A category picked in the sidebar, selected tiles |
+| `search-autocomplete.png` | Search with suggestions |
+| `apply-and-reorder.png` | Selected styles and a wildcard in the tray |
+| `tile-expand.png` | A long name shown whole on hover |
+| `lora-view.png` | **🧬 LoRA** view, cards grouped by folder with titles |
+| `favorites-view.png` | **Favorites** view |
+| `favorites-in-category.png` | Stars on favorited tiles in a category |
+| `category-context-wildcard-previews.png` | Sidebar category menu (Random, Shuffle, Pick styles…, Generate previews…) |
+| `slice-selection-mode.png` | Pick styles… mode bar and ticked tiles |
+| `wildcard-slice-chips.png` | A whole-category chip and a slice chip in the tray |
+| `style-card-context-menu.png` | Right-click menu of a style card |
+| `fullscreen-mode.png` | The panel in fullscreen |
+| `top-bar-icons.png` | The header row and its icon buttons |
+| `lora-fetch-titles.png` | Tooltip of the Fetch LoRA titles button |
+| `gallery-view.png` | Gallery view with previews |

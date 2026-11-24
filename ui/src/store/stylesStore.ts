@@ -455,6 +455,12 @@ export function resolveSourceInList(
   return matches.length === 1 ? matches[0] : null
 }
 
+/** A tab listed here shows its parent tab's source until a source is picked on the tab itself. */
+const SOURCE_PARENT_TAB: Partial<Record<Tab, Tab>> = { img2img: 'txt2img' }
+/** Stored when "All Sources" is picked on an inheriting tab, so the pick is not taken for "never chosen". */
+const OWN_ALL_SOURCES = ''
+const lastSourceKeyOf = (tab: Tab) => `sg_v2_last_source_${tab}`
+
 /**
  * Values of `activeCategory` that are sidebar “special” views (not real CSV categories).
  * Matches Favorites; use the same checks in grid layout as those.
@@ -549,6 +555,11 @@ interface StylesStore {
   setSearch: (q: string) => void
   setCategory: (cat: string | null) => void
   setActiveSource: (src: string | null) => void
+  /**
+   * Follow the parent tab's source after its localStorage key `changedKey`
+   * changed in another frame; no-op once this tab has a source pick of its own.
+   */
+  syncInheritedSource: (changedKey: string | null) => void
   setThemeMode: (mode: ThemeMode) => void
   /** Switch Grid / Gallery and remember it in localStorage (sg_view_mode). */
   setViewMode: (mode: ViewMode) => void
@@ -784,10 +795,13 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
     )].sort()
 
     // Restore selection: exact match, else unique leaf for legacy abs paths only
-    const lastSourceKey = `sg_v2_last_source_${tab}`
-    const lastSource =
+    const lastSourceKey = lastSourceKeyOf(tab)
+    const ownSource =
       localStorage.getItem(lastSourceKey) ??
       localStorage.getItem('sg_v2_last_source') // legacy global (pre per-tab)
+    const parentTab = SOURCE_PARENT_TAB[tab]
+    const inherits = ownSource === null && parentTab !== undefined
+    const lastSource = inherits ? localStorage.getItem(lastSourceKeyOf(parentTab)) : ownSource
     const prevActive = get().activeSource
     const activeSource =
       resolveSourceInList(sources, prevActive) ??
@@ -827,7 +841,8 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
       searchTextByKey: buildSearchTextByKey(styles),
       ...(nextThumbs ? { thumbVersions: nextThumbs } : {}),
     })
-    if (activeSource && activeSource !== lastSource) {
+    // An inherited source stays the parent tab's: never saved as this tab's own pick.
+    if (activeSource && activeSource !== lastSource && !inherits) {
       localStorage.setItem(lastSourceKey, activeSource)
     }
     localStorage.removeItem('sg_v2_last_source')
@@ -838,15 +853,27 @@ export const useStylesStore = create<StylesStore>((set, get) => ({
   setCategory: (activeCategory) => set({ activeCategory }),
   setActiveSource: (activeSource) => {
     const tab = get().tab
-    const lastSourceKey = `sg_v2_last_source_${tab}`
+    const lastSourceKey = lastSourceKeyOf(tab)
     if (activeSource) {
       localStorage.setItem(lastSourceKey, activeSource)
+    } else if (SOURCE_PARENT_TAB[tab]) {
+      localStorage.setItem(lastSourceKey, OWN_ALL_SOURCES)
     } else {
       localStorage.removeItem(lastSourceKey)
     }
     localStorage.removeItem('sg_v2_last_source')
     set({ activeSource })
     sendToHost({ type: 'SG_SOURCE_CHANGE', source: activeSource })
+  },
+  syncInheritedSource: (changedKey) => {
+    const { tab, sources, activeSource, stylesLoaded } = get()
+    const parentTab = SOURCE_PARENT_TAB[tab]
+    if (!parentTab || !stylesLoaded || changedKey !== lastSourceKeyOf(parentTab)) return
+    if (localStorage.getItem(lastSourceKeyOf(tab)) !== null) return
+    const next = resolveSourceInList(sources, localStorage.getItem(changedKey))
+    if (next === activeSource) return
+    set({ activeSource: next })
+    sendToHost({ type: 'SG_SOURCE_CHANGE', source: next })
   },
   setThemeMode: (themeMode) => set({ themeMode }),
   setViewMode: (viewMode) => {

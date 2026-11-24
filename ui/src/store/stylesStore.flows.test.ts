@@ -100,6 +100,60 @@ describe('characterization: main Style Grid flows', () => {
         source: FILE_B,
       })
     })
+
+    it('img2img inherits the txt2img source until it has a pick of its own', () => {
+      const lib = [row('BODY_Ears', FILE_A), row('HAIR_Long', FILE_B, { category: 'HAIR' })]
+      localStorage.setItem('sg_v2_last_source_txt2img', FILE_B)
+      useStylesStore.getState().setStyles(lib, 'img2img')
+      expect(useStylesStore.getState().activeSource).toBe(FILE_B)
+      expect(sendToHost).toHaveBeenLastCalledWith({ type: 'SG_SOURCE_CHANGE', source: FILE_B })
+      // Inherited, not adopted: img2img still has no key of its own.
+      expect(localStorage.getItem('sg_v2_last_source_img2img')).toBeNull()
+
+      // txt2img changes in the other frame: img2img follows.
+      localStorage.setItem('sg_v2_last_source_txt2img', FILE_A)
+      useStylesStore.getState().syncInheritedSource('sg_v2_last_source_txt2img')
+      expect(useStylesStore.getState().activeSource).toBe(FILE_A)
+      expect(sendToHost).toHaveBeenLastCalledWith({ type: 'SG_SOURCE_CHANGE', source: FILE_A })
+
+      // "All Sources" picked in img2img is a pick of its own: no more following.
+      useStylesStore.getState().setActiveSource(null)
+      expect(localStorage.getItem('sg_v2_last_source_img2img')).toBe('')
+      localStorage.setItem('sg_v2_last_source_txt2img', FILE_B)
+      useStylesStore.getState().syncInheritedSource('sg_v2_last_source_txt2img')
+      expect(useStylesStore.getState().activeSource).toBeNull()
+
+      // ...and it survives a reload of the panel.
+      useStylesStore.setState({ activeSource: null })
+      useStylesStore.getState().setStyles(lib, 'img2img')
+      expect(useStylesStore.getState().activeSource).toBeNull()
+    })
+
+    it('img2img keeps its own source over the txt2img one', () => {
+      localStorage.setItem('sg_v2_last_source_txt2img', FILE_B)
+      localStorage.setItem('sg_v2_last_source_img2img', FILE_A)
+      useStylesStore.getState().setStyles(
+        [row('BODY_Ears', FILE_A), row('HAIR_Long', FILE_B, { category: 'HAIR' })],
+        'img2img',
+      )
+      expect(useStylesStore.getState().activeSource).toBe(FILE_A)
+      useStylesStore.getState().syncInheritedSource('sg_v2_last_source_txt2img')
+      expect(useStylesStore.getState().activeSource).toBe(FILE_A)
+    })
+
+    it('txt2img never follows img2img and clears its key on All Sources', () => {
+      localStorage.setItem('sg_v2_last_source_img2img', FILE_B)
+      useStylesStore.getState().setStyles(
+        [row('BODY_Ears', FILE_A), row('HAIR_Long', FILE_B, { category: 'HAIR' })],
+        'txt2img',
+      )
+      expect(useStylesStore.getState().activeSource).toBeNull()
+      useStylesStore.getState().syncInheritedSource('sg_v2_last_source_img2img')
+      expect(useStylesStore.getState().activeSource).toBeNull()
+      useStylesStore.getState().setActiveSource(FILE_A)
+      useStylesStore.getState().setActiveSource(null)
+      expect(localStorage.getItem('sg_v2_last_source_txt2img')).toBeNull()
+    })
   })
 
   describe('search / filter', () => {

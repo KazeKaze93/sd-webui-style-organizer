@@ -261,6 +261,13 @@ export default function App() {
     }
   }, [])
 
+  // The other tab's iframe writes its source pick to the shared localStorage.
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => useStylesStore.getState().syncInheritedSource(e.key)
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
   useEffect(() => {
     void useStylesStore.getState().hydrateFavorites()
     const unsub = onHostMessage((msg) => {
